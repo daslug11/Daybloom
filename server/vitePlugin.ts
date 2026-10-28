@@ -1,6 +1,6 @@
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { handleDemoCalendar, handleSyncRequest } from './sync.js';
+import { API_ROUTES } from './routes.js';
 
 async function toRequest(req: IncomingMessage): Promise<Request> {
   const chunks: Buffer[] = [];
@@ -12,29 +12,36 @@ async function toRequest(req: IncomingMessage): Promise<Request> {
   return new Request(url, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body });
 }
 
+async function send(res: ServerResponse, response: Response) {
+  res.statusCode = response.status;
+  response.headers.forEach((v, k) => res.setHeader(k, v));
+  if (!response.body) return res.end();
+  // Stream (Atlas replies arrive token by token).
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    res.write(value);
+  }
+  res.end();
+}
+
 /** Serves the same /api handlers Vercel runs, so `npm run dev` and `npm run preview` need no second process. */
-export function calendarSyncApi(): Plugin {
-  const routes: Record<string, (r: Request) => Response | Promise<Response>> = {
-    '/api/calendar-sync': handleSyncRequest,
-    '/api/demo-calendar.ics': handleDemoCalendar,
-  };
-  const middleware = async (req: IncomingMessage, res: import('node:http').ServerResponse, next: () => void) => {
+export function apiRoutes(): Plugin {
+  const middleware = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const path = (req.url ?? '').split('?')[0];
-    const handler = routes[path];
+    const handler = API_ROUTES[path];
     if (!handler) return next();
     try {
-      const response = await handler(await toRequest(req));
-      res.statusCode = response.status;
-      response.headers.forEach((v, k) => res.setHeader(k, v));
-      res.end(Buffer.from(await response.arrayBuffer()));
+      await send(res, await handler(await toRequest(req)));
     } catch (err) {
       console.error('[api]', err);
-      res.statusCode = 500;
+      if (!res.headersSent) res.statusCode = 500;
       res.end(JSON.stringify({ error: 'Internal error' }));
     }
   };
   return {
-    name: 'daybloom-calendar-sync-api',
+    name: 'daybloom-api',
     configureServer(server) {
       server.middlewares.use(middleware);
     },

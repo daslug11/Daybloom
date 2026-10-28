@@ -1,5 +1,7 @@
-import { DEMO_FEED_PATH, demoCalendarIcs } from './demo.js';
-import { FeedError, fetchFeedText, normalizeFeedUrl } from './fetchFeed.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { requireUser } from '../auth.js';
+import { handle, HttpError, json, readJson } from '../http.js';
+import { FeedError, fetchFeedText } from './fetchFeed.js';
 import { parseIcsEvents } from './ics.js';
 import type { FeedResult, SyncRequestBody, SyncResponseBody } from './types.js';
 
@@ -31,15 +33,6 @@ function cachedFetch(url: string, fetchImpl: typeof fetch, now: number) {
   return { entry, cached: false };
 }
 
-function isDemoFeed(url: string, requestHost: string | null) {
-  try {
-    const u = normalizeFeedUrl(url);
-    return u.pathname === DEMO_FEED_PATH && (!requestHost || u.host === requestHost);
-  } catch {
-    return false;
-  }
-}
-
 function parseWindow(body: SyncRequestBody, now: number) {
   const from = body.from ? new Date(body.from) : new Date(now - 7 * 86_400_000);
   let to = body.to ? new Date(body.to) : new Date(now + 60 * 86_400_000);
@@ -53,7 +46,7 @@ function parseWindow(body: SyncRequestBody, now: number) {
 
 export async function syncFeeds(
   body: SyncRequestBody,
-  opts: { requestHost?: string | null; fetchImpl?: typeof fetch; now?: number } = {},
+  opts: { fetchImpl?: typeof fetch; now?: number } = {},
 ): Promise<SyncResponseBody> {
   const now = opts.now ?? Date.now();
   const { from, to } = parseWindow(body, now);
@@ -61,10 +54,6 @@ export async function syncFeeds(
     body.feeds.map(async (feed): Promise<FeedResult> => {
       const base = { id: feed.id, events: [], cached: false, fetchedAt: new Date(now).toISOString() };
       try {
-        if (isDemoFeed(feed.url, opts.requestHost ?? null)) {
-          const tz = normalizeFeedUrl(feed.url).searchParams.get('tz') ?? body.tz;
-          return { ...base, ok: true, events: parseIcsEvents(demoCalendarIcs(tz, new Date(now)), feed.id, from, to) };
-        }
         const { entry, cached } = cachedFetch(feed.url.trim(), opts.fetchImpl ?? fetch, now);
         const text = await entry.body;
         return {
@@ -84,38 +73,23 @@ export async function syncFeeds(
   return { results };
 }
 
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
+/** Syncs the user's calendars that have sync turned on (URLs are read from their rows, never from the request). */
+export async function syncUserCalendars(db: SupabaseClient, window: { from?: string; to?: string } = {}) {
+  const { data, error } = await db.from('calendars').select('id, url').eq('sync', true).limit(MAX_FEEDS);
+  if (error) throw new HttpError(500, 'Could not load your calendars.');
+  if (!data.length) return { results: [] };
+  return syncFeeds({ feeds: data, ...window });
 }
 
-/** POST /api/calendar-sync — Web-standard handler used by both Vercel and the Vite dev server. */
-export async function handleSyncRequest(req: Request): Promise<Response> {
+/** POST /api/calendar-sync {from?, to?} — signed-in users only. */
+export const handleSyncRequest = handle(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Use POST.' }, 405);
-  let body: SyncRequestBody;
+  const { db } = await requireUser(req);
+  const body = await readJson<{ from?: string; to?: string }>(req);
   try {
-    body = (await req.json()) as SyncRequestBody;
-  } catch {
-    return json({ error: 'Request body must be JSON.' }, 400);
-  }
-  if (!body || !Array.isArray(body.feeds)) return json({ error: 'Expected { feeds: [{ id, url }] }.' }, 400);
-  if (body.feeds.length > MAX_FEEDS) return json({ error: `You can sync up to ${MAX_FEEDS} calendars at once.` }, 400);
-  if (body.feeds.some((f) => !f || typeof f.id !== 'string' || typeof f.url !== 'string' || f.url.length > 2048)) {
-    return json({ error: 'Each feed needs a string id and url.' }, 400);
-  }
-  try {
-    return json(await syncFeeds(body, { requestHost: new URL(req.url).host }));
+    return json(await syncUserCalendars(db, { from: body.from, to: body.to }));
   } catch (err) {
-    return json({ error: err instanceof FeedError ? err.message : 'Sync failed.' }, 400);
+    if (err instanceof FeedError) throw new HttpError(400, err.message);
+    throw err;
   }
-}
-
-/** GET /api/demo-calendar.ics?tz=Europe/Berlin — a real ICS feed you can subscribe to anywhere. */
-export function handleDemoCalendar(req: Request): Response {
-  const tz = new URL(req.url).searchParams.get('tz');
-  return new Response(demoCalendarIcs(tz), {
-    headers: { 'content-type': 'text/calendar; charset=utf-8', 'cache-control': 'public, max-age=600' },
-  });
-}
+});

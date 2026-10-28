@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { demoCalendarIcs } from '../server/demo.js';
-import { isPrivateAddress, normalizeFeedUrl } from '../server/fetchFeed.js';
-import { parseIcsEvents } from '../server/ics.js';
-import { clearSyncCache, handleSyncRequest, syncFeeds } from '../server/sync.js';
+import { isPrivateAddress, normalizeFeedUrl } from '../server/calendar/fetchFeed.js';
+import { parseIcsEvents } from '../server/calendar/ics.js';
+import { clearSyncCache, handleSyncRequest, syncFeeds } from '../server/calendar/sync.js';
 
 const ICS = [
   'BEGIN:VCALENDAR',
@@ -65,18 +64,6 @@ describe('parseIcsEvents', () => {
   });
 });
 
-describe('demo feed', () => {
-  it('produces timed events in the requested time zone and an all-day event', () => {
-    const now = new Date('2026-10-28T12:00:00Z');
-    const events = parseIcsEvents(demoCalendarIcs('America/New_York', now), 'demo', new Date('2026-10-26T00:00:00Z'), new Date('2026-11-02T00:00:00Z'));
-    const lunch = events.find((e) => e.title.startsWith('Lunch'))!;
-    // 12:30 New York (EDT, UTC-4) on Oct 28 → 16:30Z
-    expect(lunch.start).toBe('2026-10-28T16:30:00.000Z');
-    expect(events.filter((e) => e.title.startsWith('Daily standup')).length).toBe(5);
-    expect(events.find((e) => e.title.includes('birthday'))).toMatchObject({ allDay: true, start: '2026-10-31', end: '2026-11-01' });
-  });
-});
-
 describe('url guard', () => {
   it('normalizes webcal and rejects other protocols', () => {
     expect(normalizeFeedUrl('webcal://example.com/a.ics').toString()).toBe('https://example.com/a.ics');
@@ -125,22 +112,12 @@ describe('syncFeeds', () => {
     expect(results[1]).toMatchObject({ ok: false, error: expect.stringMatching(/refused access \(403\)/) });
   });
 
-  it('serves the built-in demo feed without a network request', async () => {
-    const fetchImpl = mockFetch('');
-    const { results } = await syncFeeds(
-      { feeds: [{ id: 'demo', url: 'http://localhost:5173/api/demo-calendar.ics' }], tz: 'Europe/Berlin' },
-      { fetchImpl, requestHost: 'localhost:5173' },
-    );
-    expect(results[0].ok).toBe(true);
-    expect(results[0].events.length).toBeGreaterThan(5);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
 });
 
 describe('handleSyncRequest', () => {
-  it('validates input', async () => {
-    const res = await handleSyncRequest(new Request('http://x/api/calendar-sync', { method: 'POST', body: '{"feeds":5}' }));
-    expect(res.status).toBe(400);
+  it('requires a signed-in user and POST', async () => {
+    const res = await handleSyncRequest(new Request('http://x/api/calendar-sync', { method: 'POST', body: '{}' }));
+    expect(res.status).toBe(401);
     const get = await handleSyncRequest(new Request('http://x/api/calendar-sync'));
     expect(get.status).toBe(405);
   });
