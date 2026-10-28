@@ -35,7 +35,7 @@ export function parseCalendarUrl(input: string): URL | null {
   try {
     const url = new URL(trimmed);
     if (!['http:', 'https:', 'webcal:'].includes(url.protocol)) return null;
-    if (!url.hostname.includes('.')) return null;
+    if (!url.hostname.includes('.') && url.hostname !== 'localhost') return null;
     return url;
   } catch {
     return null;
@@ -66,4 +66,20 @@ export function detectCalendarType(input: string): CalendarType {
 export function isGoogleEmbed(input: string) {
   const url = parseCalendarUrl(input);
   return !!url && url.hostname === 'calendar.google.com' && url.pathname.startsWith('/calendar/embed');
+}
+
+export const DEMO_FEED_PATH = '/api/demo-calendar.ics';
+
+/** Heuristic for "this link is probably an ICS feed", used to pre-enable sync. */
+export function looksLikeFeed(input: string) {
+  const url = parseCalendarUrl(input);
+  if (!url) return false;
+  const path = url.pathname.toLowerCase();
+  return (
+    url.protocol === 'webcal:' ||
+    path.endsWith('.ics') ||
+    path.includes('/ical/') ||
+    path.endsWith('/ical') ||
+    (url.hostname.endsWith('icloud.com') && path.includes('/published/'))
+  );
 }

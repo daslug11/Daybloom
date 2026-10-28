@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { PageId } from '../lib/types';
 
-export const PAGES: PageId[] = ['dashboard', 'tasks', 'habits', 'focus', 'goals', 'notes', 'calendars', 'review'];
+export const PAGES: PageId[] = ['dashboard', 'tasks', 'habits', 'focus', 'goals', 'notes', 'calendars', 'planner', 'review'];
 
 function current(): PageId {
   const hash = window.location.hash.replace(/^#\/?/, '') as PageId;

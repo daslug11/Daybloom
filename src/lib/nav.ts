@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarClock,
   CalendarDays,
   Flame,
   LayoutDashboard,
@@ -15,6 +16,7 @@ export const NAV: { id: PageId; label: string; short: string; icon: LucideIcon; 
   { id: 'dashboard', label: 'Dashboard', short: 'Home', icon: LayoutDashboard, emoji: '🏠' },
   { id: 'tasks', label: 'Tasks', short: 'Tasks', icon: ListChecks, emoji: '✅' },
   { id: 'habits', label: 'Habits', short: 'Habits', icon: Flame, emoji: '🔥' },
+  { id: 'planner', label: 'Planner', short: 'Plan', icon: CalendarClock, emoji: '🗓️' },
   { id: 'focus', label: 'Focus', short: 'Focus', icon: Timer, emoji: '🧠' },
   { id: 'goals', label: 'Goals', short: 'Goals', icon: Target, emoji: '🎯' },
   { id: 'notes', label: 'Notes', short: 'Notes', icon: NotebookPen, emoji: '📝' },

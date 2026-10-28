@@ -2,14 +2,18 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Pencil, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { detectCalendarType, gradient, isGoogleEmbed } from '../../lib/calendars';
+import type { FeedStatus } from '../../lib/sync';
 import type { CalendarLink } from '../../lib/types';
 import { cn } from '../../lib/utils';
+import { SyncRow } from './SyncToggle';
 import { TypeBadge } from './TypeBadge';
 
 interface Props {
   calendar: CalendarLink;
   dragging: boolean;
   dropBefore: boolean;
+  syncStatus?: FeedStatus;
+  onToggleSync: (enabled: boolean) => void;
   onCopy: () => void;
   onEdit: () => void;
   onTogglePin: () => void;
@@ -86,6 +90,10 @@ export function CalendarCard(p: Props) {
               <span className="muted truncate text-[11px]">{hostOf(c.url)}</span>
             </div>
           </div>
+        </div>
+
+        <div className="relative">
+          <SyncRow enabled={!!c.sync} status={p.syncStatus} onToggle={p.onToggleSync} />
         </div>
 
         <div className="relative mt-auto flex flex-wrap items-center gap-0.5 border-t border-slate-900/5 px-3 py-1.5 dark:border-white/5">

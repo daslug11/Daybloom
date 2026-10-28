@@ -1,12 +1,16 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarPlus, ExternalLink, Moon, Plus, Search, Settings as SettingsIcon, Timer } from 'lucide-react';
+import { CalendarPlus, ExternalLink, Moon, Plus, RefreshCw, Search, Settings as SettingsIcon, Timer } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../hooks/useApp';
-import { useCalendars, useSettings, useTasks } from '../hooks/useData';
+import { useCalendars, useSettings } from '../hooks/useData';
+import { useQuickAdd } from '../hooks/useQuickAdd';
 import { useTimer } from '../hooks/useTimer';
 import { useToast } from '../hooks/useToast';
+import { useCalendarSync } from '../hooks/useCalendarSync';
 import { NAV } from '../lib/nav';
-import { cn, uid } from '../lib/utils';
+import { parseQuickAdd } from '../lib/quickAdd';
+import { cn } from '../lib/utils';
+import { TaskChips } from './TaskChips';
 
 interface Command {
   id: string;
@@ -14,16 +18,19 @@ interface Command {
   label: string;
   icon: ReactNode;
   keywords?: string;
+  /** Show the parsed quick-add chips under this row. */
+  preview?: boolean;
   run: () => void;
 }
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { navigate, openSettings, requestAddCalendar } = useApp();
-  const [, setTasks] = useTasks();
+  const quickAddTask = useQuickAdd();
   const [calendars] = useCalendars();
   const [, setSettings] = useSettings();
   const timer = useTimer();
   const toast = useToast();
+  const calendarSync = useCalendarSync();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -44,10 +51,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       group: 'Quick add',
       label: `Add task: “${q}”`,
       icon: <Plus size={16} />,
-      run: () => {
-        setTasks((t) => [{ id: uid(), title: q, status: 'todo', createdAt: new Date().toISOString() }, ...t]);
-        toast('Task added ✅');
-      },
+      preview: true,
+      run: () => quickAddTask(q),
     };
 
     NAV.forEach((n) =>
@@ -69,6 +74,22 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       run: () => {
         navigate('calendars');
         requestAddCalendar();
+      },
+    });
+    list.push({
+      id: 'sync',
+      group: 'Calendars',
+      label: '🔄  Sync calendars now',
+      icon: <RefreshCw size={16} />,
+      keywords: 'refresh ics feed events',
+      run: () => {
+        if (!calendarSync.syncedCalendars.length) {
+          navigate('calendars');
+          toast('Turn on “Sync” for a calendar feed first 📡');
+        } else {
+          calendarSync.sync();
+          toast('Syncing calendars… 🔄');
+        }
       },
     });
     calendars.forEach((c) =>
@@ -112,7 +133,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const matches = list.filter((c) => `${c.label} ${c.keywords ?? ''}`.toLowerCase().includes(lower));
     // Quick-add goes after real matches, so "add calendar" + Enter runs the command, not a new task.
     return [...matches, quickAdd];
-  }, [query, calendars, timer, navigate, openSettings, requestAddCalendar, setTasks, setSettings, toast]);
+  }, [query, calendars, timer, navigate, openSettings, requestAddCalendar, quickAddTask, setSettings, calendarSync, toast]);
 
   useEffect(() => {
     setActive(0);
@@ -189,7 +210,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                       )}
                     >
                       <span className="opacity-70">{c.icon}</span>
-                      <span className="truncate">{c.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{c.preview ? `Add task: “${parseQuickAdd(query).title || query.trim()}”` : c.label}</span>
+                        {c.preview && (() => {
+                          const p = parseQuickAdd(query);
+                          return <TaskChips className="mt-1" due={p.due} time={p.time} tags={p.tags} priority={p.priority} duration={p.duration} />;
+                        })()}
+                      </span>
                       {i === active && <span className="muted ml-auto text-xs">↵</span>}
                     </button>
                   </div>

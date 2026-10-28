@@ -12,6 +12,7 @@ export const KEYS = {
   calendarGroups: 'daybloom:calendar-groups',
   sessions: 'daybloom:focus-sessions',
   calendarsCollapsed: 'daybloom:calendars-collapsed',
+  syncCache: 'daybloom:sync-cache',
 } as const;
 
 type Listener = () => void;

@@ -50,6 +50,7 @@ export function importCalendarBackup(data: unknown, calendars: CalendarLink[], g
       color: colorOk(c.color),
       groupId: c.groupId ? groupMap.get(c.groupId) ?? null : null,
       pinned: !!c.pinned,
+      sync: !!c.sync,
       createdAt: typeof c.createdAt === 'string' ? c.createdAt : new Date().toISOString(),
     });
   }

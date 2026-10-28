@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Star, Trash2 } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight, GripVertical, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
@@ -7,7 +7,11 @@ import { useFocusIds, useTasks } from '../hooks/useData';
 import { useToast } from '../hooks/useToast';
 import { celebrate } from '../lib/confetti';
 import type { Task, TaskStatus } from '../lib/types';
-import { cn, uid } from '../lib/utils';
+import { formatDue } from '../lib/quickAdd';
+import { formatMinutes } from '../lib/planner';
+import { cn } from '../lib/utils';
+import { QuickAddBar } from '../components/QuickAddBar';
+import { TaskChips } from '../components/TaskChips';
 
 const COLUMNS: { id: TaskStatus; title: string; accent: string }[] = [
   { id: 'todo', title: 'To Do 📝', accent: 'from-violet-500 to-indigo-500' },
@@ -24,16 +28,8 @@ export default function Tasks() {
   const [tasks, setTasks] = useTasks();
   const [focusIds, setFocusIds] = useFocusIds();
   const toast = useToast();
-  const [title, setTitle] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<{ col: TaskStatus; before: string | null } | null>(null);
-
-  const add = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    setTasks((t) => [{ id: uid(), title: title.trim(), status: 'todo', createdAt: new Date().toISOString() }, ...t]);
-    setTitle('');
-  };
 
   /** Move a task to a column, optionally placing it before another task. */
   const move = (id: string, status: TaskStatus, beforeId: string | null) => {
@@ -83,12 +79,7 @@ export default function Tasks() {
     <div>
       <PageHeader title="Tasks" subtitle="Drag cards between columns. Ship it. 🚢" />
 
-      <form onSubmit={add} className="glass mb-6 flex gap-2 p-2">
-        <input className="input border-none bg-transparent dark:bg-transparent" placeholder="What needs doing? (press Enter)" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <button className="btn-primary shrink-0" type="submit">
-          <Plus size={16} /> <span className="hidden sm:inline">Add task</span>
-        </button>
-      </form>
+      <QuickAddBar className="mb-6" placeholder="What needs doing? Try “report fri 3pm for 1h #work !high”" />
 
       <div className="grid gap-4 md:grid-cols-3">
         {COLUMNS.map((col, ci) => {
@@ -150,6 +141,14 @@ export default function Tasks() {
                         <GripVertical size={16} className="muted mt-0.5 shrink-0 opacity-50" />
                         <div className="min-w-0 flex-1">
                           <p className={cn('text-sm font-medium', t.status === 'done' && 'muted line-through')}>{t.title}</p>
+                          {t.status !== 'done' && (
+                            <TaskChips className="mt-1.5" due={t.due} time={t.dueTime} tags={t.tags} priority={t.priority} duration={t.schedule ? undefined : t.estimate} size={10} />
+                          )}
+                          {t.schedule && t.status !== 'done' && (
+                            <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-violet-600 dark:text-violet-300">
+                              <CalendarClock size={11} /> {formatDue(t.schedule.date)} · {formatMinutes(t.schedule.start)} – {formatMinutes(t.schedule.start + t.schedule.duration)}
+                            </p>
+                          )}
                           {t.completedAt && <p className="muted mt-1 text-[11px]">Done {new Date(t.completedAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</p>}
                         </div>
                         <div className="flex shrink-0 items-center opacity-100 transition md:opacity-0 md:group-hover:opacity-100">

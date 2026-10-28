@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --hour-line: rgba(15, 23, 42, 0.1);
+    --slot-line: rgba(15, 23, 42, 0.035);
+  }
+  .dark {
+    --hour-line: rgba(255, 255, 255, 0.09);
+    --slot-line: rgba(255, 255, 255, 0.03);
+  }
   html {
     color-scheme: dark;
   }
@@ -70,6 +78,16 @@
   }
   .chip-on {
     @apply chip border-violet-400/50 bg-violet-500/20 text-violet-700 dark:text-violet-200;
+  }
+  /* Locked calendar events: diagonal stripes in the calendar's color (set via --stripe). */
+  .striped {
+    background-color: color-mix(in srgb, var(--stripe, rgba(59, 130, 246, 0.4)) 55%, transparent);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--stripe, rgba(59, 130, 246, 0.4)) 0 6px,
+      transparent 6px 12px
+    );
+    backdrop-filter: blur(6px);
   }
   .label {
     @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400;

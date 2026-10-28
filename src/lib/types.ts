@@ -6,9 +6,18 @@ export type PageId =
   | 'goals'
   | 'notes'
   | 'calendars'
+  | 'planner'
   | 'review';
 
 export type TaskStatus = 'todo' | 'doing' | 'done';
+export type Priority = 'high' | 'medium' | 'low';
+
+/** A task placed on the Planner timeline. */
+export interface TaskSchedule {
+  date: string; // local date key
+  start: number; // minutes from midnight, multiple of 15
+  duration: number; // minutes, multiple of 15
+}
 
 export interface Task {
   id: string;
@@ -17,6 +26,15 @@ export interface Task {
   createdAt: string;
   completedAt?: string;
   emoji?: string;
+  priority?: Priority;
+  tags?: string[];
+  /** Local date key the task is due. */
+  due?: string;
+  /** "HH:MM" when the quick-add input mentioned a time. */
+  dueTime?: string;
+  /** Minutes, from "for 45m" when there's no time to schedule at yet. */
+  estimate?: number;
+  schedule?: TaskSchedule;
 }
 
 export interface Habit {
@@ -71,6 +89,8 @@ export interface CalendarLink {
   color: number;
   groupId: string | null;
   pinned: boolean;
+  /** Include this calendar's ICS feed in Calendar Sync. */
+  sync?: boolean;
   createdAt: string;
 }
 

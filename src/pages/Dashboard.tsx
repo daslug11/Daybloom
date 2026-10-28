@@ -5,22 +5,15 @@ import { CalendarsCard } from '../components/CalendarsCard';
 import { Card } from '../components/Card';
 import { InsightsCard } from '../components/InsightsCard';
 import { MoodCheckin } from '../components/MoodCheckin';
+import { NextUpCard } from '../components/NextUpCard';
 import { TodaysFocus } from '../components/TodaysFocus';
 import { useApp } from '../hooks/useApp';
+import { useNow } from '../hooks/useNow';
 import { useFocusSessions, useGoals, useHabits, useNotes, useSettings, useTasks } from '../hooks/useData';
 import { formatTime, useTimer } from '../hooks/useTimer';
 import { dateKey, greeting, streak } from '../lib/dates';
 import { QUOTES } from '../lib/quotes';
 import type { PageId } from '../lib/types';
-
-function useNow(intervalMs = 60_000) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), intervalMs);
-    return () => window.clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
 
 function Hero() {
   const [settings] = useSettings();
@@ -120,6 +113,7 @@ export default function Dashboard() {
       <Hero />
       <InsightsCard delay={0.05} className="md:col-span-2 lg:col-span-2 lg:row-span-2" />
       <TodaysFocus delay={0.1} className="md:col-span-2 lg:col-span-2" />
+      <NextUpCard delay={0.12} className="md:col-span-2 lg:col-span-2" />
 
       <Stat delay={0.15} to="tasks" icon={<ListChecks size={18} className="text-violet-500 dark:text-violet-300" />} accent="bg-violet-500/20" label="Open tasks" value={open} sub={`${doneToday} done today ✅`} />
       <Stat delay={0.2} to="habits" icon={<Flame size={18} className="text-orange-500 dark:text-orange-300" />} accent="bg-orange-500/20" label="Habits today" value={`${habitsToday}/${habits.length}`} sub={`Best streak: ${bestStreak} days 🔥`} />

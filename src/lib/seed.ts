@@ -52,17 +52,19 @@ function seedTasks(): Task[] {
     createdAt: iso(d + 2),
     completedAt: iso(d, h),
   }));
-  const open: [string, Task['status']][] = [
-    ['Prep slides for Friday demo 🎤', 'doing'],
-    ['Draft blog post: "Why we vibe code"', 'doing'],
-    ['Plan weekend hike 🥾', 'todo'],
-    ['Call mom 📞', 'todo'],
-    ['Clean up Notion workspace', 'todo'],
-    ['Research standing desks', 'todo'],
+  const today = dateKey();
+  const inDays = (n: number) => dateKey(daysAgo(-n));
+  const untilWeekday = (day: number) => (day - new Date().getDay() + 7) % 7 || 7;
+  const open: Omit<Task, 'id' | 'createdAt'>[] = [
+    { title: 'Prep slides for Friday demo 🎤', status: 'doing', priority: 'high', tags: ['work'], due: inDays(untilWeekday(5)), schedule: { date: today, start: 10 * 60, duration: 90 } },
+    { title: 'Draft blog post: "Why we vibe code"', status: 'doing', tags: ['writing'], estimate: 90 },
+    { title: 'Plan weekend hike 🥾', status: 'todo', tags: ['fun'], due: inDays(untilWeekday(6)) },
+    { title: 'Call mom 📞', status: 'todo', priority: 'medium', tags: ['family'], schedule: { date: today, start: 17 * 60, duration: 30 } },
+    { title: 'Clean up Notion workspace', status: 'todo', priority: 'low', estimate: 45 },
+    { title: 'Research standing desks', status: 'todo', tags: ['home'] },
+    { title: 'Review Q4 roadmap', status: 'todo', priority: 'high', tags: ['work'], due: inDays(1), estimate: 60 },
   ];
-  open.forEach(([title, status], i) =>
-    tasks.push({ id: `t-open-${i}`, title, status, createdAt: iso(i + 1) }),
-  );
+  open.forEach((t, i) => tasks.push({ id: `t-open-${i}`, createdAt: iso(i + 1), ...t }));
   return tasks;
 }
 
@@ -148,6 +150,18 @@ export function seedCalendars(): CalendarLink[] {
       createdAt: iso(18),
     },
     {
+      id: 'c-demo',
+      name: 'Daybloom demo feed',
+      // Served by our own /api — a real ICS feed, so sync works out of the box.
+      url: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'}/api/demo-calendar.ics`,
+      emoji: '🌸',
+      color: 1,
+      groupId: 'cg-work',
+      pinned: false,
+      sync: true,
+      createdAt: iso(15),
+    },
+    {
       id: 'c-calendly',
       name: 'Book a coffee chat',
       url: 'https://calendly.com/daybloom-demo/30min',
@@ -170,6 +184,7 @@ export function seedAll(keepName?: string) {
   writeStorage(KEYS.notes, seedNotes());
   writeStorage(KEYS.calendars, seedCalendars());
   writeStorage(KEYS.calendarGroups, seedCalendarGroups());
+  writeStorage(KEYS.syncCache, { events: [], statuses: {} });
   writeStorage(KEYS.sessions, seedSessions());
   writeStorage(KEYS.settings, { ...DEFAULT_SETTINGS, name: keepName ?? '' });
   writeStorage(KEYS.seeded, true);

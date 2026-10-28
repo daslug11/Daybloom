@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../lib/utils';
 
 interface ModalProps {
@@ -19,7 +20,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  return (
+  // Portal to <body>: a backdrop-blur ancestor (like the sticky top bar) would otherwise trap `position: fixed`.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -52,6 +54,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

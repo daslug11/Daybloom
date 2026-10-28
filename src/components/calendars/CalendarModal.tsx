@@ -1,14 +1,16 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { CALENDAR_EMOJIS, detectCalendarType, gradient, isGoogleEmbed, validateCalendarUrl } from '../../lib/calendars';
+import { CALENDAR_EMOJIS, detectCalendarType, gradient, isGoogleEmbed, looksLikeFeed, validateCalendarUrl } from '../../lib/calendars';
 import type { CalendarGroup, CalendarLink } from '../../lib/types';
 import { EmojiPicker } from '../EmojiPicker';
 import { Modal } from '../Modal';
 import { ColorSwatches } from './ColorSwatches';
+import { IcsHelp } from './IcsHelp';
+import { Switch } from './SyncToggle';
 import { TypeBadge } from './TypeBadge';
 
-export type CalendarDraft = Pick<CalendarLink, 'name' | 'url' | 'emoji' | 'color' | 'groupId'>;
+export type CalendarDraft = Pick<CalendarLink, 'name' | 'url' | 'emoji' | 'color' | 'groupId' | 'sync'>;
 
 interface Props {
   open: boolean;
@@ -20,16 +22,21 @@ interface Props {
 }
 
 export function CalendarModal({ open, initial, groups, defaultGroupId = null, onClose, onSave }: Props) {
-  const [draft, setDraft] = useState<CalendarDraft>({ name: '', url: '', emoji: '📅', color: 0, groupId: null });
+  const [draft, setDraft] = useState<CalendarDraft>({ name: '', url: '', emoji: '📅', color: 0, groupId: null, sync: false });
   const [touched, setTouched] = useState(false);
+  /** Until the user flips the switch, sync follows "does this URL look like a feed?". */
+  const [syncTouched, setSyncTouched] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setTouched(false);
+    setSyncTouched(!!initial);
+    setShowHelp(false);
     setDraft(
       initial
-        ? { name: initial.name, url: initial.url, emoji: initial.emoji, color: initial.color, groupId: initial.groupId }
-        : { name: '', url: '', emoji: '📅', color: Math.floor(Math.random() * 8), groupId: defaultGroupId },
+        ? { name: initial.name, url: initial.url, emoji: initial.emoji, color: initial.color, groupId: initial.groupId, sync: !!initial.sync }
+        : { name: '', url: '', emoji: '📅', color: Math.floor(Math.random() * 8), groupId: defaultGroupId, sync: false },
     );
   }, [open, initial, defaultGroupId]);
 
@@ -82,7 +89,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
             className={`input font-mono text-xs ${showError ? '!border-rose-400 !ring-rose-500/30' : ''}`}
             placeholder="https://calendar.google.com/calendar/embed?src=…"
             value={draft.url}
-            onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+            onChange={(e) => setDraft({ ...draft, url: e.target.value, sync: syncTouched ? draft.sync : looksLikeFeed(e.target.value) })}
             onBlur={() => draft.url && setTouched(true)}
             aria-invalid={showError}
             aria-describedby="cal-url-help"
@@ -108,6 +115,36 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
               </p>
             )}
           </AnimatePresence>
+        </div>
+
+        <div className="rounded-2xl border border-slate-900/10 bg-white/40 p-3 dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={!!draft.sync}
+              onChange={(v) => {
+                setSyncTouched(true);
+                setDraft({ ...draft, sync: v });
+              }}
+              label="Sync events into the Planner"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">🔄 Sync events into the Planner</p>
+              <p className="muted text-xs">Needs the calendar's ICS / iCal feed address.</p>
+            </div>
+          </div>
+          {draft.sync && draft.url && !looksLikeFeed(draft.url) && !urlError && (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              ⚠️ This doesn't look like an ICS feed{isGoogleEmbed(draft.url) ? ' (it\'s a Google embed link)' : ''}. Sync may fail — use the secret iCal address.
+            </p>
+          )}
+          <button type="button" className="mt-2 text-xs font-semibold text-violet-600 hover:underline dark:text-violet-300" onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}>
+            {showHelp ? 'Hide' : '🕵️ How do I find my secret ICS address?'}
+          </button>
+          {showHelp && (
+            <div className="mt-3 border-t border-slate-900/10 pt-3 dark:border-white/10">
+              <IcsHelp />
+            </div>
+          )}
         </div>
 
         <div>

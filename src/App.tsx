@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { WelcomeModal } from './components/WelcomeModal';
 import { AppContext, type AppActions } from './hooks/useApp';
+import { CalendarSyncProvider } from './hooks/useCalendarSync';
 import { useSettings } from './hooks/useData';
 import { useRoute } from './hooks/useRoute';
 import { TimerProvider } from './hooks/useTimer';
@@ -20,6 +21,7 @@ import Focus from './pages/Focus';
 import Goals from './pages/Goals';
 import Habits from './pages/Habits';
 import Notes from './pages/Notes';
+import Planner from './pages/Planner';
 import Tasks from './pages/Tasks';
 import WeeklyReview from './pages/WeeklyReview';
 
@@ -31,6 +33,7 @@ const PAGES: Record<PageId, () => JSX.Element> = {
   goals: Goals,
   notes: Notes,
   calendars: Calendars,
+  planner: Planner,
   review: WeeklyReview,
 };
 
@@ -75,31 +78,33 @@ export default function App() {
     <AppContext.Provider value={actions}>
       <ToastProvider>
         <TimerProvider>
-          <GradientBlobs />
-          <div className="flex min-h-screen">
-            <Sidebar page={page} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <TopBar />
-              <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:px-6 md:pb-12 lg:px-10">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={page}
-                    initial={{ opacity: 0, x: 12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -12 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Page />
-                  </motion.div>
-                </AnimatePresence>
-              </main>
+          <CalendarSyncProvider>
+            <GradientBlobs />
+            <div className="flex min-h-screen">
+              <Sidebar page={page} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <TopBar />
+                <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:px-6 md:pb-12 lg:px-10">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={page}
+                      initial={{ opacity: 0, x: 12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -12 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <Page />
+                    </motion.div>
+                  </AnimatePresence>
+                </main>
+              </div>
             </div>
-          </div>
-          <MobileNav page={page} />
-          <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-          <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-          <DeepWorkOverlay />
-          <WelcomeModal />
+            <MobileNav page={page} />
+            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+            <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+            <DeepWorkOverlay />
+            <WelcomeModal />
+          </CalendarSyncProvider>
         </TimerProvider>
       </ToastProvider>
     </AppContext.Provider>

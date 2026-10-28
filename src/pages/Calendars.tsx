@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, ExternalLink, FolderPlus, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ExternalLink, FolderPlus, HelpCircle, Pencil, Plus, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../components/Card';
 import { CalendarCard } from '../components/calendars/CalendarCard';
@@ -8,7 +8,10 @@ import { GroupModal } from '../components/calendars/GroupModal';
 import { TypeBadge } from '../components/calendars/TypeBadge';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
+import { SyncStatusPill } from '../components/SyncStatus';
+import { IcsHelp } from '../components/calendars/IcsHelp';
 import { useApp } from '../hooks/useApp';
+import { useCalendarSync } from '../hooks/useCalendarSync';
 import { useCalendarGroups, useCalendars } from '../hooks/useData';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useToast } from '../hooks/useToast';
@@ -39,8 +42,10 @@ export default function Calendars() {
   const [calendars, setCalendars] = useCalendars();
   const [groups, setGroups] = useCalendarGroups();
   const [collapsed, setCollapsed] = useLocalStorage<string[]>(KEYS.calendarsCollapsed, []);
-  const { addCalendarRequested } = useApp();
+  const { addCalendarRequested, navigate } = useApp();
   const toast = useToast();
+  const calendarSync = useCalendarSync();
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [query, setQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
@@ -105,6 +110,11 @@ export default function Calendars() {
       onClick: () =>
         setCalendars((all) => (all.some((c) => c.id === cal.id) ? all : [...all.slice(0, index), cal, ...all.slice(index)])),
     });
+  };
+
+  const toggleSync = (cal: CalendarLink, enabled: boolean) => {
+    setCalendars((all) => all.map((c) => (c.id === cal.id ? { ...c, sync: enabled } : c)));
+    toast(enabled ? `🔄 Syncing ${cal.emoji} ${cal.name}…` : `Sync off for ${cal.emoji} ${cal.name}`);
   };
 
   const togglePin = (cal: CalendarLink) => {
@@ -177,6 +187,8 @@ export default function Calendars() {
       calendar={c}
       dragging={dragId === c.id}
       dropBefore={dropTarget?.before === c.id && dragId !== c.id}
+      syncStatus={calendarSync.statuses[c.id]}
+      onToggleSync={(enabled) => toggleSync(c, enabled)}
       onCopy={() => {
         copyText(c.url);
         toast('Link copied 📋');
@@ -212,6 +224,55 @@ export default function Calendars() {
           </div>
         }
       />
+
+      {/* Calendar sync */}
+      <Card className="mb-6" hover={false}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 font-semibold">
+              <RefreshCw size={16} className="text-violet-400" /> Calendar sync
+            </h2>
+            <p className="muted mt-0.5 text-sm">
+              Turn on <strong>Sync</strong> for an ICS feed and its events appear as locked blocks in the{' '}
+              <button className="font-semibold text-violet-600 hover:underline dark:text-violet-300" onClick={() => navigate('planner')}>Planner</button>{' '}
+              and in “Next up”. Feeds refresh every 10 minutes.
+            </p>
+          </div>
+          <SyncStatusPill />
+        </div>
+        {calendarSync.requestError && (
+          <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {calendarSync.requestError}
+          </p>
+        )}
+        {!calendarSync.requestError && calendarSync.errorCount > 0 && (
+          <ul role="alert" className="mt-3 space-y-1 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-200">
+            {calendarSync.syncedCalendars
+              .filter((c) => calendarSync.statuses[c.id]?.state === 'error')
+              .map((c) => (
+                <li key={c.id} className="flex items-start gap-2">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <span>
+                    <strong>{c.emoji} {c.name}:</strong> {calendarSync.statuses[c.id]?.error}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        )}
+        <button className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-violet-600 hover:underline dark:text-violet-300" onClick={() => setHelpOpen((v) => !v)} aria-expanded={helpOpen}>
+          <HelpCircle size={15} /> How do I find my calendar's secret ICS address?
+          <ChevronDown size={14} className={cn('transition', helpOpen && 'rotate-180')} />
+        </button>
+        <AnimatePresence initial={false}>
+          {helpOpen && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+              <div className="mt-3 border-t border-slate-900/10 pt-3 dark:border-white/10">
+                <IcsHelp />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Card>
 
       {/* Search + filters */}
       <Card className="mb-6 space-y-3 !p-3" hover={false}>
