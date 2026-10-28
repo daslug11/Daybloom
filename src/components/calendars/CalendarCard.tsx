@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Pencil, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { detectCalendarType, gradient, isGoogleEmbed } from '../../lib/calendars';
-import type { FeedStatus } from '../../lib/sync';
+import type { FeedStatus } from '../../hooks/useCalendarSync';
 import type { CalendarLink } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { SyncRow } from './SyncToggle';

@@ -1,25 +1,36 @@
 import {
   BarChart3,
+  Brain,
   CalendarClock,
   CalendarDays,
   Flame,
   LayoutDashboard,
   ListChecks,
-  NotebookPen,
+  Smile,
   Target,
   Timer,
   type LucideIcon,
 } from 'lucide-react';
-import type { PageId } from './types';
 
-export const NAV: { id: PageId; label: string; short: string; icon: LucideIcon; emoji: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', short: 'Home', icon: LayoutDashboard, emoji: '🏠' },
-  { id: 'tasks', label: 'Tasks', short: 'Tasks', icon: ListChecks, emoji: '✅' },
-  { id: 'habits', label: 'Habits', short: 'Habits', icon: Flame, emoji: '🔥' },
-  { id: 'planner', label: 'Planner', short: 'Plan', icon: CalendarClock, emoji: '🗓️' },
-  { id: 'focus', label: 'Focus', short: 'Focus', icon: Timer, emoji: '🧠' },
-  { id: 'goals', label: 'Goals', short: 'Goals', icon: Target, emoji: '🎯' },
-  { id: 'notes', label: 'Notes', short: 'Notes', icon: NotebookPen, emoji: '📝' },
-  { id: 'calendars', label: 'Calendars', short: 'Cals', icon: CalendarDays, emoji: '📅' },
-  { id: 'review', label: 'Weekly Review', short: 'Review', icon: BarChart3, emoji: '📊' },
+export interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  /** What the page is for (used by the tour and the palette). */
+  blurb: string;
+  /** Shown in the mobile tab bar (others live under "More"). */
+  primary?: boolean;
+}
+
+export const NAV: NavItem[] = [
+  { to: '/app', label: 'Dashboard', icon: LayoutDashboard, primary: true, blurb: "Today at a glance: schedule, top tasks, habits due and your inbox." },
+  { to: '/app/brain-dump', label: 'Brain Dump', icon: Brain, primary: true, blurb: 'Capture anything, then process your inbox into tasks, plans and ideas.' },
+  { to: '/app/tasks', label: 'Tasks', icon: ListChecks, primary: true, blurb: 'Everything you need to do, by when — with priorities and your top 3 for today.' },
+  { to: '/app/planner', label: 'Planner', icon: CalendarClock, primary: true, blurb: 'Drag tasks into time blocks around your calendar events.' },
+  { to: '/app/calendars', label: 'Calendars', icon: CalendarDays, blurb: 'Keep your calendar links in one place and sync ICS feeds into the Planner.' },
+  { to: '/app/habits', label: 'Habits', icon: Flame, blurb: 'Daily habits with streaks and a 12-week history.' },
+  { to: '/app/goals', label: 'Goals', icon: Target, blurb: 'Measurable goals with milestones and linked tasks.' },
+  { to: '/app/focus', label: 'Focus', icon: Timer, blurb: 'A Pomodoro timer that logs time against a task.' },
+  { to: '/app/mood', label: 'Mood', icon: Smile, blurb: 'A daily check-in and how your week has felt.' },
+  { to: '/app/review', label: 'Weekly Review', icon: BarChart3, blurb: 'What you got done this week, with plain stats and an optional AI summary.' },
 ];

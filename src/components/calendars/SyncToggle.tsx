@@ -1,22 +1,7 @@
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
-import type { FeedStatus } from '../../lib/sync';
-import { timeAgo } from '../../lib/sync';
-import { cn } from '../../lib/utils';
-
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={cn('relative h-5 w-9 shrink-0 rounded-full transition', checked ? 'bg-gradient-to-r from-violet-500 to-blue-500 shadow-[0_0_12px_rgba(139,92,246,0.6)]' : 'bg-slate-900/20 dark:bg-white/20')}
-    >
-      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', checked ? 'left-[18px]' : 'left-0.5')} />
-    </button>
-  );
-}
+import type { FeedStatus } from '../../hooks/useCalendarSync';
+import { timeAgo } from '../../lib/dates';
+import { Switch } from '../ui/Switch';
 
 /** Per-calendar sync switch + its live status. */
 export function SyncRow({ enabled, status, onToggle }: { enabled: boolean; status?: FeedStatus; onToggle: (v: boolean) => void }) {
@@ -33,7 +18,7 @@ export function SyncRow({ enabled, status, onToggle }: { enabled: boolean; statu
               </>
             ) : status.state === 'ok' ? (
               <>
-                <CheckCircle2 size={12} className="shrink-0 text-emerald-500" /> {status.count} event{status.count === 1 ? '' : 's'} · {timeAgo(status.fetchedAt)}
+                <CheckCircle2 size={12} className="shrink-0 text-emerald-500" /> {status.count} event{status.count === 1 ? '' : 's'}{status.fetchedAt ? ` · ${timeAgo(status.fetchedAt)}` : ''}
               </>
             ) : (
               <span className="flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-300">

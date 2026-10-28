@@ -68,8 +68,6 @@ export function isGoogleEmbed(input: string) {
   return !!url && url.hostname === 'calendar.google.com' && url.pathname.startsWith('/calendar/embed');
 }
 
-export const DEMO_FEED_PATH = '/api/demo-calendar.ics';
-
 /** Heuristic for "this link is probably an ICS feed", used to pre-enable sync. */
 export function looksLikeFeed(input: string) {
   const url = parseCalendarUrl(input);

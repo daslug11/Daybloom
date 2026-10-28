@@ -1,5 +1,5 @@
 import { dateKey, parseKey } from './dates';
-import type { SyncedEvent } from './sync';
+import type { SyncedEvent } from '../../server/calendar/types';
 
 export const DAY_MINUTES = 24 * 60;
 export const SNAP = 15;
@@ -27,6 +27,12 @@ export function minutesOfDay(d: Date) {
 export function formatMinutes(mins: number) {
   const d = new Date(2000, 0, 1, Math.floor(mins / 60), mins % 60);
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+export function formatMinutesShort(mins: number) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 export function hourLabel(h: number) {

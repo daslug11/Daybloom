@@ -1,7 +1,7 @@
 import * as chrono from 'chrono-node';
-import { dateKey } from './dates';
-import type { Priority, Task } from './types';
-import { uid } from './utils';
+import type { NewTask } from '../hooks/data/tasks';
+import { addDays, dateKey, daysBetween, parseKey } from './dates';
+import type { Priority } from './types';
 
 export interface ParsedTask {
   title: string;
@@ -80,23 +80,20 @@ export function minutesFromTime(time: string) {
   return h * 60 + m;
 }
 
-/** Turns a parse result into a Task. A date + time also puts it on the Planner. */
-export function taskFromParsed(p: ParsedTask, fallbackTitle: string): Task {
-  const task: Task = {
-    id: uid(),
-    title: p.title || fallbackTitle.trim(),
-    status: 'todo',
-    createdAt: new Date().toISOString(),
-  };
+/** Turns a parse result into a new task row. A date + time also puts it on the Planner. */
+export function taskFromParsed(p: ParsedTask, fallbackTitle: string, extra: Partial<NewTask> = {}): NewTask {
+  const task: NewTask = { title: (p.title || fallbackTitle.trim()).slice(0, 300), ...extra };
   if (p.tags.length) task.tags = p.tags;
   if (p.priority) task.priority = p.priority;
-  if (p.due) task.due = p.due;
-  if (p.time) task.dueTime = p.time;
+  if (p.due) task.due_date = p.due;
+  if (p.time) task.due_time = p.time;
   if (p.due && p.time) {
     const start = Math.floor(minutesFromTime(p.time) / 15) * 15;
-    task.schedule = { date: p.due, start, duration: Math.min(p.duration ?? 60, 24 * 60 - start) };
+    task.sched_date = p.due;
+    task.sched_start = start;
+    task.sched_duration = Math.max(15, Math.min(Math.round((p.duration ?? 60) / 15) * 15, 24 * 60 - start));
   } else if (p.duration) {
-    task.estimate = p.duration;
+    task.estimate_min = p.duration;
   }
   return task;
 }
@@ -107,15 +104,12 @@ export function formatTime(time: string) {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-export function formatDue(key: string, now = new Date()) {
-  const today = dateKey(now);
-  const t = new Date(now);
-  t.setDate(t.getDate() + 1);
+export function formatDue(key: string, today: string = dateKey()) {
   if (key === today) return 'Today';
-  if (key === dateKey(t)) return 'Tomorrow';
-  const [y, mo, d] = key.split('-').map(Number);
-  const date = new Date(y, mo - 1, d);
-  const diff = (date.getTime() - now.getTime()) / 86_400_000;
+  if (key === addDays(today, 1)) return 'Tomorrow';
+  if (key === addDays(today, -1)) return 'Yesterday';
+  const diff = daysBetween(today, key);
+  const date = parseKey(key);
   return date.toLocaleDateString(undefined, diff > 0 && diff < 6 ? { weekday: 'long' } : { weekday: 'short', month: 'short', day: 'numeric' });
 }
 

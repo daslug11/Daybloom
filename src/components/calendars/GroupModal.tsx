@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CalendarGroup } from '../../lib/types';
-import { Modal } from '../Modal';
+import { Modal } from '../ui/Modal';
 import { ColorSwatches } from './ColorSwatches';
 
 const SUGGESTIONS = ['💼 Work', '🏠 Personal', '🎓 School', '🏋️ Fitness', '👨‍👩‍👧 Family', '🎉 Social'];

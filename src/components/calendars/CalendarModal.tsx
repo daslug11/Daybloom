@@ -3,14 +3,15 @@ import { AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CALENDAR_EMOJIS, detectCalendarType, gradient, isGoogleEmbed, looksLikeFeed, validateCalendarUrl } from '../../lib/calendars';
 import type { CalendarGroup, CalendarLink } from '../../lib/types';
-import { EmojiPicker } from '../EmojiPicker';
-import { Modal } from '../Modal';
+import type { CalendarDraft } from '../../hooks/data/calendars';
+import { EmojiPicker } from '../ui/EmojiPicker';
+import { Modal } from '../ui/Modal';
+import { Switch } from '../ui/Switch';
 import { ColorSwatches } from './ColorSwatches';
 import { IcsHelp } from './IcsHelp';
-import { Switch } from './SyncToggle';
 import { TypeBadge } from './TypeBadge';
 
-export type CalendarDraft = Pick<CalendarLink, 'name' | 'url' | 'emoji' | 'color' | 'groupId' | 'sync'>;
+export type { CalendarDraft };
 
 interface Props {
   open: boolean;
@@ -22,7 +23,7 @@ interface Props {
 }
 
 export function CalendarModal({ open, initial, groups, defaultGroupId = null, onClose, onSave }: Props) {
-  const [draft, setDraft] = useState<CalendarDraft>({ name: '', url: '', emoji: '📅', color: 0, groupId: null, sync: false });
+  const [draft, setDraft] = useState<CalendarDraft>({ name: '', url: '', emoji: '📅', color: 0, group_id: null, sync: false });
   const [touched, setTouched] = useState(false);
   /** Until the user flips the switch, sync follows "does this URL look like a feed?". */
   const [syncTouched, setSyncTouched] = useState(false);
@@ -35,8 +36,8 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
     setShowHelp(false);
     setDraft(
       initial
-        ? { name: initial.name, url: initial.url, emoji: initial.emoji, color: initial.color, groupId: initial.groupId, sync: !!initial.sync }
-        : { name: '', url: '', emoji: '📅', color: Math.floor(Math.random() * 8), groupId: defaultGroupId, sync: false },
+        ? { name: initial.name, url: initial.url, emoji: initial.emoji, color: initial.color, group_id: initial.group_id, sync: !!initial.sync }
+        : { name: '', url: '', emoji: '📅', color: Math.floor(Math.random() * 8), group_id: defaultGroupId, sync: false },
     );
   }, [open, initial, defaultGroupId]);
 
@@ -162,8 +163,8 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
           <select
             id="cal-group"
             className="input"
-            value={draft.groupId ?? ''}
-            onChange={(e) => setDraft({ ...draft, groupId: e.target.value || null })}
+            value={draft.group_id ?? ''}
+            onChange={(e) => setDraft({ ...draft, group_id: e.target.value || null })}
           >
             <option value="">📂 Ungrouped</option>
             {groups.map((g) => (

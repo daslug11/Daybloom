@@ -1,112 +1,95 @@
-import { AnimatePresence, motion } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CommandPalette } from './components/CommandPalette';
-import { DeepWorkOverlay } from './components/DeepWorkOverlay';
-import { GradientBlobs } from './components/GradientBlobs';
-import { MobileNav } from './components/MobileNav';
-import { SettingsModal } from './components/SettingsModal';
-import { Sidebar } from './components/Sidebar';
-import { TopBar } from './components/TopBar';
-import { WelcomeModal } from './components/WelcomeModal';
-import { AppContext, type AppActions } from './hooks/useApp';
-import { CalendarSyncProvider } from './hooks/useCalendarSync';
-import { useSettings } from './hooks/useData';
-import { useRoute } from './hooks/useRoute';
-import { TimerProvider } from './hooks/useTimer';
-import { ToastProvider } from './hooks/useToast';
-import type { PageId } from './lib/types';
-import Calendars from './pages/Calendars';
-import Dashboard from './pages/Dashboard';
-import Focus from './pages/Focus';
-import Goals from './pages/Goals';
-import Habits from './pages/Habits';
-import Notes from './pages/Notes';
-import Planner from './pages/Planner';
-import Tasks from './pages/Tasks';
-import WeeklyReview from './pages/WeeklyReview';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AppShell } from './components/layout/AppShell';
+import { Spinner } from './components/ui/States';
+import { useAuth } from './hooks/useAuth';
+import { isConfigured } from './lib/env';
 
-const PAGES: Record<PageId, () => JSX.Element> = {
-  dashboard: Dashboard,
-  tasks: Tasks,
-  habits: Habits,
-  focus: Focus,
-  goals: Goals,
-  notes: Notes,
-  calendars: Calendars,
-  planner: Planner,
-  review: WeeklyReview,
-};
+const Landing = lazy(() => import('./pages/public/Landing'));
+const SignUp = lazy(() => import('./pages/auth/SignUp'));
+const LogIn = lazy(() => import('./pages/auth/LogIn'));
+const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
+const AuthCallback = lazy(() => import('./pages/auth/AuthCallback'));
+const Terms = lazy(() => import('./pages/public/Terms'));
+const Privacy = lazy(() => import('./pages/public/Privacy'));
+const NotFound = lazy(() => import('./pages/public/NotFound'));
+const Admin = lazy(() => import('./pages/Admin'));
+
+const Dashboard = lazy(() => import('./pages/app/Dashboard'));
+const Onboarding = lazy(() => import('./pages/app/Onboarding'));
+const BrainDump = lazy(() => import('./pages/app/BrainDump'));
+const Tasks = lazy(() => import('./pages/app/Tasks'));
+const Planner = lazy(() => import('./pages/app/Planner'));
+const Calendars = lazy(() => import('./pages/app/Calendars'));
+const Habits = lazy(() => import('./pages/app/Habits'));
+const Goals = lazy(() => import('./pages/app/Goals'));
+const Focus = lazy(() => import('./pages/app/Focus'));
+const Mood = lazy(() => import('./pages/app/Mood'));
+const Review = lazy(() => import('./pages/app/Review'));
+const Settings = lazy(() => import('./pages/app/Settings'));
+
+function FullPageSpinner() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner size={24} />
+    </div>
+  );
+}
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <FullPageSpinner />;
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
+  return <>{children}</>;
+}
+
+/** Signed-in visitors skip the marketing and auth pages and go straight to the app. */
+function PublicOnly({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <FullPageSpinner />;
+  if (user) return <Navigate to="/app" replace />;
+  return <>{children}</>;
+}
 
 export default function App() {
-  const { page, navigate } = useRoute();
-  const [settings] = useSettings();
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [addCalendarRequested, setAddCalendarRequested] = useState(0);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
-  }, [settings.theme]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  useEffect(() => {
-    window.scrollTo({ top: 0 });
-  }, [page]);
-
-  const openPalette = useCallback(() => setPaletteOpen(true), []);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const requestAddCalendar = useCallback(() => setAddCalendarRequested((n) => n + 1), []);
-
-  const actions = useMemo<AppActions>(
-    () => ({ navigate, openPalette, openSettings, requestAddCalendar, addCalendarRequested }),
-    [navigate, openPalette, openSettings, requestAddCalendar, addCalendarRequested],
-  );
-
-  const Page = PAGES[page];
-
+  if (!isConfigured) {
+    return (
+      <div className="mx-auto max-w-lg p-8 text-sm">
+        <h1 className="text-lg font-bold">Daybloom isn't configured yet</h1>
+        <p className="muted mt-2">Set SUPABASE_URL and SUPABASE_ANON_KEY (see README → Environment variables) and rebuild.</p>
+      </div>
+    );
+  }
   return (
-    <AppContext.Provider value={actions}>
-      <ToastProvider>
-        <TimerProvider>
-          <CalendarSyncProvider>
-            <GradientBlobs />
-            <div className="flex min-h-screen">
-              <Sidebar page={page} />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <TopBar />
-                <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:px-6 md:pb-12 lg:px-10">
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={page}
-                      initial={{ opacity: 0, x: 12 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -12 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <Page />
-                    </motion.div>
-                  </AnimatePresence>
-                </main>
-              </div>
-            </div>
-            <MobileNav page={page} />
-            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-            <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-            <DeepWorkOverlay />
-            <WelcomeModal />
-          </CalendarSyncProvider>
-        </TimerProvider>
-      </ToastProvider>
-    </AppContext.Provider>
+    <Suspense fallback={<FullPageSpinner />}>
+      <Routes>
+        <Route path="/" element={<PublicOnly><Landing /></PublicOnly>} />
+        <Route path="/signup" element={<PublicOnly><SignUp /></PublicOnly>} />
+        <Route path="/login" element={<PublicOnly><LogIn /></PublicOnly>} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
+        <Route path="/app" element={<RequireAuth><AppShell /></RequireAuth>}>
+          <Route index element={<Dashboard />} />
+          <Route path="welcome" element={<Onboarding />} />
+          <Route path="brain-dump" element={<BrainDump />} />
+          <Route path="tasks" element={<Tasks />} />
+          <Route path="planner" element={<Planner />} />
+          <Route path="calendars" element={<Calendars />} />
+          <Route path="habits" element={<Habits />} />
+          <Route path="goals" element={<Goals />} />
+          <Route path="focus" element={<Focus />} />
+          <Route path="mood" element={<Mood />} />
+          <Route path="review" element={<Review />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
   );
 }
