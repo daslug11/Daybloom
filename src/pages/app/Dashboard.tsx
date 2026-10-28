@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { MoodPicker } from '../../components/mood/MoodPicker';
 import { GettingStarted } from '../../components/onboarding/Checklist';
 import { TaskItem } from '../../components/tasks/TaskItem';
-import { AiAllowance, AiButton } from '../../components/ui/Ai';
+import { AiButton } from '../../components/ui/Ai';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { LoadingList } from '../../components/ui/States';
 import { useHabitLogs, useHabits, useToggleHabitLog } from '../../hooks/data/habits';
@@ -99,7 +99,6 @@ export default function Dashboard() {
             {top.length + due.length} task{top.length + due.length === 1 ? '' : 's'} for today · {schedule.length} thing{schedule.length === 1 ? '' : 's'} still on the schedule · {doneToday} done so far
           </p>
         </div>
-        <AiAllowance />
       </header>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -136,8 +135,8 @@ export default function Dashboard() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="muted flex-1 text-sm">A short read of your day — schedule, priorities and anything overdue — written from your own data. Generated once a day when you ask.</p>
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+              <p className="muted text-sm sm:flex-1">A short read of your day — schedule, priorities and anything overdue — written from your own data. Generated once a day when you ask.</p>
               <AiButton loading={briefingAi.isPending || briefing.isLoading} onClick={() => requestBriefing()} hint="Summarise today from your tasks, schedule and habits">
                 Get today’s briefing
               </AiButton>
@@ -175,7 +174,7 @@ export default function Dashboard() {
             </ul>
           ) : (
             <p className="muted text-sm">
-              Nothing else scheduled today. <Link to="/app/planner" className="link">Block time</Link> for a task, or <Link to="/app/calendars" className="link">sync a calendar</Link>.
+              Nothing more scheduled today. <Link to="/app/planner" className="link">Block time</Link> for a task, or <Link to="/app/calendars" className="link">sync a calendar</Link>.
             </p>
           )}
         </Card>

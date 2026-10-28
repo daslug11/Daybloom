@@ -73,7 +73,7 @@ export default function Settings() {
     setBusy(null);
     if (error) return toast(error.message);
     setEmail('');
-    toast(`Check ${email.trim()} for a confirmation link. Your email changes once you click it.`);
+    toast(`We sent confirmation links to ${user.email} and ${email.trim()}. Your email changes once you’ve clicked both.`);
   };
 
   const changePassword = async () => {
@@ -210,7 +210,7 @@ export default function Settings() {
 
         <Card>
           <CardTitle>Account</CardTitle>
-          <Row label="Email" hint={`Currently ${user.email}. We’ll send a confirmation link to the new address.`} htmlFor="s-email">
+          <Row label="Email" hint={`Currently ${user.email}. For safety, you’ll confirm the change from both the old and the new address.`} htmlFor="s-email">
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void changeEmail(); }}>
               <input id="s-email" type="email" required className="input" placeholder="new@email.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
               <button className="btn-ghost shrink-0" disabled={busy === 'email' || !email.trim()}>

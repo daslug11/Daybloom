@@ -35,12 +35,12 @@ export const env = {
   get dailyAiLimit() {
     return Math.floor(num('DAILY_AI_LIMIT_PER_USER') ?? 15);
   },
-  /** Global spend caps in USD; unset means no cap. */
+  /** Global spend caps in USD. Unset falls back to a small safe default, never to "no cap". */
   get dailySpendCap() {
-    return num('DAILY_SPEND_CAP_USD');
+    return num('DAILY_SPEND_CAP_USD') ?? 0.5;
   },
   get monthlySpendCap() {
-    return num('MONTHLY_SPEND_CAP_USD');
+    return num('MONTHLY_SPEND_CAP_USD') ?? 5;
   },
   /** Optional comma-separated allow-list of emails that may use AI. */
   get allowedEmails(): string[] | null {

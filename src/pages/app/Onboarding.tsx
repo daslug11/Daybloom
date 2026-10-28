@@ -6,7 +6,8 @@ import { EmojiPicker } from '../../components/ui/EmojiPicker';
 import { useAddHabits } from '../../hooks/data/habits';
 import { useAddNote } from '../../hooks/data/notes';
 import { useAddTasks } from '../../hooks/data/tasks';
-import { useProfile, useUpdateProfile } from '../../hooks/useProfile';
+import { useProfile, useToday, useUpdateProfile } from '../../hooks/useProfile';
+import { parseQuickAdd, taskFromParsed } from '../../lib/quickAdd';
 import { cn } from '../../lib/utils';
 
 const AREAS = ['Work', 'Study', 'Health', 'Fitness', 'Side project', 'Family', 'Money', 'Home', 'Creativity', 'Reading', 'Mindfulness', 'Social life'];
@@ -21,6 +22,7 @@ export default function Onboarding() {
   const addTasks = useAddTasks();
   const addHabits = useAddHabits();
   const navigate = useNavigate();
+  const { today } = useToday();
   const [step, setStep] = useState(0);
   const [name, setName] = useState(profile?.name ?? '');
   const [areas, setAreas] = useState<string[]>(profile?.focus_areas ?? []);
@@ -48,7 +50,11 @@ export default function Onboarding() {
       update.mutate({ name: name.trim().slice(0, 60), focus_areas: areas });
     }
     if (step === 1 && dump.trim()) addNote.mutate({ body: dump });
-    if (step === 2 && task.trim()) addTasks.mutate([{ title: task.trim().slice(0, 300) }]);
+    if (step === 2 && task.trim()) {
+      // Same parsing as the quick-add bar; an undated first task becomes one of today's top 3.
+      const t = taskFromParsed(parseQuickAdd(task), task);
+      addTasks.mutate([{ ...t, top_date: t.due_date ? null : today }]);
+    }
     if (step === 3) return finish();
     setStep(step + 1);
   };
@@ -129,7 +135,7 @@ export default function Onboarding() {
           {step === 2 && (
             <>
               <h1 className="text-xl font-bold">One thing to get done</h1>
-              <p className="muted mt-1 text-sm">Add a task you want to finish soon. You can type dates naturally — “submit report friday 3pm”.</p>
+              <p className="muted mt-1 text-sm">Add a task you want to finish soon. You can type dates naturally — “submit report friday 3pm”. Without a date, it becomes one of today’s top 3.</p>
               <input autoFocus className="input mt-4" maxLength={300} value={task} onChange={(e) => setTask(e.target.value)} placeholder="e.g. Book a dentist appointment tomorrow" aria-label="Your first task" />
             </>
           )}

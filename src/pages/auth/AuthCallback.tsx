@@ -17,19 +17,28 @@ export default function AuthCallback() {
   const error = search.get('error_description') ?? hash.get('error_description');
   const next = search.get('next')?.startsWith('/') ? search.get('next')! : '/app';
   const emailChange = search.get('type') === 'email_change' || hash.get('type') === 'email_change';
+  // Secure email change: the first of the two links (old + new address) only returns a message.
+  const halfway = emailChange && !!(search.get('message') ?? hash.get('message'));
 
   useEffect(() => {
-    if (session && !error) {
+    if (session && !error && !halfway) {
       const id = window.setTimeout(() => navigate(emailChange ? '/app/settings?email=updated' : next, { replace: true }), emailChange ? 1200 : 0);
       return () => window.clearTimeout(id);
     }
-  }, [session, error, next, emailChange, navigate]);
+  }, [session, error, next, emailChange, halfway, navigate]);
 
   useEffect(() => {
     const id = window.setTimeout(() => setTimedOut(true), 6000);
     return () => window.clearTimeout(id);
   }, []);
 
+  if (halfway) {
+    return (
+      <AuthLayout title="One more link to click" footer={<Link to="/app" className="link">Back to Daybloom</Link>}>
+        <p className="text-sm">That confirmed one address. To finish changing your email, open the link we sent to the other address too.</p>
+      </AuthLayout>
+    );
+  }
   if (error || (timedOut && !session)) {
     return (
       <AuthLayout title="That link didn’t work" footer={<Link to="/login" className="link">Go to log in</Link>}>

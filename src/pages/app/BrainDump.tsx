@@ -165,7 +165,7 @@ export default function BrainDump() {
       <PageHeader
         title="Brain Dump"
         description="Empty your head here. Everything lands in the Inbox; process it into tasks, time blocks, goals and ideas — or let ✨ AI suggest how to sort it."
-        actions={<AiAllowance />}
+        actions={<AiAllowance className="sm:hidden" />}
       />
 
       <form onSubmit={capture} className="glass mb-5 p-3" data-tour="brain-dump-capture">

@@ -9,7 +9,7 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { title: 'A quick tour 👋', body: 'Six stops, about a minute. You can skip any time and replay it later from Settings.' },
+  { title: 'A quick tour 👋', body: 'Seven stops, about a minute. You can skip any time and replay it later from Settings.' },
   { target: 'capture', title: 'Capture anything', body: 'Press N anywhere (or the + button) to jot a thought or add a task. Notes land in your Brain Dump inbox; you can also dictate.' },
   { target: 'nav-brain-dump', title: 'Brain Dump', body: 'Your inbox for everything you capture. “Process inbox” goes through notes one by one: make a task, schedule it, add it to a goal, keep it as an idea, or archive it.' },
   { target: 'nav-tasks', title: 'Tasks', body: 'Everything to do, grouped by when it\'s due. Star up to three as today\'s top 3 — they show on your dashboard.' },

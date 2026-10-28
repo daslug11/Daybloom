@@ -1,0 +1,518 @@
+// End-to-end browser run against the local stack:
+//   npm run supabase:up && node tests/mock/anthropic.mjs 4010 &
+//   ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:4010 npm run dev &
+//   npm run test:e2e
+// Screenshots land in test-results/e2e/.
+import { mkdirSync, readFileSync } from 'node:fs';
+import { createClient } from '@supabase/supabase-js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+
+const BASE = process.env.E2E_BASE ?? 'http://localhost:5173';
+const MAIL = 'http://localhost:54324';
+const OUT = 'test-results/e2e';
+mkdirSync(OUT, { recursive: true });
+
+const only = process.argv.slice(2);
+const results = [];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function latestEmail(to, subject) {
+  for (let i = 0; i < 60; i++) {
+    const list = await (await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${to}`)}`)).json();
+    const hit = list.messages?.find((m) => !subject || m.Subject.includes(subject));
+    if (hit) return (await fetch(`${MAIL}/api/v1/message/${hit.ID}`)).json();
+    await sleep(250);
+  }
+  throw new Error(`no email "${subject}" to ${to}`);
+}
+const linkFrom = (html) => {
+  const m = html.match(/href="([^"]*\/verify[^"]*)"/);
+  if (!m) throw new Error('no verify link in email');
+  return m[1].replace(/&amp;/g, '&');
+};
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+/** Opens a fresh browser context and records console errors for the whole flow. */
+async function withPage(browser, opts, fn) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, ...opts });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !/Failed to load resource: the server responded with a status of (400|401|403|404|409|429)/.test(m.text())) errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  try {
+    await fn(page, context);
+  } finally {
+    await context.close();
+  }
+  return errors;
+}
+
+async function flow(name, browser, opts, fn) {
+  if (only.length && !only.includes(name)) return;
+  const started = Date.now();
+  try {
+    const errors = await withPage(browser, opts, async (p, ctx) => {
+      try {
+        await fn(p, ctx);
+      } catch (e) {
+        await p.screenshot({ path: `${OUT}/${name}-failure.png`, fullPage: true }).catch(() => {});
+        throw e;
+      }
+    });
+    if (errors.length) throw new Error(`console errors:\n  ${errors.join('\n  ')}`);
+    results.push({ name, ok: true, ms: Date.now() - started });
+    console.log(`✓ ${name} (${Date.now() - started}ms)`);
+  } catch (e) {
+    results.push({ name, ok: false, error: e.message });
+    console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+}
+
+const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+
+/** Signs up through the UI and confirms the email via Mailpit. Returns the credentials. */
+async function signUp(page, name) {
+  const email = `${name.toLowerCase()}-${Date.now()}@e2e.local`;
+  const password = 'bloom-e2e-pass-1';
+  await page.goto(`${BASE}/signup`);
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Sign up free' }).click();
+  await page.getByText('Check your email').waitFor();
+  const mail = await latestEmail(email, 'Confirm');
+  await page.goto(linkFrom(mail.HTML));
+  await page.waitForURL(/\/app\/welcome/, { timeout: 15000 });
+  return { email, password, mail };
+}
+
+/** Runs onboarding with a name, one brain dump, one task and one habit. */
+async function onboard(page, name) {
+  await page.getByLabel('What should we call you?').fill(name);
+  await page.getByRole('button', { name: 'Health' }).click();
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first brain dump').fill('call the dentist\nidea: a birthday picnic for Sam #family');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first task').fill('Book the dentist !high');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first habit').fill('Drink water');
+  await page.getByRole('button', { name: /Finish/ }).click();
+  await page.waitForURL(/\/app(\?tour=1)?$/);
+}
+
+const localEnv = Object.fromEntries(
+  readFileSync('.env.local', 'utf8')
+    .split('\n')
+    .filter((l) => l && !l.startsWith('#'))
+    .map((l) => l.split(/=(.*)/s).slice(0, 2)),
+);
+const admin = createClient(localEnv.SUPABASE_URL, localEnv.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+/** A confirmed, already-onboarded user created through the admin API (for flows that don't test signup). */
+async function makeUser(name, extra = {}) {
+  const email = `${name.toLowerCase()}-${Date.now()}@e2e.local`;
+  const password = 'bloom-e2e-pass-1';
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name } });
+  if (error) throw error;
+  const now = new Date().toISOString();
+  await admin.from('profiles').update({ onboarded_at: now, tour_completed_at: now, timezone: 'UTC', ...extra }).eq('id', data.user.id);
+  return { id: data.user.id, email, password };
+}
+
+async function logIn(page, { email, password }) {
+  await page.goto(`${BASE}/login`);
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.waitForURL(/\/app/);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+}
+
+const browser = await chromium.launch();
+
+await flow('landing', browser, {}, async (page) => {
+  await page.goto(BASE);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  for (const s of ['Brain Dump', 'Tasks & Planner', 'Habits', 'Goals', 'Calendars', 'Focus timer', 'Mood & Weekly Review', 'Atlas', 'How it works', 'Questions']) {
+    assert(await page.getByText(s, { exact: true }).first().isVisible(), `missing section ${s}`);
+  }
+  await page.getByText('How do the ✨ AI features work').click();
+  assert(await page.getByText('resets at midnight UTC').isVisible(), 'FAQ did not expand');
+  const dead = await page.$$eval('a', (as) => as.filter((a) => a.getAttribute('href') === '#' || !a.getAttribute('href')).length);
+  assert(dead === 0, `${dead} dead links`);
+  await shot(page, 'landing');
+  await page.getByRole('link', { name: 'Privacy' }).first().click();
+  await page.getByText('Placeholder — review before launch').waitFor();
+});
+
+await flow('signup-onboarding-tour', browser, {}, async (page) => {
+  const { mail } = await signUp(page, 'Ada');
+  assert(mail.HTML.includes('Daybloom'), 'confirmation email is not branded');
+  await shot(page, 'onboarding');
+  await onboard(page, 'Ada');
+  // Tour starts automatically after onboarding.
+  const dialog = page.locator('[role=dialog][aria-labelledby="tour-title"]');
+  await dialog.waitFor({ timeout: 8000 });
+  await shot(page, 'tour');
+  for (let i = 0; i < 12 && (await dialog.isVisible()); i++) {
+    await dialog.getByRole('button', { name: /^(Next|Done|Finish)/ }).click();
+    await sleep(150);
+  }
+  assert(!(await dialog.isVisible()), 'tour did not close');
+  await page.getByRole('heading', { name: /Ada/ }).waitFor();
+  assert(await page.getByText('Getting started').isVisible(), 'checklist missing');
+  assert(await page.getByText('Drink water').isVisible(), 'habit from onboarding missing on dashboard');
+  assert(await page.getByText('Book the dentist').isVisible(), 'task from onboarding missing on dashboard');
+  await shot(page, 'dashboard');
+  // Reload: tour must not start again.
+  await page.goto(`${BASE}/app`);
+  await page.getByRole('heading', { name: /Ada/ }).waitFor();
+  await sleep(800);
+  assert(!(await dialog.isVisible()), 'tour replayed on reload');
+  assert(await page.getByText('Take the quick tour').evaluate((el) => getComputedStyle(el).textDecorationLine.includes('line-through')), 'tour not ticked in checklist');
+});
+
+await flow('brain-dump', browser, {}, async (page) => {
+  const user = await makeUser('Bea');
+  await logIn(page, user);
+  // Capture from anywhere with N.
+  await page.keyboard.press('n');
+  const capture = page.getByRole('dialog', { name: 'Capture' });
+  await capture.waitFor();
+  await page.locator('#capture-text').fill('Buy candles for the party #family\n- [ ] ask Jo');
+  await page.keyboard.press('Control+Enter');
+  await page.getByText('Saved to your Brain Dump inbox').waitFor();
+  await page.keyboard.press('n');
+  await page.locator('#capture-text').fill('Learn to make sourdough');
+  await page.getByRole('button', { name: 'Save to inbox' }).click();
+  await page.goto(`${BASE}/app/brain-dump`);
+  await page.getByText('Learn to make sourdough').waitFor();
+  assert(await page.getByRole('button', { name: '#family' }).first().isVisible(), 'tag filter missing');
+  await shot(page, 'brain-dump');
+  // Search.
+  await page.getByLabel('Search all notes').fill('sourdough');
+  await sleep(300);
+  assert(!(await page.getByText('Buy candles for the party').isVisible()), 'search did not filter');
+  await page.getByLabel('Clear search').click();
+  // ✨ Organize
+  await page.getByRole('button', { name: /Organize/ }).click();
+  await page.getByRole('dialog', { name: /Suggested organization/ }).waitFor({ timeout: 10000 });
+  await shot(page, 'brain-dump-organize');
+  await page.keyboard.press('Escape');
+  // Process inbox
+  await page.goto(`${BASE}/app/brain-dump?process=1`);
+  const proc = page.getByRole('dialog', { name: 'Process inbox' });
+  await proc.waitFor();
+  const first = (await proc.innerText()).includes('sourdough') ? 'sourdough' : 'candles';
+  // newest first: sourdough → idea; candles → task
+  for (let i = 0; i < 2; i++) {
+    const text = await proc.innerText();
+    if (text.includes('Learn to make sourdough')) {
+      await proc.getByRole('button', { name: 'Keep as idea' }).click();
+    } else {
+      await proc.getByRole('button', { name: 'Make task' }).click();
+      const conv = page.getByRole('dialog', { name: /task/i }).last();
+      await conv.getByRole('button', { name: 'Create' }).click();
+    }
+    await sleep(400);
+  }
+  await proc.getByText(/You processed 2 notes/).waitFor();
+  await proc.getByRole('button').first().click();
+  await page.getByRole('tab', { name: /Ideas/ }).click();
+  await page.getByText('Learn to make sourdough').waitFor();
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByText('Buy candles for the party').first().waitFor();
+  assert(first, 'noop');
+});
+
+await flow('atlas', browser, {}, async (page) => {
+  const user = await makeUser('Cy');
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
+  await panel.waitFor();
+  const before = await page.getByText(/left today/).first().innerText();
+  await panel.getByPlaceholder('Ask Atlas…').fill('add task: Water the plants');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByLabel('What Atlas did').first().waitFor({ timeout: 15000 });
+  await sleep(500);
+  const after = await page.getByText(/left today/).first().innerText();
+  assert(before !== after, `allowance did not change (${before} → ${after})`);
+  await panel.getByPlaceholder('Ask Atlas…').fill('delete Water the plants');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByText(/Confirm: /).waitFor({ timeout: 15000 });
+  await shot(page, 'atlas-confirm');
+  await panel.getByRole('button', { name: 'Confirm' }).click();
+  await sleep(800);
+  await page.getByRole('button', { name: 'Close Atlas' }).click();
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByRole('heading', { name: 'Tasks', exact: true }).waitFor();
+  await sleep(500);
+  assert(!(await page.getByText('Water the plants').isVisible()), 'task not deleted after confirm');
+  // History persists.
+  await page.keyboard.press('Control+j');
+  await panel.getByText('add task: Water the plants').waitFor();
+});
+
+await flow('voice-hud', browser, {}, async (page) => {
+  const user = await makeUser('Dee');
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  await hud.waitFor();
+  await hud.getByText(/Systems online\. Good (morning|afternoon|evening), Dee\./).waitFor({ timeout: 10000 });
+  assert(await hud.getByText('Tasks left today').isVisible(), 'readouts missing');
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  await hud.getByLabel('Type to Atlas').fill("what's on today");
+  await page.keyboard.press('Enter');
+  await hud.getByText(/Here's your day, Dee/).waitFor({ timeout: 15000 });
+  await shot(page, 'voice-hud');
+  await page.keyboard.press('Escape');
+  await hud.waitFor({ state: 'detached' });
+});
+
+await flow('ai-limit', browser, {}, async (page) => {
+  const user = await makeUser('Eve');
+  await admin.from('ai_overrides').upsert({ user_id: user.id, daily_limit: 1 });
+  await logIn(page, user);
+  await page.getByText('1 left today').first().waitFor();
+  await page.getByRole('button', { name: /Get today’s briefing/ }).click();
+  await page.getByText('Focus on').waitFor({ timeout: 15000 });
+  await page.getByText('0 left today').first().waitFor();
+  await page.goto(`${BASE}/app/brain-dump`);
+  await page.locator('textarea').first().fill('test note');
+  await page.keyboard.press('Control+Enter');
+  await sleep(500);
+  const organize = page.getByRole('button', { name: /Organize/ });
+  assert(await organize.isDisabled(), 'AI button still enabled with 0 left');
+  assert((await organize.getAttribute('title'))?.includes('used today'), 'no explanation on disabled AI button');
+  // The server enforces it too, whatever the UI does.
+  const status = await page.evaluate(async () => {
+    const key = Object.keys(localStorage).find((k) => k.includes('auth-token'));
+    const token = JSON.parse(localStorage.getItem(key)).access_token;
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ feature: 'organize_inbox' }) });
+    return { code: r.status, body: await r.json() };
+  });
+  assert(status.code === 429 && /allowance/.test(status.body.error), `server allowed a request over the limit: ${JSON.stringify(status)}`);
+  await shot(page, 'ai-limit');
+});
+
+await flow('password-reset', browser, {}, async (page) => {
+  const user = await makeUser('Fay');
+  await page.goto(`${BASE}/forgot-password`);
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByRole('button').filter({ hasText: /reset|send/i }).click();
+  await page.getByText(/Check your email/i).waitFor();
+  const mail = await latestEmail(user.email, 'Reset');
+  await page.goto(linkFrom(mail.HTML));
+  await page.waitForURL(/reset-password/);
+  await page.locator('#pw').fill('a-brand-new-pass-2');
+  await page.locator('#pw2').fill('a-brand-new-pass-2');
+  await page.getByRole('button').filter({ hasText: /password/i }).click();
+  await page.waitForURL(/\/app/);
+  // Old password no longer works, new one does.
+  const anon = createClient(localEnv.SUPABASE_URL, localEnv.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  assert((await anon.auth.signInWithPassword({ email: user.email, password: user.password })).error, 'old password still works');
+  assert(!(await anon.auth.signInWithPassword({ email: user.email, password: 'a-brand-new-pass-2' })).error, 'new password fails');
+});
+
+await flow('settings-export-delete', browser, { acceptDownloads: true }, async (page) => {
+  const user = await makeUser('Gus');
+  await logIn(page, user);
+  await page.keyboard.press('n');
+  await page.locator('#capture-text').fill('note to export');
+  await page.keyboard.press('Control+Enter');
+  await page.goto(`${BASE}/app/settings`);
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
+  await shot(page, 'settings');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download JSON' }).click()]);
+  const path = await download.path();
+  const data = JSON.parse(readFileSync(path, 'utf8'));
+  assert(data.notes?.some((n) => n.body === 'note to export'), 'export missing note');
+  assert(data.profiles?.length === 1, 'export should contain only my profile');
+  await page.getByRole('button', { name: 'Delete account…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Delete your account?' });
+  assert(await dlg.getByRole('button', { name: 'Delete everything' }).isDisabled(), 'delete enabled before typing DELETE');
+  await dlg.getByLabel('Type DELETE to confirm').fill('DELETE');
+  await dlg.getByRole('button', { name: 'Delete everything' }).click();
+  await page.waitForURL(`${BASE}/`);
+  const { data: u } = await admin.auth.admin.getUserById(user.id);
+  assert(!u?.user, 'auth user still exists');
+  const { count } = await admin.from('notes').select('id', { count: 'exact', head: true }).eq('user_id', user.id);
+  assert(count === 0, 'notes not deleted');
+});
+
+await flow('mobile', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, async (page) => {
+  const user = await makeUser('Hal');
+  await logIn(page, user);
+  const nav = page.getByRole('navigation', { name: /tab|mobile|main/i }).last();
+  await nav.waitFor();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert(overflow <= 0, `horizontal overflow ${overflow}px`);
+  await shot(page, 'mobile-dashboard');
+  for (const path of ['brain-dump', 'tasks', 'planner', 'habits', 'goals', 'calendars', 'focus', 'mood', 'review', 'settings']) {
+    await page.goto(`${BASE}/app/${path}`);
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    const o = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert(o <= 0, `${path}: horizontal overflow ${o}px`);
+  }
+  await shot(page, 'mobile-settings');
+  await page.goto(BASE + '/app/planner');
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  await sleep(500);
+  await shot(page, 'mobile-planner');
+  await page.goto(BASE + '/app');
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  await sleep(500);
+  await shot(page, 'mobile-dashboard');
+  await page.getByRole('button', { name: 'More' }).click();
+  await sleep(300);
+  await shot(page, 'mobile-more');
+});
+
+await flow('pages-smoke', browser, {}, async (page) => {
+  const user = await makeUser('Ivy');
+  await logIn(page, user);
+  for (const path of ['brain-dump', 'tasks', 'planner', 'calendars', 'habits', 'goals', 'focus', 'mood', 'review', 'settings']) {
+    await page.goto(`${BASE}/app/${path}`);
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    await sleep(300);
+    await shot(page, `page-${path}`);
+  }
+  await page.goto(`${BASE}/admin`);
+  await page.getByText('Admins only').waitFor();
+});
+
+await flow('magic-link-and-email-change', browser, {}, async (page) => {
+  const user = await makeUser('Jo');
+  await page.goto(`${BASE}/login`);
+  await page.getByRole('tab', { name: 'Email me a link' }).click();
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByRole('button', { name: 'Send me a sign-in link' }).click();
+  await page.getByText('Check your email').waitFor();
+  const mail = await latestEmail(user.email, 'sign-in');
+  assert(mail.HTML.includes('Daybloom'), 'magic link email not branded');
+  await page.goto(linkFrom(mail.HTML));
+  await page.waitForURL(/\/app/);
+  await page.getByRole('heading', { name: /Jo/ }).waitFor();
+  // Change email → confirmation link → new address works.
+  await page.goto(`${BASE}/app/settings`);
+  const newEmail = `jo-new-${Date.now()}@e2e.local`;
+  await page.getByLabel('Email', { exact: true }).fill(newEmail);
+  await page.getByRole('button', { name: 'Change' }).click();
+  await page.getByText(/confirmation links/).waitFor();
+  // Secure email change: confirm from the old address, then the new one.
+  const fromOld = await latestEmail(user.email, 'new email');
+  await page.goto(linkFrom(fromOld.HTML));
+  await page.getByText('One more link to click').waitFor({ timeout: 15000 });
+  const fromNew = await latestEmail(newEmail, 'new email');
+  await page.goto(linkFrom(fromNew.HTML));
+  await page.waitForURL(/\/app\/settings/, { timeout: 15000 });
+  await sleep(1000);
+  const { data } = await admin.auth.admin.getUserById(user.id);
+  assert(data.user.email === newEmail, `email not changed (${data.user.email})`);
+});
+
+await flow('planner-ai', browser, {}, async (page) => {
+  const user = await makeUser('Kit');
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('heading', { name: 'Planner' }).waitFor();
+  await page.getByPlaceholder(/Add…/).fill('Write the newsletter for 30m');
+  await page.keyboard.press('Enter');
+  await page.getByRole('tab', { name: 'week' }).click();
+  await page.getByRole('button', { name: /Plan my week/ }).click();
+  await page.getByText(/suggested block/).waitFor({ timeout: 15000 });
+  await shot(page, 'planner-ghosts');
+  await page.getByRole('button', { name: 'Accept all' }).click();
+  await page.getByText(/Scheduled \d+ block/).waitFor();
+  await sleep(800);
+  const { data } = await admin.from('tasks').select('sched_date, sched_start').eq('user_id', user.id).eq('title', 'Write the newsletter');
+  assert(data?.[0]?.sched_date && data[0].sched_start % 15 === 0, `task not scheduled: ${JSON.stringify(data)}`);
+});
+
+await flow('goals-habits-ai', browser, {}, async (page) => {
+  const user = await makeUser('Lu');
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/goals`);
+  await page.getByRole('button', { name: 'Set your first goal' }).click();
+  await page.getByRole('textbox', { name: 'Goal' }).fill('Run 100 km');
+  await page.getByLabel('Target').fill('100');
+  await page.getByLabel('Unit').fill('km');
+  await page.getByRole('button', { name: 'Add goal' }).click();
+  await page.getByRole('button', { name: /Make a plan/ }).click();
+  await page.getByRole('dialog', { name: /A plan for/ }).waitFor({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Add to my goal' }).click();
+  await page.getByText(/Added \d+ milestones/).waitFor();
+  await page.goto(`${BASE}/app/habits`);
+  await page.getByRole('heading', { name: 'Habits', exact: true }).waitFor();
+  await page.getByRole('button', { name: /Suggest from goals/ }).first().click();
+  await page.getByRole('dialog').waitFor({ timeout: 15000 });
+  await shot(page, 'habits-suggest');
+});
+
+await flow('admin', browser, {}, async (page) => {
+  const res = await fetch(`${BASE}/api/admin`);
+  assert(res.status === 401, `admin API without login returned ${res.status}`);
+  const adminEmail = process.env.E2E_ADMIN_EMAIL;
+  if (!adminEmail) return console.log('  (skipped admin UI: set E2E_ADMIN_EMAIL to the dev server ADMIN_EMAIL)');
+  const { data: list } = await admin.auth.admin.listUsers();
+  const existing = list.users.find((u) => u.email === adminEmail);
+  if (existing) await admin.auth.admin.deleteUser(existing.id);
+  const { data, error } = await admin.auth.admin.createUser({ email: adminEmail, password: 'bloom-e2e-pass-1', email_confirm: true, user_metadata: { name: 'Boss' } });
+  if (error) throw error;
+  await admin.from('profiles').update({ onboarded_at: new Date().toISOString(), tour_completed_at: new Date().toISOString() }).eq('id', data.user.id);
+  await logIn(page, { email: adminEmail, password: 'bloom-e2e-pass-1' });
+  await page.goto(`${BASE}/app/settings`);
+  await page.getByRole('link', { name: 'Open admin' }).click();
+  await page.getByText('AI requests today').waitFor();
+  const target = await makeUser('Target');
+  await page.getByLabel('User email').fill(target.email);
+  await page.getByRole('button', { name: 'Find' }).click();
+  await page.getByPlaceholder(/Default/).fill('3');
+  await page.getByLabel('Block AI').check();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText(/Saved for/).waitFor();
+  const { data: o } = await admin.from('ai_overrides').select('*').eq('user_id', target.id).single();
+  assert(o.daily_limit === 3 && o.blocked, `override not saved: ${JSON.stringify(o)}`);
+  await shot(page, 'admin');
+});
+
+await flow('local-import', browser, {}, async (page, context) => {
+  await context.addInitScript(() => {
+    if (localStorage.getItem('daybloom:tasks')) return;
+    localStorage.setItem('daybloom:tasks', JSON.stringify([
+      { id: 't-open-1', title: 'Seeded demo task', status: 'todo' },
+      { id: 'abc123', title: 'My real old task', status: 'todo', priority: 'high', due: '2026-11-02', tags: ['work'] },
+    ]));
+    localStorage.setItem('daybloom:notes', JSON.stringify([{ id: 'xyz', text: 'An old brain dump note', createdAt: '2026-10-01T10:00:00.000Z' }]));
+  });
+  const user = await makeUser('Mo');
+  await logIn(page, user);
+  const dlg = page.getByRole('dialog', { name: 'Bring your local data along?' });
+  await dlg.waitFor();
+  await dlg.getByRole('button', { name: 'Import my data' }).click();
+  await dlg.waitFor({ state: 'detached', timeout: 10000 });
+  const { data: tasks } = await admin.from('tasks').select('title').eq('user_id', user.id);
+  const { data: notes } = await admin.from('notes').select('body').eq('user_id', user.id);
+  assert(tasks.length === 1 && tasks[0].title === 'My real old task', `tasks: ${JSON.stringify(tasks)}`);
+  assert(notes.length === 1, `notes: ${JSON.stringify(notes)}`);
+  await page.reload();
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  await sleep(800);
+  assert(!(await dlg.isVisible()), 'import prompt shown again');
+});
+
+await browser.close();
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} flows passed`);
+process.exit(failed.length ? 1 : 0);
