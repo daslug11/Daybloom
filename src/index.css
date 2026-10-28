@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --hour-line: rgba(15, 23, 42, 0.1);
+    --slot-line: rgba(15, 23, 42, 0.035);
+  }
+  .dark {
+    --hour-line: rgba(255, 255, 255, 0.09);
+    --slot-line: rgba(255, 255, 255, 0.03);
+  }
+  html {
+    color-scheme: dark;
+  }
+  html:not(.dark) {
+    color-scheme: light;
+  }
+  body {
+    @apply min-h-screen bg-slate-100 font-sans text-slate-800 antialiased dark:bg-[#07060d] dark:text-slate-100;
+  }
+  ::selection {
+    @apply bg-violet-500/40;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply rounded-2xl border border-slate-900/10 bg-white/60 shadow-sm backdrop-blur-xl
+      dark:border-white/10 dark:bg-white/5 dark:shadow-none;
+  }
+  .glass-hover {
+    @apply transition-all duration-300 hover:border-violet-400/40 hover:shadow-[0_0_40px_-8px_rgba(139,92,246,0.45)];
+  }
+  .gradient-text {
+    @apply bg-gradient-to-r from-violet-500 via-blue-500 to-pink-500 bg-clip-text text-transparent
+      dark:from-violet-400 dark:via-blue-400 dark:to-pink-400;
+    background-size: 200% auto;
+  }
+  .muted {
+    @apply text-slate-500 dark:text-slate-400;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-900/10 bg-white/70 px-3.5 py-2.5 text-sm outline-none transition
+      placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30
+      dark:border-white/10 dark:bg-white/5 dark:placeholder:text-slate-500;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+      active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500 text-white
+      shadow-[0_8px_30px_-8px_rgba(124,58,237,0.7)] hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-slate-900/10 bg-white/50 hover:bg-white/80
+      dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10;
+  }
+  .btn-danger {
+    @apply btn bg-rose-500/15 text-rose-600 hover:bg-rose-500/25 dark:text-rose-300;
+  }
+  .icon-btn {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition
+      hover:bg-slate-900/5 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition;
+  }
+  .chip-off {
+    @apply chip border-slate-900/10 bg-white/50 text-slate-600 hover:bg-white
+      dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10;
+  }
+  .chip-on {
+    @apply chip border-violet-400/50 bg-violet-500/20 text-violet-700 dark:text-violet-200;
+  }
+  /* Locked calendar events: diagonal stripes in the calendar's color (set via --stripe). */
+  .striped {
+    background-color: color-mix(in srgb, var(--stripe, rgba(59, 130, 246, 0.4)) 55%, transparent);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--stripe, rgba(59, 130, 246, 0.4)) 0 6px,
+      transparent 6px 12px
+    );
+    backdrop-filter: blur(6px);
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400;
+  }
+}
