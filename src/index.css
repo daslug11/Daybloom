@@ -18,7 +18,26 @@
     color-scheme: light;
   }
   body {
-    @apply min-h-screen bg-slate-100 font-sans text-slate-800 antialiased dark:bg-[#07060d] dark:text-slate-100;
+    @apply min-h-screen bg-slate-100 font-sans text-slate-800 antialiased dark:bg-[#08070f] dark:text-slate-100;
+    /* One static gradient wash instead of animated blobs: same identity, no repaint cost. */
+    background-image:
+      radial-gradient(60rem 40rem at -10% -20%, rgba(124, 58, 237, 0.16), transparent 60%),
+      radial-gradient(50rem 36rem at 110% 10%, rgba(59, 130, 246, 0.12), transparent 60%),
+      radial-gradient(40rem 30rem at 50% 120%, rgba(236, 72, 153, 0.08), transparent 60%);
+    background-attachment: fixed;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-violet-400 ring-offset-2 ring-offset-slate-100 dark:ring-offset-[#08070f];
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
   ::selection {
     @apply bg-violet-500/40;
@@ -35,15 +54,17 @@
       dark:border-white/10 dark:bg-white/5 dark:shadow-none;
   }
   .glass-hover {
-    @apply transition-all duration-300 hover:border-violet-400/40 hover:shadow-[0_0_40px_-8px_rgba(139,92,246,0.45)];
+    @apply transition-colors duration-200 hover:border-violet-400/40;
   }
   .gradient-text {
-    @apply bg-gradient-to-r from-violet-500 via-blue-500 to-pink-500 bg-clip-text text-transparent
-      dark:from-violet-400 dark:via-blue-400 dark:to-pink-400;
-    background-size: 200% auto;
+    @apply bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent
+      dark:from-violet-300 dark:via-blue-300 dark:to-pink-300;
   }
   .muted {
-    @apply text-slate-500 dark:text-slate-400;
+    @apply text-slate-600 dark:text-slate-400;
+  }
+  .faint {
+    @apply text-slate-500 dark:text-slate-500;
   }
   .input {
     @apply w-full rounded-xl border border-slate-900/10 bg-white/70 px-3.5 py-2.5 text-sm outline-none transition
@@ -66,8 +87,48 @@
     @apply btn bg-rose-500/15 text-rose-600 hover:bg-rose-500/25 dark:text-rose-300;
   }
   .icon-btn {
-    @apply inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition
-      hover:bg-slate-900/5 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-600 transition
+      hover:bg-slate-900/5 hover:text-slate-900 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
+  }
+  .btn-ai {
+    @apply btn border border-violet-400/40 bg-violet-500/10 text-violet-700 hover:bg-violet-500/20
+      dark:text-violet-200;
+  }
+  .link {
+    @apply font-semibold text-violet-700 underline-offset-2 hover:underline dark:text-violet-300;
+  }
+  .kbd {
+    @apply inline-flex items-center rounded-md border border-slate-900/15 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:border-white/15 dark:text-slate-400;
+  }
+  .prose-note {
+    @apply text-sm leading-relaxed;
+  }
+  .prose-note h1,
+  .prose-note h2,
+  .prose-note h3 {
+    @apply mb-1 mt-2 font-semibold;
+  }
+  .prose-note h1 {
+    @apply text-base;
+  }
+  .prose-note ul,
+  .prose-note ol {
+    @apply my-1 space-y-0.5 pl-5;
+  }
+  .prose-note ul {
+    @apply list-disc;
+  }
+  .prose-note ol {
+    @apply list-decimal;
+  }
+  .prose-note code {
+    @apply rounded bg-slate-900/10 px-1 py-0.5 font-mono text-[12px] dark:bg-white/10;
+  }
+  .prose-note a {
+    @apply link;
+  }
+  .prose-note p + p {
+    @apply mt-1.5;
   }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition;

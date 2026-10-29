@@ -1,111 +1,201 @@
 # Daybloom 🌸
 
-Vibe-coded life organizer ✨ — purple-to-blue gradients, glassmorphism, emoji everywhere.
-Tasks with natural-language quick add, a time-blocking planner, habits, focus timer, goals,
-brain dump, calendar links with ICS sync, and a weekly review. Your data lives in your browser
-(localStorage); a tiny backend exists only to fetch calendar feeds.
+A personal organiser built around a **Brain Dump**. Capture every thought in one place, then turn it into tasks, planner blocks, habits and goals. **Atlas** is a built-in assistant you can chat or talk to.
 
-## Run it
+Live at **https://daybloom.online**: React and Vite on Vercel, Supabase for accounts and data, and Claude (Haiku 5.5) for the ✨ features. The AI features have strict usage limits.
+
+- [Features](#features)
+- [How AI usage is limited](#how-ai-usage-is-limited)
+- [Deploy: Supabase setup](#1-supabase-setup)
+- [Deploy: Vercel environment variables](#2-vercel)
+- [Local development](#local-development)
+- [Tests](#tests)
+- [Project structure](#project-structure)
+
+---
+
+## Features
+
+| Area | What it does | ✨ AI (only when you tap) |
+| --- | --- | --- |
+| **Brain Dump** | Capture from anywhere: the + button, the N key, the quick-add bar or voice. Supports Markdown, checklists, #tags, pinning, archiving and full-text search. Views: Inbox, Ideas, All notes, Archive. **Process inbox** goes through notes one at a time: Make task, Schedule, Add to goal, Keep as idea, or Archive. You can convert a note into a task, time block, habit or goal, and it keeps a link back to the note. | Organize inbox · Extract actions · Summarize (one note or the week) · Find patterns · Turn into a plan |
+| **Dashboard** | Today's schedule (synced events and blocks), top tasks, habits due, inbox count, a mood check-in, and a Getting started checklist. | Daily briefing (once per day; reused for free) |
+| **Tasks** | Natural-language quick add ("dentist fri 3pm #health !high for 30m"), priorities, due dates, steps, and a top 3 for today. | Read a tricky sentence · Break it down |
+| **Planner** | Day and week timeline in 15-minute steps. Drag to block time and resize blocks. Synced calendar events appear as locked blocks. | Plan my day/week: suggested blocks you accept or discard |
+| **Calendars** | Calendar links in groups, with drag and drop between groups. Read-only ICS sync into the Planner every 10 minutes. | — |
+| **Habits** | Daily check-off, streaks and a 12-week history grid. | Suggest habits from your goals |
+| **Goals** | Numeric targets with milestones and linked tasks and habits. | Make a plan: milestones and first tasks |
+| **Focus** | Pomodoro timer linked to a task. Finished blocks log the time against it. | — |
+| **Mood** | One-tap daily check-in and a weekly chart. | Reflect |
+| **Weekly Review** | Plain stats for the last 7 days, each with a note on how it's calculated. | Summary and 3 suggestions |
+| **Atlas** | Chat panel (orb button or ⌘/Ctrl+J) that works on your real data: add, update, complete and schedule tasks, capture and process notes, log habits, update goals. It asks before deleting. History is saved per user. | Every reply counts toward the allowance |
+| **Voice mode** | Full-screen HUD with live readouts (time, next event, tasks left, AI uses left). Uses Web Speech input; replies are spoken with an en-GB voice by default. Optional "Hey Atlas" wake phrase, off by default. | Same as Atlas |
+
+Accounts support sign-up with email confirmation, password or magic-link log in, password reset, change email and password, JSON export of all data, and account deletion. On first sign-in, Daybloom offers to import data saved locally by the old offline-only version.
+
+## How AI usage is limited
+
+Every AI call runs server-side in `/api`. The browser never sees the API key.
+
+- **One model, hardcoded.** Every call uses `claude-haiku-5-5`, set in [`server/ai/config.ts`](server/ai/config.ts). It is never read from env, the user or the request. The test mock rejects any other model.
+- **Per-user daily allowance.** `DAILY_AI_LIMIT_PER_USER` (default 15) is shown in the app as "✨ 14 left today" and resets at midnight UTC. Admins can override it per user, or block a user.
+- **Global spend caps.** `DAILY_SPEND_CAP_USD` (default $0.50) and `MONTHLY_SPEND_CAP_USD` (default $5) pause AI for everyone with "AI is resting until tomorrow 🌙". If unset, the defaults apply. There is never "no cap".
+- **Rate limit.** At most 5 requests per minute per user.
+- **Atomic checks.** All checks run in one Postgres function (`ai_begin`) under a per-user lock, so parallel requests can't overshoot. Failed calls are refunded.
+- **Optional allow-list.** With `ALLOWED_EMAILS` set, only those users get AI.
+- **Cost rules.**
+  - Prompts are short and include only the data a feature needs.
+  - Repeated requests are cached (`ai_cache`): the daily briefing, weekly summary and reflections are free if nothing changed.
+  - `max_tokens` is capped at 1200 for structured features, 1000 for Atlas and 500 for voice.
+  - Atlas sends only the last 8 messages and at most 6 tool rounds per reply.
+- **Logging.** Every request is logged in `usage_log` with tokens and estimated cost. `/admin` (only for `ADMIN_EMAIL`) shows users, requests and spend for today and this month, plus top users, and lets you change a user's limit or block them.
+
+---
+
+## Deploy
+
+### 1. Supabase setup
+
+1. **Create a project** at [supabase.com](https://supabase.com) (the free tier is fine). Choose a strong database password and a region near your users.
+
+2. **Run the migrations.** In **SQL Editor → New query**, paste and run each file in order:
+   1. [`supabase/migrations/20261028000001_schema.sql`](supabase/migrations/20261028000001_schema.sql) creates the tables, Row Level Security policies and the profile trigger.
+   2. [`supabase/migrations/20261028000002_ai_limits.sql`](supabase/migrations/20261028000002_ai_limits.sql) creates the usage log, limits, cache and admin functions.
+
+   If you use the Supabase CLI, `supabase link` and then `supabase db push` does the same thing.
+
+   Every table has RLS enabled, and users can only reach their own rows. The AI-limit and admin functions can only be executed by the service role, which only the server has.
+
+3. **Auth → URL Configuration:**
+   - **Site URL:** `https://daybloom.online`
+   - **Redirect URLs:** add all of these:
+     ```
+     https://daybloom.online/auth/callback
+     https://daybloom.online/auth/callback?type=email_change
+     https://daybloom.online/reset-password
+     https://daybloom.online/**
+     ```
+     For Vercel preview deployments, also add `https://*-<your-vercel-team>.vercel.app/**`. For local development, add `http://localhost:5173/**`.
+
+4. **Auth → Providers → Email:**
+   - Enable the Email provider.
+   - Keep **Confirm email** on.
+   - Keep **Secure email change** on. Users then confirm a new address from both the old and the new inbox, and the app explains this.
+   - Set the minimum password length to 8.
+
+5. **Auth → Email Templates.** For each template, set the subject and paste the HTML from [`supabase/templates/`](supabase/templates):
+
+   | Template | Subject | File |
+   | --- | --- | --- |
+   | Confirm signup | `Confirm your Daybloom account` | `confirm-signup.html` |
+   | Magic Link | `Your Daybloom sign-in link` | `magic-link.html` |
+   | Reset Password | `Reset your Daybloom password` | `reset-password.html` |
+   | Change Email Address | `Confirm your new email for Daybloom` | `change-email.html` |
+
+6. **Auth → SMTP Settings (recommended).** Supabase's built-in mailer sends only a few emails per hour, which is fine for testing but not for launch. Add your own SMTP provider (Resend, Postmark, SES and so on) with a sender like `Daybloom <hello@daybloom.online>`.
+
+7. **Get the keys** from **Project Settings → API**: the Project URL, the `anon` public key, and the `service_role` key. Keep the service role key secret; it goes only in Vercel.
+
+### 2. Vercel
+
+Import the repo into Vercel. The framework (Vite) is detected from `vercel.json`. In **Settings → Environment Variables**, add the following for **Production** (and Preview if you use it):
+
+| Variable | Required | Example | What it's for |
+| --- | --- | --- | --- |
+| `SUPABASE_URL` | ✅ | `https://abcd.supabase.co` | Project URL. Also built into the front end (it's public). |
+| `SUPABASE_ANON_KEY` | ✅ | `eyJ…` | Public anon key, used by the front end and to verify users. Built into the front end. |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | `eyJ…` | **Secret.** Server only: AI limits, admin, account deletion. |
+| `SITE_URL` | ✅ | `https://daybloom.online` | Used for auth email redirects and links. |
+| `ANTHROPIC_API_KEY` | ✅ for AI | `sk-ant-…` | **Secret.** Without it, AI features show as off and everything else works. |
+| `DAILY_AI_LIMIT_PER_USER` | optional | `15` | AI requests per user per UTC day. Default 15. |
+| `DAILY_SPEND_CAP_USD` | optional | `0.50` | Global daily AI spend cap. Default 0.50. |
+| `MONTHLY_SPEND_CAP_USD` | optional | `5` | Global monthly AI spend cap. Default 5. |
+| `ALLOWED_EMAILS` | optional | `me@x.com,friend@y.com` | If set, only these users can use AI. |
+| `ADMIN_EMAIL` | optional | `me@x.com` | The account that can open `/admin`. Its email must be confirmed. |
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SITE_URL` are baked into the front end at build time. **Redeploy after changing them.** Server-only variables apply on the next request.
+
+There are 5 serverless functions (`api/*.ts`), well under the Hobby plan limit. Atlas streams its replies and has a 60-second function timeout.
+
+**Checklist after deploying:**
+1. Sign up at https://daybloom.online/signup and confirm the email.
+2. Finish onboarding.
+3. Check that "✨ 15 left today" appears in the top bar.
+4. Open `/admin` with your `ADMIN_EMAIL` account.
+5. In the Anthropic Console, also set a monthly spend limit on the API key as a final safety net.
+
+---
+
+## Local development
+
+Requires Node 20+ and Docker.
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+npm run supabase:up    # Postgres + GoTrue + PostgREST + Mailpit in Docker; applies migrations; writes .env.local
+npm run gateway        # (separate terminal) serves the local stack at http://localhost:54321
+npm run dev            # http://localhost:5173 (the /api routes run inside Vite)
 ```
 
-`npm run dev` also serves the calendar-sync API (a Vite plugin mounts the same handlers that
-Vercel runs), so there's no second process to start. `npm run build` type-checks and builds to
-`dist/`; `npm run preview` serves the build *with* the API; `npm test` runs the unit tests.
+- **Emails** (sign-up, magic link, reset) arrive in Mailpit at http://localhost:54324.
+- **Real AI:** put `ANTHROPIC_API_KEY=…` in `.env.local`.
+- **Mock AI (free):** run `npm run mock:ai` and start the dev server with `ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:4010 npm run dev`.
+- **Other stack commands:** `npm run supabase:migrate` re-applies the migrations, `npm run supabase:reset` wipes everything, and `npm run supabase:down` stops the containers.
 
-## Features at a glance
+## Tests
 
-- **Natural-language quick add** — top bar (press `N`), ⌘K palette, Tasks page and Planner.
-  `gym tomorrow 6pm #health !high` → task “gym”, tomorrow, 6:00 PM, `#health`, high priority.
-  Also understands `fri 3pm`, `next monday`, `3-5pm`, `for 45m`, `!med`, `!low`. Parsed locally
-  with chrono-node and previewed as colored chips before you save. Date + time ⇒ auto time-blocked.
-- **Planner** — day/week timeline in 15-minute slots. Drag tasks from *Unscheduled* onto it (or tap a
-  task, then tap a slot — works on touch), drag blocks to move (across days in week view), drag the
-  bottom edge to resize, drag a block back onto the sidebar to unschedule. Synced calendar events
-  are locked, striped blocks; a glowing line tracks the current time.
-- **Calendar sync** — flip *Sync* on any saved calendar whose link is an ICS feed. Events show up in
-  the Planner and the dashboard's *Next up* card. Per-calendar errors are shown on the card, and the
-  Calendars page explains how to find each provider's secret ICS address.
-
-## Stack
-
-Vite · React 18 · TypeScript · Tailwind CSS · lucide-react · framer-motion · recharts · canvas-confetti
-
-## Calendar sync backend
-
-No API keys, no database, no paid services. One endpoint:
-
-```
-POST /api/calendar-sync
-{ "feeds": [{ "id": "c1", "url": "https://…/basic.ics" }], "from": "<ISO>", "to": "<ISO>", "tz": "Europe/Berlin" }
-→ { "results": [{ "id": "c1", "ok": true, "events": [...], "fetchedAt": "…", "cached": false }
-                | { "id": "c2", "ok": false, "error": "The calendar server refused access (403)…" }] }
+```bash
+npm run typecheck
+npm test             # unit tests, plus DB/RLS and API integration tests when the local stack is up
+npm run test:e2e     # browser flows (needs supabase:up, gateway, mock:ai and the dev server as above)
 ```
 
-- Fetches each feed server-side (browsers can't, because of CORS), parses it with **node-ical**, expands
-  recurring events into the requested window, and returns plain JSON. All-day events come back as
-  `YYYY-MM-DD` dates so they land on the right day in every time zone.
-- **Caches** each feed's body in memory for **10 minutes** (failures for 1 minute). The cache lives
-  as long as the server process / warm serverless instance.
-- **Guards**: http(s)/webcal only, 10 s timeout, 5 MB cap, max 3 redirects (each re-checked), at most
-  25 feeds per request, and it refuses hosts that resolve to localhost/private networks (SSRF
-  protection). Set `SYNC_ALLOW_PRIVATE=1` to test against a feed on your own machine.
-- Feed URLs are never stored server-side; they stay in your browser's localStorage.
-- `GET /api/demo-calendar.ics?tz=…` serves a demo ICS feed (standups, gym, lunch…) generated
-  relative to today. The seed data subscribes to it, so sync works out of the box; the sync endpoint
-  answers it in-process instead of fetching itself.
+- **Integration tests** (`tests/integration`) run the real `/api` handlers against the local Supabase and a mock Anthropic server. They cover:
+  - RLS isolation between users.
+  - Atomic limits under concurrency, refunds, the rate limit, spend caps and the allow-list.
+  - Admin endpoints and account deletion.
+  - Every ✨ feature, asserting the pinned model, `effort: low` and capped `max_tokens`.
+- **The e2e script** (`tests/e2e/flows.mjs`) drives Chromium through these flows:
+  - Sign-up with email confirmation, onboarding and the tour.
+  - Brain dump capture, search, AI organize and inbox processing.
+  - Atlas actions and delete confirmation.
+  - Voice HUD.
+  - Hitting the AI limit.
+  - Password reset, magic link and email change.
+  - Export and account deletion.
+  - Planner and goal AI, the admin page and local-data import.
+  - Mobile layout, checked for horizontal overflow.
 
-Code: `server/` (framework-agnostic, Web `Request`/`Response` handlers), `api/` (Vercel function
-entry points), `server/vitePlugin.ts` (dev/preview server), tests in `tests/`.
+  Every flow fails on any console error. Set `E2E_ADMIN_EMAIL` to the dev server's `ADMIN_EMAIL` to include the admin UI flow.
 
-### Deploying to Vercel
-
-1. Push the repo to GitHub and **Import** it at vercel.com/new (or run `npx vercel` in the repo).
-2. Vercel reads `vercel.json`: framework *Vite*, build `npm run build`, output `dist/`, and the
-   functions in `api/`. No environment variables are needed.
-3. Deploy. The app and `/api/calendar-sync` share one origin, so there's nothing to configure in the
-   frontend. Optional: `npx vercel dev` runs the real serverless runtime locally.
-
-**Other hosts:** any static host works for the app, but sync needs the `/api` routes. Either use
-`npm run preview` behind a Node host, or wire `handleSyncRequest` from `server/sync.ts` into your
-own server (it takes and returns standard `Request`/`Response`). Without the API, the app still
-works and the Calendars page clearly says the sync server isn't reachable.
-
-> Behind a corporate proxy in local dev? Start with `NODE_USE_ENV_PROXY=1 npm run dev` so Node's
-> `fetch` honors `HTTPS_PROXY`.
-
-## Structure
+## Project structure
 
 ```
+api/                 Vercel functions: ai, atlas, account, admin, calendar-sync (thin wrappers)
+server/
+  ai/config.ts       MODEL (claude-haiku-5-5), pricing, max_tokens, effort, history size
+  ai/limits.ts       ai_begin / ai_finish / ai_status wrappers and user-facing messages
+  ai/features.ts     every ✨ feature: short prompt + zod schema + normalisation
+  ai/atlas/          persona prompt, tools (short refs instead of UUIDs), streaming handler
+  data/              compact context loaders shared by features and Atlas
+  calendar/          ICS fetch (SSRF-guarded), parse, sync
+  account.ts admin.ts auth.ts env.ts http.ts routes.ts vitePlugin.ts
+supabase/
+  migrations/        schema + RLS, AI limits/usage/admin functions
+  templates/         branded auth emails
+  local/             docker-compose for the local stack
 src/
-  App.tsx              shell: sidebar / top bar / mobile tabs, providers, ⌘K shortcut, page switch
-  main.tsx             seeds demo data on first visit, mounts the app
-  index.css            Tailwind + shared classes (.glass, .btn-primary, .chip, .gradient-text…)
-  pages/               one file per sidebar entry
-    Dashboard  Tasks  Planner  Habits  Focus  Goals  Notes  Calendars  WeeklyReview
-  components/          shared UI (Card, Modal, CommandPalette, SettingsModal, ProgressRing,
-                       ContributionGrid, MoodCheckin, TodaysFocus, InsightsCard, NextUpCard,
-                       QuickAddBar, TaskChips, SyncStatus, …)
-    calendars/         CalendarCard, CalendarModal, GroupModal, IcsHelp, SyncToggle, …
-  hooks/
-    useLocalStorage.ts shared, synced localStorage state (used by every feature)
-    useData.ts         typed per-feature hooks (useTasks, useHabits, useCalendars…)
-    useTimer.tsx       app-wide Pomodoro (keeps running across pages)
-    useCalendarSync.tsx sync state: auto-sync on change + every 10 min, per-feed status
-    useQuickAdd.ts     parse + save a natural-language task
-    useToast.tsx       toasts with optional Undo action
-    useRoute.ts        tiny hash router
-    useApp.ts          app actions context (navigate, open palette/settings…)
-  lib/
-    quickAdd.ts (chrono-node parser)  planner.ts (timeline math)  sync.ts (API client)
-    types.ts storage.ts seed.ts dates.ts insights.ts calendars.ts backup.ts tags.ts quotes.ts …
-server/                calendar-sync backend (fetch + SSRF guard, node-ical parsing, cache, demo feed)
-api/                   Vercel serverless entry points
-tests/                 vitest: parser, planner helpers, sync backend
+  pages/public/      Landing, Terms, Privacy (placeholders to review), 404
+  pages/auth/        SignUp, LogIn, ForgotPassword, ResetPassword, AuthCallback
+  pages/app/         Dashboard, Onboarding, BrainDump, Tasks, Planner, Calendars, Habits,
+                     Goals, Focus, Mood, Review, Settings
+  pages/Admin.tsx
+  components/        layout/ (shell, nav, palette), atlas/ (panel, orb, voice HUD), notes/,
+                     tasks/, habits/, goals/, calendars/, onboarding/ (tour, checklist, import), ui/
+  hooks/             auth, profile, AI status, react-query data hooks per table, timer, sync
+  lib/               supabase client, api client, dates, quick-add parser, planner math, speech
+tests/               unit, integration (local stack), e2e (Playwright), mock Anthropic server
+docs/AUDIT.md        what was removed, merged and redefined in the upgrade
 ```
 
-Settings (⚙️) has **Reset data** (re-seeds the demo data, keeping your name) and
-**Export / Import JSON** for calendar links.
+> **Legal:** `/terms` and `/privacy` are **placeholders**, clearly marked in the page. Review them and replace the [bracketed] parts before launch.

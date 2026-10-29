@@ -1,53 +1,66 @@
-export type PageId =
-  | 'dashboard'
-  | 'tasks'
-  | 'habits'
-  | 'focus'
-  | 'goals'
-  | 'notes'
-  | 'calendars'
-  | 'planner'
-  | 'review';
+/** Row types — mirror supabase/migrations. */
 
-export type TaskStatus = 'todo' | 'doing' | 'done';
 export type Priority = 'high' | 'medium' | 'low';
+export type NoteState = 'inbox' | 'idea' | 'note' | 'archived';
+export type Theme = 'dark' | 'light';
 
-/** A task placed on the Planner timeline. */
-export interface TaskSchedule {
-  date: string; // local date key
-  start: number; // minutes from midnight, multiple of 15
-  duration: number; // minutes, multiple of 15
+export interface VoiceSettings {
+  /** speechSynthesis voice URI; empty = auto (prefers an en-GB male voice). */
+  voiceURI?: string;
+  rate?: number;
+  pitch?: number;
+  /** Speak Atlas replies aloud in voice mode. */
+  speak?: boolean;
+  /** "Hey Atlas" wake phrase while the HUD is open (off by default). */
+  wakeWord?: boolean;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  timezone: string;
+  theme: Theme;
+  voice: VoiceSettings;
+  focus_areas: string[];
+  onboarded_at: string | null;
+  tour_completed_at: string | null;
+  checklist_dismissed_at: string | null;
+  created_at: string;
+}
+
+export interface Note {
+  id: string;
+  body: string;
+  state: NoteState;
+  pinned: boolean;
+  tags: string[];
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Task {
   id: string;
   title: string;
-  status: TaskStatus;
-  createdAt: string;
-  completedAt?: string;
-  emoji?: string;
-  priority?: Priority;
-  tags?: string[];
-  /** Local date key the task is due. */
-  due?: string;
-  /** "HH:MM" when the quick-add input mentioned a time. */
-  dueTime?: string;
-  /** Minutes, from "for 45m" when there's no time to schedule at yet. */
-  estimate?: number;
-  schedule?: TaskSchedule;
+  details: string;
+  done: boolean;
+  completed_at: string | null;
+  priority: Priority | null;
+  tags: string[];
+  due_date: string | null;
+  due_time: string | null;
+  estimate_min: number | null;
+  top_date: string | null;
+  sched_date: string | null;
+  sched_start: number | null;
+  sched_duration: number | null;
+  goal_id: string | null;
+  milestone_id: string | null;
+  parent_id: string | null;
+  source_note_id: string | null;
+  sort: number;
+  created_at: string;
 }
-
-export interface Habit {
-  id: string;
-  name: string;
-  emoji: string;
-  /** Local date keys (YYYY-MM-DD) on which the habit was done. */
-  completions: string[];
-  createdAt: string;
-}
-
-/** Mood score 1–5 keyed by local date. */
-export type MoodLog = Record<string, number>;
 
 export interface Goal {
   id: string;
@@ -56,46 +69,82 @@ export interface Goal {
   target: number;
   current: number;
   unit: string;
+  due_date: string | null;
+  source_note_id: string | null;
+  completed_at: string | null;
+  sort: number;
+  created_at: string;
 }
 
-export interface Note {
+export interface Milestone {
   id: string;
-  text: string;
-  createdAt: string;
+  goal_id: string;
+  title: string;
+  done: boolean;
+  sort: number;
 }
 
-export interface Settings {
-  name: string;
-  theme: 'dark' | 'light';
-  sidebarCollapsed: boolean;
-  pomodoro: { work: number; rest: number };
-}
-
-export type CalendarType =
-  | 'google'
-  | 'outlook'
-  | 'apple'
-  | 'notion'
-  | 'calendly'
-  | 'ics'
-  | 'other';
-
-export interface CalendarLink {
+export interface Habit {
   id: string;
   name: string;
-  url: string;
   emoji: string;
-  /** Index into CALENDAR_COLORS. */
-  color: number;
-  groupId: string | null;
-  pinned: boolean;
-  /** Include this calendar's ICS feed in Calendar Sync. */
-  sync?: boolean;
-  createdAt: string;
+  goal_id: string | null;
+  source_note_id: string | null;
+  archived_at: string | null;
+  sort: number;
+  created_at: string;
+}
+
+export interface HabitLog {
+  habit_id: string;
+  day: string;
+}
+
+export interface Mood {
+  day: string;
+  score: number;
+  note: string;
+}
+
+export interface FocusSession {
+  id: string;
+  task_id: string | null;
+  started_at: string;
+  minutes: number;
 }
 
 export interface CalendarGroup {
   id: string;
   name: string;
   color: number;
+  sort: number;
+}
+
+export interface CalendarLink {
+  id: string;
+  name: string;
+  url: string;
+  emoji: string;
+  color: number;
+  group_id: string | null;
+  pinned: boolean;
+  sync: boolean;
+  sort: number;
+  created_at: string;
+}
+
+export type CalendarType = 'google' | 'outlook' | 'apple' | 'notion' | 'calendly' | 'ics' | 'other';
+
+export interface AtlasAction {
+  tool: string;
+  summary: string;
+  ok: boolean;
+}
+
+export interface AtlasMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  actions: AtlasAction[];
+  created_at: string;
 }

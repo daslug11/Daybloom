@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Confirm your new email</title>
+  </head>
+  <body style="margin:0;padding:0;background:#0b0a14;font-family:Inter,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0a14;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#14112a;border:1px solid #2a2547;border-radius:20px;">
+            <tr>
+              <td style="padding:32px 32px 8px 32px;">
+                <div style="font-size:22px;font-weight:800;color:#c4b5fd;">🌸 Daybloom</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 32px 0 32px;">
+                <h1 style="margin:16px 0 8px 0;font-size:20px;line-height:1.3;color:#ffffff;">Confirm your new email address</h1>
+                <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#cbd5e1;">Tap the button to confirm changing your Daybloom email from <strong style="color:#fff">{{ .Email }}</strong> to <strong style="color:#fff">{{ .NewEmail }}</strong>.</p>
+                <a href="{{ .ConfirmationURL }}"
+                   style="display:inline-block;background:#7c3aed;background-image:linear-gradient(90deg,#7c3aed,#3b82f6);color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 22px;border-radius:12px;">Confirm new email</a>
+                <p style="margin:24px 0 0 0;font-size:13px;line-height:1.6;color:#94a3b8;">
+                  Or paste this link into your browser:<br />
+                  <a href="{{ .ConfirmationURL }}" style="color:#a5b4fc;word-break:break-all;">{{ .ConfirmationURL }}</a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 32px 32px 32px;">
+                <p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">If you didn't request this change, ignore this email and consider changing your password.</p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:12px;color:#475569;">Daybloom · <a href="{{ .SiteURL }}" style="color:#64748b;">daybloom.online</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -1,0 +1,20 @@
+import { cn } from '../../lib/utils';
+
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50',
+        checked ? 'bg-gradient-to-r from-violet-500 to-blue-500' : 'bg-slate-900/25 dark:bg-white/20',
+      )}
+    >
+      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', checked ? 'left-[18px]' : 'left-0.5')} />
+    </button>
+  );
+}

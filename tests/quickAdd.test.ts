@@ -24,7 +24,13 @@ describe('parseQuickAdd', () => {
   it('keeps a date without a time unscheduled', () => {
     const p = parseQuickAdd('pay rent next monday', NOW);
     expect(p).toMatchObject({ title: 'pay rent', due: '2026-11-02', time: undefined });
-    expect(taskFromParsed(p, 'x').schedule).toBeUndefined();
+    expect(taskFromParsed(p, 'x').sched_date).toBeUndefined();
+  });
+
+  it('keeps a duration without a time as an estimate', () => {
+    const t = taskFromParsed(parseQuickAdd('tidy garage for 45m', NOW), 'x');
+    expect(t).toMatchObject({ estimate_min: 45 });
+    expect(t.sched_date).toBeUndefined();
   });
 
   it('reads time ranges as durations', () => {
@@ -37,7 +43,7 @@ describe('parseQuickAdd', () => {
 
   it('schedules tasks that have a date and time', () => {
     const task = taskFromParsed(parseQuickAdd('call mom tomorrow 6:10pm for 30m !2', NOW), 'x');
-    expect(task).toMatchObject({ title: 'call mom', priority: 'medium', schedule: { date: '2026-10-29', start: 18 * 60, duration: 30 } });
+    expect(task).toMatchObject({ title: 'call mom', priority: 'medium', sched_date: '2026-10-29', sched_start: 18 * 60, sched_duration: 30 });
   });
 });
 
