@@ -59,11 +59,19 @@ async function waitFor(url, label) {
   throw new Error(`${label} did not become ready`);
 }
 
+const dbUrl = (env) => `postgresql://postgres:${env.POSTGRES_PASSWORD}@127.0.0.1:54322/postgres`;
+const query = (env, sql) => execSync(`psql "${dbUrl(env)}" -v ON_ERROR_STOP=1 -qAt -c "${sql}"`, { encoding: 'utf8' }).trim();
+
+/** Applies each migration once; applied file names are recorded in local_meta.migrations. */
 function migrate(env) {
+  query(env, 'create schema if not exists local_meta; create table if not exists local_meta.migrations (name text primary key, applied_at timestamptz not null default now())');
+  const applied = new Set(query(env, 'select name from local_meta.migrations').split('\n').filter(Boolean));
   const dir = path.join(root, 'supabase', 'migrations');
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
+    if (applied.has(file)) continue;
     console.log(`[migrate] ${file}`);
     psql(env, path.join(dir, file));
+    query(env, `insert into local_meta.migrations (name) values ('${file}')`);
   }
 }
 

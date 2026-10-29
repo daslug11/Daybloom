@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AuthedRequest } from '../auth.js';
 import { syncUserCalendars } from '../calendar/sync.js';
 import type { SyncedEvent } from '../calendar/types.js';
+import { expandSeries, type OccurrenceRow, type SeriesRow } from './recurrence.js';
 import { RefMap } from './refs.js';
 import { addDays, dayIn, hhmm, minutesOnDay, nowIn, safeTimeZone } from './time.js';
 
@@ -12,6 +13,8 @@ export interface Ctx {
   tz: string;
   name: string;
   now: ReturnType<typeof nowIn>;
+  /** The user's message in an Atlas chat (saved with plans so they can be regenerated). */
+  request?: string;
 }
 
 export interface TaskRow {
@@ -155,12 +158,13 @@ export function eventLine(ctx: Ctx, e: SyncedEvent, day: string) {
 /** Compact text snapshot of the user's day, used by Atlas and the daily briefing. */
 export async function overviewText(ctx: Ctx, opts: { events?: boolean } = {}): Promise<string> {
   const day = ctx.now.day;
-  const [tasks, habits, inbox, mood, cal] = await Promise.all([
+  const [tasks, habits, inbox, mood, cal, recurring] = await Promise.all([
     todaysTasks(ctx),
     habitStatus(ctx),
     inboxCount(ctx),
     ctx.db.from('moods').select('score').eq('day', day).maybeSingle(),
     opts.events === false ? Promise.resolve({ events: [] as SyncedEvent[], errors: [] as string[] }) : calendarEvents(ctx, day, day),
+    recurringToday(ctx),
   ]);
   const top = tasks.filter((t) => t.top_date === day);
   const due = tasks.filter((t) => t.top_date !== day && t.due_date && t.due_date <= day);
@@ -168,7 +172,8 @@ export async function overviewText(ctx: Ctx, opts: { events?: boolean } = {}): P
     .filter((t) => t.sched_date === day && t.sched_start != null)
     .map((t) => ({ start: t.sched_start!, line: `${hhmm(t.sched_start!)}-${hhmm(t.sched_start! + t.sched_duration!)} ${ctx.refs.ref('T', t.id)} "${clip(t.title, 80)}" (task block)` }));
   const events = cal.events.map((e) => ({ start: e.allDay ? -1 : minutesOnDay(e.start, day, ctx.tz) ?? 0, line: eventLine(ctx, e, day) }));
-  const schedule = [...blocks, ...events].sort((a, b) => a.start - b.start).map((x) => x.line);
+  const repeats = recurring.map((o) => ({ start: o.start, line: `${hhmm(o.start)}-${hhmm(o.start + o.duration)} "${clip(o.title, 80)}" (recurring block${o.done ? ', done' : ''})` }));
+  const schedule = [...blocks, ...repeats, ...events].sort((a, b) => a.start - b.start).map((x) => x.line);
 
   const lines = [
     `Now: ${ctx.now.weekday} ${day} ${ctx.now.time} (${ctx.tz})`,
@@ -181,4 +186,16 @@ export async function overviewText(ctx: Ctx, opts: { events?: boolean } = {}): P
   ];
   if (cal.errors.length) lines.push(`(Calendar sync problems: ${cal.errors.length})`);
   return lines.join('\n');
+}
+
+/** Today's recurring-block sessions (paused plans excluded). Kept here to avoid a circular import with plans.ts. */
+async function recurringToday(ctx: Ctx) {
+  const day = ctx.now.day;
+  const [{ data: series }, { data: rows }, { data: paused }] = await Promise.all([
+    ctx.db.from('block_series').select('id, plan_id, title, details, days, start_min, duration_min, start_date, end_date').lte('start_date', day).gte('end_date', day).limit(100),
+    ctx.db.from('series_occurrences').select('series_id, day, done_at, skipped, start_min, duration_min, title, details').eq('day', day),
+    ctx.db.from('plans').select('id').eq('status', 'paused'),
+  ]);
+  const pausedIds = new Set((paused ?? []).map((p) => p.id as string));
+  return expandSeries((series ?? []) as SeriesRow[], (rows ?? []) as OccurrenceRow[], day, day).filter((o) => !o.plan_id || !pausedIds.has(o.plan_id));
 }

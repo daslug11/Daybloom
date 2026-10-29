@@ -13,12 +13,14 @@ import {
   type Ctx,
   type TaskRow,
 } from '../../data/context.js';
+import { availabilityText, busyBetween, MAX_PLAN_SESSIONS, MAX_PLAN_WEEKS, normalizeSessions, planConflicts, recurringBetween } from '../../data/plans.js';
+import { planEndDate, WEEKDAYS } from '../../data/recurrence.js';
 import { addDays, dayIn, hhmm, minutesOnDay, parseHhmm } from '../../data/time.js';
 import { serviceClient } from '../../supabase.js';
 
 export interface ToolEvent {
   /** Shown to the user under Atlas's reply ("Added task “Call the bank”"). */
-  action?: { tool: string; summary: string; ok: boolean };
+  action?: { tool: string; summary: string; ok: boolean; plan_id?: string };
   /** A change that needs the user's explicit confirmation. */
   confirm?: { id: string; summary: string };
 }
@@ -85,6 +87,25 @@ const schemas = {
   update_goal: z.object({ goal: ref, add: z.number().optional(), set: z.number().min(0).optional() }),
   get_calendar: z.object({ start_date: day, end_date: day }),
   delete_item: z.object({ kind: z.enum(['task', 'note', 'habit', 'goal']), item: ref }),
+  check_availability: z.object({ start_date: day.optional(), weeks: z.number().int().min(1).max(MAX_PLAN_WEEKS).default(4) }),
+  create_plan: z.object({
+    title: z.string().min(1).max(120),
+    summary: z.string().max(300).optional(),
+    weeks: z.number().int().min(1).max(MAX_PLAN_WEEKS),
+    start_date: day.optional(),
+    sessions: z
+      .array(
+        z.object({
+          day: z.string().max(12).describe(WEEKDAYS.join(' | ')),
+          start: time,
+          duration_min: z.number().int().min(15).max(240),
+          title: z.string().min(1).max(80),
+          details: z.string().max(160).optional(),
+        }),
+      )
+      .min(1)
+      .max(MAX_PLAN_SESSIONS),
+  }),
 } as const;
 
 export type ToolName = keyof typeof schemas;
@@ -104,8 +125,11 @@ const descriptions: Record<ToolName, string> = {
   log_habit: 'Log a habit as done (or undo with done=false) for a date (default today).',
   list_goals: 'List goals with refs (G1…) and progress.',
   update_goal: 'Change goal progress: add to it, or set it.',
-  get_calendar: 'Synced calendar events and task blocks between two dates (max 14 days).',
+  get_calendar: 'Synced calendar events, task blocks and recurring blocks between two dates (max 14 days).',
   delete_item: 'Ask the user to confirm deleting a task, note, habit or goal. Nothing is deleted until they press Confirm.',
+  check_availability: 'Busy times (task blocks, recurring blocks, calendar events) by weekday for a period. Call before create_plan. start_date defaults to tomorrow.',
+  create_plan:
+    'Draft a weekly plan (workouts, study, meal prep, reading, project…) as a card the user can edit and add to their Planner. Each session repeats weekly on its day for `weeks` weeks. Nothing is scheduled until the user adds it.',
 };
 
 function toJsonSchema(s: z.ZodObject): Anthropic.Tool.InputSchema {
@@ -140,6 +164,8 @@ async function resolveTask(ctx: Ctx, value: string): Promise<TaskRow | null> {
 }
 
 const UNKNOWN = (kind: string) => `Unknown ${kind} reference. List ${kind}s first to get valid refs.`;
+
+const planStart = (ctx: Ctx, d?: string) => (d && d > ctx.now.day ? d : addDays(ctx.now.day, 1));
 
 const executors: { [N in ToolName]: Exec<N> } = {
   async get_today(ctx) {
@@ -346,9 +372,10 @@ const executors: { [N in ToolName]: Exec<N> } = {
   async get_calendar(ctx, input) {
     if (input.end_date < input.start_date) return fail('end_date is before start_date.');
     const end = input.end_date > addDays(input.start_date, 13) ? addDays(input.start_date, 13) : input.end_date;
-    const [{ events, errors }, { data: blocks }] = await Promise.all([
+    const [{ events, errors }, { data: blocks }, recurring] = await Promise.all([
       calendarEvents(ctx, input.start_date, end),
       ctx.db.from('tasks').select('title, sched_date, sched_start, sched_duration').gte('sched_date', input.start_date).lte('sched_date', end).order('sched_date').order('sched_start'),
+      recurringBetween(ctx, input.start_date, end),
     ]);
     const lines: string[] = [];
     for (let d = input.start_date; d <= end; d = addDays(d, 1)) {
@@ -363,6 +390,9 @@ const executors: { [N in ToolName]: Exec<N> } = {
         ...(blocks ?? [])
           .filter((b) => b.sched_date === d)
           .map((b) => ({ s: b.sched_start as number, line: `${hhmm(b.sched_start)}-${hhmm(b.sched_start + b.sched_duration)} ${b.title} (task block)` })),
+        ...recurring
+          .filter((o) => o.day === d)
+          .map((o) => ({ s: o.start, line: `${hhmm(o.start)}-${hhmm(o.start + o.duration)} ${o.title} (recurring block${o.done ? ', done' : ''})` })),
       ].sort((a, b) => a.s - b.s);
       lines.push(`${d}: ${items.length ? items.map((i) => i.line).join('; ') : 'nothing'}`);
     }
@@ -389,6 +419,35 @@ const executors: { [N in ToolName]: Exec<N> } = {
     return {
       content: `Waiting for the user to press Confirm on: ${summary}. Nothing is deleted yet — tell them you've asked for confirmation.`,
       events: [{ confirm: { id: pending.id, summary } }],
+    };
+  },
+
+  async check_availability(ctx, input) {
+    const start = planStart(ctx, input.start_date);
+    const { busy, calendarErrors } = await busyBetween(ctx, start, planEndDate(start, input.weeks));
+    const note = calendarErrors.length ? `\n(Some calendars failed to sync, so there may be more busy times.)` : '';
+    return ok(availabilityText(busy, start, input.weeks) + note);
+  },
+
+  async create_plan(ctx, input) {
+    const sessions = normalizeSessions(input.sessions);
+    if (!sessions.length) return fail('No valid sessions (check days and HH:MM times).');
+    const start = planStart(ctx, input.start_date);
+    const title = input.title.trim();
+    const { data, error } = await ctx.db
+      .from('plans')
+      .insert({ title, summary: (input.summary ?? '').trim(), request: (ctx.request ?? '').slice(0, 1000), weeks: input.weeks, start_date: start, sessions })
+      .select('id')
+      .single();
+    if (error) return fail(`Could not save the plan: ${error.message}`);
+    const { busy } = await busyBetween(ctx, start, planEndDate(start, input.weeks));
+    const conflicts = planConflicts(sessions, start, input.weeks, busy);
+    const clashNote = conflicts.length
+      ? `${conflicts.length} session${conflicts.length === 1 ? '' : 's'} overlap existing items (e.g. ${conflicts[0].day} "${conflicts[0].title}" vs "${conflicts[0].with}"); the user can skip or shift them when adding.`
+      : 'No conflicts with their Planner or calendar.';
+    return {
+      content: `Drafted plan "${title}": ${sessions.length} session${sessions.length === 1 ? '' : 's'} a week for ${input.weeks} week${input.weeks === 1 ? '' : 's'} from ${start}. ${clashNote} The user sees it as a card listing every session with Add to Planner / Edit buttons — don't repeat the sessions; reply with one short sentence.`,
+      events: [{ action: { tool: 'create_plan', summary: `Drafted plan “${title}”`, ok: true, plan_id: data.id } }],
     };
   },
 };

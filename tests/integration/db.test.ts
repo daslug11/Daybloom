@@ -46,6 +46,36 @@ describe.skipIf(!hasStack)('database security (RLS)', () => {
     expect((await anonClient().from('notes').select('*')).error).not.toBeNull();
   });
 
+  it('isolates plans and recurring blocks, and links them only within one account', async () => {
+    const alice = await newUser('Alice');
+    const bob = await newUser('Bob');
+    const plan = (await alice.client.from('plans').insert({ title: 'Workouts', weeks: 4, sessions: [{ day: 1, start: 1080, duration: 45, title: 'Legs', details: '' }] }).select().single()).data!;
+    const series = (
+      await alice.client.from('block_series').insert({ plan_id: plan.id, title: 'Legs', days: [1, 3], start_min: 1080, duration_min: 45, start_date: '2026-11-02', end_date: '2026-11-29' }).select().single()
+    ).data!;
+    expect((await alice.client.from('series_occurrences').insert({ series_id: series.id, day: '2026-11-02', done_at: new Date().toISOString() })).error).toBeNull();
+
+    for (const t of ['plans', 'block_series', 'series_occurrences']) {
+      expect((await bob.client.from(t).select('*')).data, t).toEqual([]);
+    }
+    expect((await bob.client.from('plans').update({ status: 'dismissed' }).eq('id', plan.id).select()).data).toEqual([]);
+    expect((await bob.client.from('block_series').insert({ plan_id: plan.id, title: 'x', days: [1], start_min: 0, duration_min: 15, start_date: '2026-11-02', end_date: '2026-11-02' })).error?.code).toBe('23503');
+    expect((await bob.client.from('series_occurrences').insert({ series_id: series.id, day: '2026-11-04' })).error).not.toBeNull();
+
+    // Checks keep recurring blocks on the Planner's 15-minute grid and within a year.
+    const bad = { title: 'x', start_date: '2026-11-02', end_date: '2026-11-09' };
+    expect((await alice.client.from('block_series').insert({ ...bad, days: [8], start_min: 0, duration_min: 15 })).error).not.toBeNull();
+    expect((await alice.client.from('block_series').insert({ ...bad, days: [1], start_min: 10, duration_min: 15 })).error).not.toBeNull();
+    expect((await alice.client.from('block_series').insert({ ...bad, days: [1], start_min: 1410, duration_min: 60 })).error).not.toBeNull();
+    expect((await alice.client.from('block_series').insert({ ...bad, days: [1], start_min: 0, duration_min: 15, end_date: '2028-01-01' })).error).not.toBeNull();
+
+    // Deleting a plan keeps its blocks (unlinked); deleting a series removes its occurrences.
+    await alice.client.from('plans').delete().eq('id', plan.id);
+    expect((await alice.client.from('block_series').select('plan_id').eq('id', series.id).single()).data!.plan_id).toBeNull();
+    await alice.client.from('block_series').delete().eq('id', series.id);
+    expect((await alice.client.from('series_occurrences').select('*')).data).toEqual([]);
+  });
+
   it('creates a profile from sign-up metadata', async () => {
     const u = await newUser('Priya');
     expect((await u.client.from('profiles').select('name').single()).data!.name).toBe('Priya');
