@@ -11,3 +11,9 @@ test-results
 playwright-report
 .scratch
 .vercel
+
+# Impeccable live-mode runtime state (config.json is tracked)
+.impeccable/live/sessions
+.impeccable/live/inject-journal.json
+.impeccable/live/roots.json
+.impeccable/config.local.json
