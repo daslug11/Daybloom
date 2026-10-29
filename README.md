@@ -106,8 +106,8 @@ Import the repo into Vercel. The framework (Vite) is detected from `vercel.json`
 
 | Variable | Required | Example | What it's for |
 | --- | --- | --- | --- |
-| `SUPABASE_URL` | ✅ | `https://abcd.supabase.co` | Project URL. Also built into the front end (it's public). |
-| `SUPABASE_ANON_KEY` | ✅ | `eyJ…` | Public anon key, used by the front end and to verify users. Built into the front end. |
+| `SUPABASE_URL` | optional | `https://abcd.supabase.co` | Project URL (public). Defaults to the live project in [`shared/publicConfig.ts`](shared/publicConfig.ts). A trailing `/rest/v1/` is ignored. |
+| `SUPABASE_ANON_KEY` | optional | `eyJ…` | Public anon key, used by the front end and to verify users. Defaults to the one in `shared/publicConfig.ts`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | `eyJ…` | **Secret.** Server only: AI limits, admin, account deletion. |
 | `SITE_URL` | ✅ | `https://daybloom.online` | Used for auth email redirects and links. |
 | `ANTHROPIC_API_KEY` | ✅ for AI | `sk-ant-…` | **Secret.** Without it, AI features show as off and everything else works. |
@@ -118,6 +118,8 @@ Import the repo into Vercel. The framework (Vite) is detected from `vercel.json`
 | `ADMIN_EMAIL` | optional | `me@x.com` | The account that can open `/admin`. Its email must be confirmed. |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SITE_URL` are baked into the front end at build time. **Redeploy after changing them.** Server-only variables apply on the next request.
+
+The two public Supabase values are also committed in `shared/publicConfig.ts`, so a build works without them. Point that file at your own project if you fork Daybloom. The service role key and the Anthropic key are secrets: they only ever come from Vercel's environment variables and never reach the browser.
 
 There are 5 serverless functions (`api/*.ts`), well under the Hobby plan limit. Each one is listed by name in `vercel.json` → `functions`, because Vercel rejects patterns that overlap or match no file. If you add a file to `api/`, add it there too. Atlas streams its replies and has a 60-second timeout; the others have 30 seconds.
 

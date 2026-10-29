@@ -1,3 +1,5 @@
+import { firstSet, normalizeSupabaseUrl, PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from '../shared/publicConfig.js';
+
 /**
  * Server configuration from environment variables (Vercel → Settings → Environment Variables).
  * Every value is read lazily so tests can set process.env before the first request.
@@ -16,12 +18,14 @@ function required(name: string): string {
 }
 
 export const env = {
+  /** Public values: env vars win, else the committed public config (shared/publicConfig.ts). */
   get supabaseUrl() {
-    return required('SUPABASE_URL');
+    return normalizeSupabaseUrl(firstSet(process.env.SUPABASE_URL, process.env.VITE_SUPABASE_URL, PUBLIC_SUPABASE_URL));
   },
   get supabaseAnonKey() {
-    return required('SUPABASE_ANON_KEY');
+    return firstSet(process.env.SUPABASE_ANON_KEY, process.env.VITE_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_ANON_KEY);
   },
+  /** Secret: only ever from the environment. */
   get supabaseServiceKey() {
     return required('SUPABASE_SERVICE_ROLE_KEY');
   },
