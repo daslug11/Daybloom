@@ -15,7 +15,9 @@
     "supabase:reset": "node scripts/local-supabase.mjs reset",
     "supabase:down": "node scripts/local-supabase.mjs down",
     "gateway": "node scripts/local-gateway.mjs",
-    "mock:ai": "node tests/mock/anthropic.mjs 4010"
+    "mock:ai": "node tests/mock/anthropic.mjs 4010",
+    "visual": "node tests/visual/capture.mjs",
+    "visual:report": "node tests/visual/report.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
