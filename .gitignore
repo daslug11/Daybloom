@@ -10,3 +10,4 @@ supabase/local/.env
 test-results
 playwright-report
 .scratch
+.vercel

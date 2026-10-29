@@ -115,7 +115,7 @@ Import the repo into Vercel. The framework (Vite) is detected from `vercel.json`
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SITE_URL` are baked into the front end at build time. **Redeploy after changing them.** Server-only variables apply on the next request.
 
-There are 5 serverless functions (`api/*.ts`), well under the Hobby plan limit. Atlas streams its replies and has a 60-second function timeout.
+There are 5 serverless functions (`api/*.ts`), well under the Hobby plan limit. Each one is listed by name in `vercel.json` → `functions`, because Vercel rejects patterns that overlap or match no file. If you add a file to `api/`, add it there too. Atlas streams its replies and has a 60-second timeout; the others have 30 seconds.
 
 **Checklist after deploying:**
 1. Sign up at https://daybloom.online/signup and confirm the email.
