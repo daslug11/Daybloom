@@ -16,7 +16,7 @@ import { loadVoices, pickVoice, speak, speechInputSupported, speechOutputSupport
 import { supabase } from '../../lib/supabase';
 import type { VoiceSettings } from '../../lib/types';
 
-const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'habits', 'habit_logs', 'moods', 'focus_sessions', 'calendar_groups', 'calendars', 'atlas_messages'] as const;
+const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'habits', 'habit_logs', 'moods', 'focus_sessions', 'calendar_groups', 'calendars', 'atlas_messages', 'plans', 'block_series', 'series_occurrences'] as const;
 
 function Row({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
   return (
@@ -245,7 +245,7 @@ export default function Settings() {
 
         <Card>
           <CardTitle>Your data</CardTitle>
-          <Row label="Export everything" hint="Every note, task, habit, goal, mood, focus session, calendar and Atlas message, as one JSON file.">
+          <Row label="Export everything" hint="Every note, task, habit, goal, plan, repeating block, mood, focus session, calendar and Atlas message, as one JSON file.">
             <button className="btn-ghost" onClick={exportData} disabled={busy === 'export'}>
               <Download size={14} /> {busy === 'export' ? 'Preparing…' : 'Download JSON'}
             </button>

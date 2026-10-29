@@ -11,6 +11,7 @@ import { useInvalidateUserData } from '../../hooks/useInvalidateAll';
 import { useProfile, useToday } from '../../hooks/useProfile';
 import { ApiError, atlasStream } from '../../lib/api';
 import { greeting } from '../../lib/dates';
+import { PlanCard } from '../plans/PlanCard';
 import { createRecognizer, speak, speechInputSupported, speechOutputSupported, stopSpeaking, type Recognizer } from '../../lib/speech';
 import { cn } from '../../lib/utils';
 
@@ -41,6 +42,9 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
   const [reply, setReply] = useState('');
   const [notice, setNotice] = useState('');
   const [typed, setTyped] = useState('');
+  /** A plan Atlas drafted during this voice session, shown as a card on screen. */
+  const [planId, setPlanId] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const [showKeyboard, setShowKeyboard] = useState(!speechInputSupported());
   const recognizer = useRef<Recognizer | null>(null);
   const level = useRef(0); // 0–1 drives the waveform ring
@@ -122,6 +126,9 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
           if (ev.t === 'text') {
             full += ev.v;
             setReply(full);
+          } else if (ev.t === 'action' && ev.plan_id) {
+            setPlanId(ev.plan_id);
+            invalidate();
           } else if (ev.t === 'confirm') setNotice(`Confirm in the Atlas panel: ${ev.summary}`);
           else if (ev.t === 'error') setNotice(ev.message);
           else if (ev.t === 'done') updateStatus(ev.remaining);
@@ -206,6 +213,8 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A dialog opened on top (e.g. editing a plan) handles its own keys.
+      if ([...document.querySelectorAll('[role="dialog"]')].some((d) => d !== root.current)) return;
       if (e.key === 'Escape') close();
       if (e.code === 'Space' && !(e.target instanceof HTMLInputElement)) {
         e.preventDefault();
@@ -282,7 +291,7 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] overflow-hidden bg-[#020409] font-mono text-cyan-100" role="dialog" aria-modal="true" aria-label="Atlas voice mode">
+    <div ref={root} className="fixed inset-0 z-[90] overflow-hidden bg-[#020409] font-mono text-cyan-100" role="dialog" aria-modal="true" aria-label="Atlas voice mode">
       <style>{HUD_CSS}</style>
       <div className="hud-grid pointer-events-none absolute inset-0" aria-hidden />
       <div className="hud-scan pointer-events-none absolute inset-0" aria-hidden />
@@ -379,6 +388,18 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
+
+      {planId && (
+        <div className="absolute inset-x-3 bottom-20 max-h-[45vh] overflow-y-auto md:inset-x-auto md:bottom-auto md:right-6 md:top-28 md:max-h-[65vh] md:w-[380px]">
+          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-cyan-500/80">
+            <span>Plan</span>
+            <button onClick={() => setPlanId(null)} className="rounded px-1 text-cyan-300 hover:bg-cyan-400/10" aria-label="Hide plan card">
+              ✕
+            </button>
+          </div>
+          <PlanCard planId={planId} variant="hud" />
+        </div>
+      )}
 
       {/* Typing fallback */}
       <div className="absolute inset-x-0 bottom-4 mx-auto flex max-w-xl items-center gap-2 px-4">

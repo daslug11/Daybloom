@@ -52,6 +52,8 @@ async function chat(auth: AuthedRequest, message: string, voice: boolean): Promi
     throw err;
   }
   const c = ctx;
+  // Saved with any plan drafted in this reply, so Regenerate knows what was asked (often over two messages).
+  c.request = [...history.filter((m) => m.role === 'user').slice(-2).map((m) => m.content), message].join('\n');
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

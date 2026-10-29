@@ -11,10 +11,12 @@ interface ModalProps {
   className?: string;
   /** Optional one-line explanation under the title. */
   description?: ReactNode;
+  /** Stacking layer; dialogs opened from the full-screen voice HUD need one above it. */
+  layer?: string;
 }
 
 /** Accessible dialog: focus moves in, Escape closes, focus returns on close. */
-export function Modal({ open, onClose, title, description, children, className }: ModalProps) {
+export function Modal({ open, onClose, title, description, children, className, layer = 'z-50' }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -49,7 +51,7 @@ export function Modal({ open, onClose, title, description, children, className }
 
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+    <div className={cn('fixed inset-0 flex items-end justify-center sm:items-center sm:p-4', layer)}>
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div
         ref={panel}

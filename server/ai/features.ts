@@ -12,6 +12,8 @@ import {
   type Ctx,
   type TaskRow,
 } from '../data/context.js';
+import { availabilityText, busyBetween, clampWeeks, normalizeSessions, recurringBetween } from '../data/plans.js';
+import { planEndDate, sessionLine, type PlanSession } from '../data/recurrence.js';
 import { addDays, dayIn, hhmm, minutesOnDay, parseHhmm, weekStart } from '../data/time.js';
 import { HttpError } from '../http.js';
 import { cached, runStructured, type AiResult } from './run.js';
@@ -262,7 +264,7 @@ async function planBlocks(auth: AuthedRequest, input: Record<string, unknown>, s
   const startHour = Math.min(Math.max(Number(input.day_start ?? 8), 5), 12);
   const endHour = Math.min(Math.max(Number(input.day_end ?? 18), 13), 23);
 
-  const [candidates, scheduled, cal] = await Promise.all([
+  const [candidates, scheduled, cal, recurring] = await Promise.all([
     ctx.db
       .from('tasks')
       .select(TASK_COLUMNS)
@@ -273,12 +275,14 @@ async function planBlocks(auth: AuthedRequest, input: Record<string, unknown>, s
       .limit(25),
     ctx.db.from('tasks').select('id, title, sched_date, sched_start, sched_duration').gte('sched_date', first).lte('sched_date', last),
     calendarEvents(ctx, first, last),
+    recurringBetween(ctx, first, last),
   ]);
   const tasks = (candidates.data ?? []) as TaskRow[];
   if (!tasks.length) throw new HttpError(400, 'No unscheduled open tasks to plan. Add some tasks first.');
 
   const fixed: Fixed[] = [];
   for (const b of scheduled.data ?? []) fixed.push({ date: b.sched_date, start: b.sched_start, end: b.sched_start + b.sched_duration });
+  for (const o of recurring) fixed.push({ date: o.day, start: o.start, end: o.start + o.duration });
   for (const e of cal.events) {
     if (e.allDay) continue;
     for (const d of days) {
@@ -334,6 +338,65 @@ async function planBlocks(auth: AuthedRequest, input: Record<string, unknown>, s
     accepted.push({ task_id: task.id, title: task.title, date: b.date, start, duration, reason: clip(b.reason, 80) });
   }
   return { result: { blocks: accepted }, remaining, cached: false };
+}
+
+// ---------------------------------------------------------------------------
+// Plans (Atlas drafts them; this rewrites a draft on request)
+// ---------------------------------------------------------------------------
+const WeeklyPlanOut = z.object({
+  title: z.string().describe('≤ 60 chars'),
+  summary: z.string().describe('one sentence'),
+  sessions: z
+    .array(
+      z.object({
+        day: z.string().describe('Mon | Tue | Wed | Thu | Fri | Sat | Sun'),
+        start: z.string().describe('HH:MM, 24-hour, on a 15-minute mark'),
+        duration_min: z.number(),
+        title: z.string().describe('≤ 40 chars'),
+        details: z.string().describe('≤ 120 chars: what to do in this session'),
+      }),
+    )
+    .describe('one entry per weekly session, at most 14'),
+});
+
+/** ✨ Regenerate: a fresh version of a draft plan (one AI action). Editing a plan never uses AI. */
+async function regeneratePlan(auth: AuthedRequest, input: Record<string, unknown>) {
+  const ctx = await loadCtx(auth);
+  if (typeof input.plan_id !== 'string') throw new HttpError(400, 'Missing plan.');
+  const { data: plan } = await ctx.db.from('plans').select('id, title, request, weeks, start_date, sessions, status').eq('id', input.plan_id).maybeSingle();
+  if (!plan) throw new HttpError(404, 'That plan no longer exists.');
+  if (plan.status !== 'draft') throw new HttpError(409, 'Only plans that haven’t been added to the Planner can be regenerated.');
+  const start = plan.start_date && plan.start_date > ctx.now.day ? plan.start_date : addDays(ctx.now.day, 1);
+  const weeks = clampWeeks(plan.weeks);
+  const { busy } = await busyBetween(ctx, start, planEndDate(start, weeks));
+  const note = clip(String(input.note ?? ''), 300);
+  const { result, remaining } = await runStructured(auth, 'regenerate_plan', {
+    system: system(
+      ctx,
+      'Write a weekly plan of recurring sessions. Keep the days and times the user asked for unless they clash with busy times; vary the content. Start times on 15-minute marks. Sessions must not overlap busy times or each other.',
+    ),
+    prompt: [
+      `Request: ${clip(plan.request || plan.title, 500)}`,
+      `Runs ${weeks} week${weeks === 1 ? '' : 's'} from ${start}.`,
+      `Current version (write a different one):\n${(plan.sessions as PlanSession[]).map(sessionLine).join('\n')}`,
+      note ? `Change requested: ${note}` : '',
+      availabilityText(busy, start, weeks),
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    schema: WeeklyPlanOut,
+  });
+  const sessions = normalizeSessions(result.sessions);
+  if (!sessions.length) throw new HttpError(502, 'The new version came back empty. Please try again.');
+  const { data: updated } = await ctx.db
+    .from('plans')
+    .update({ title: cleanTitle(result.title, 120) || plan.title, summary: clip(String(result.summary ?? ''), 300), sessions, start_date: start })
+    .eq('id', plan.id)
+    .eq('status', 'draft')
+    .select('*')
+    .maybeSingle();
+  if (!updated) throw new HttpError(409, 'That plan was changed in the meantime.');
+  return { result: updated, remaining, cached: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +549,7 @@ export const FEATURES = {
   break_down: breakDown,
   plan_day: (a: AuthedRequest, i: Record<string, unknown>) => planBlocks(a, i, 'day'),
   plan_week: (a: AuthedRequest, i: Record<string, unknown>) => planBlocks(a, i, 'week'),
+  regenerate_plan: regeneratePlan,
   suggest_habits: (a: AuthedRequest) => suggestHabits(a),
   goal_plan: goalPlan,
   daily_briefing: dailyBriefing,

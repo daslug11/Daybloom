@@ -31,7 +31,7 @@ export function startMockAnthropic(port = 0) {
     if (body.output_config?.format) {
       const prompt = [systemText(body), ...body.messages.map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))].join('\n');
       ROOT = body.output_config.format.schema;
-      const value = generate(ROOT, prompt, '');
+      const value = ROOT.properties?.sessions ? weeklyPlan(prompt) : generate(ROOT, prompt, '');
       return send(res, 200, message([{ type: 'text', text: JSON.stringify(value) }], 'end_turn', body));
     }
     const plan = atlasStep(body);
@@ -139,6 +139,16 @@ function generate(schema, prompt, key, index = 0) {
   return `Mock ${key || 'text'} ${index + 1}`;
 }
 
+/** Regenerated plan: same days and times as the current version (read from the prompt), new content. */
+function weeklyPlan(prompt) {
+  const lines = [...prompt.matchAll(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2}):(\d{2}) (AM|PM) · (\d+) min · ([^:\n]+)/gm)];
+  const sessions = lines.map((m, i) => {
+    const h = (Number(m[2]) % 12) + (m[4] === 'PM' ? 12 : 0);
+    return { day: m[1], start: `${String(h).padStart(2, '0')}:${m[3]}`, duration_min: Number(m[5]), title: ['Intervals', 'Strength circuit', 'Mobility & core'][i % 3], details: 'Fresh variation: warm up 10 min, main set, cool down' };
+  });
+  return { title: 'Workout plan (new version)', summary: 'A new mix of sessions on the same days.', sessions };
+}
+
 // ---------------------------------------------------------------------------
 // Atlas: scripted conversations
 // ---------------------------------------------------------------------------
@@ -152,6 +162,35 @@ function lastUserText(messages) {
     if (m.role === 'user' && typeof m.content === 'string') return m.content;
   }
   return '';
+}
+
+function userTexts(messages) {
+  return messages.filter((m) => m.role === 'user' && typeof m.content === 'string').map((m) => m.content);
+}
+
+const DAY_RE = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/gi;
+
+/** The plan Atlas would draft from the conversation so far ("Mon, Wed and Fri at 6pm, 45 minutes", "4-week"). */
+function planFrom(texts) {
+  const all = texts.join(' ');
+  const last = texts[texts.length - 1] ?? '';
+  const days = [...new Set([...last.matchAll(DAY_RE)].map((m) => m[1][0].toUpperCase() + m[1].slice(1, 3).toLowerCase()))];
+  const t = last.match(/(?:at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  const hour = t ? (Number(t[1]) % 12) + (t[3].toLowerCase() === 'pm' ? 12 : 0) : 18;
+  const start = `${String(hour).padStart(2, '0')}:${t?.[2] ?? '00'}`;
+  const duration = Number(last.match(/(\d+)\s*min/i)?.[1] ?? 45);
+  const weeks = Number(all.match(/(\d+)[- ]weeks?/i)?.[1] ?? 4);
+  const workouts = [
+    ['Leg day', 'squats, lunges, calf raises'],
+    ['Upper body', 'push-ups, rows, shoulder press'],
+    ['Full body & core', 'deadlifts, planks, burpees'],
+  ];
+  return {
+    title: `${weeks}-week workout plan`,
+    summary: `${days.length} workouts a week`,
+    weeks,
+    sessions: days.map((day, i) => ({ day, start, duration_min: duration, title: workouts[i % 3][0], details: workouts[i % 3][1] })),
+  };
 }
 
 function findRef(resultText, letter, needle) {
@@ -178,6 +217,10 @@ function atlasStep(body) {
     if (/process (?:my )?inbox/i.test(intent)) return tool('list_notes', { view: 'inbox' });
     if (/what('s| is) (on )?today|my day/i.test(lower)) return tool('get_today', {});
     if (/^bad tool/i.test(intent)) return tool('complete_task', { task: 'T999' });
+    const texts = userTexts(messages);
+    const planTalk = texts.slice(-3).some((t) => /\b(plan|schedule|routine)\b/i.test(t));
+    if (planTalk && [...intent.matchAll(DAY_RE)].length) return tool('check_availability', { weeks: planFrom(texts).weeks });
+    if (/\b(plan|schedule|routine)\b/i.test(intent)) return say(`Happy to, ${name}. Which days and times suit you, and how long should it run?`);
     return say(`Certainly, ${name}. How may I help?`);
   }
 
@@ -210,6 +253,11 @@ function atlasStep(body) {
   if (used?.name === 'list_notes') {
     const ref = resultText.match(/\b(N\d+)\b/)?.[1];
     return ref ? tool('process_note', { note: ref, action: 'keep_as_idea' }) : say('Your inbox is already clear.');
+  }
+  if (used?.name === 'check_availability') return tool('create_plan', planFrom(userTexts(messages)));
+  if (used?.name === 'create_plan') {
+    const p = planFrom(userTexts(messages));
+    return say(`Here's your ${p.weeks}-week workout plan, ${name} — ${p.sessions.length} sessions a week. Add it to your Planner whenever you're ready.`);
   }
   if (used?.name === 'get_today') return say(`Here's your day, ${name}. ${resultText.split('\n')[0]}`);
   if (used?.name === 'delete_item') return say("I've asked you to confirm that deletion.");

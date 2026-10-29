@@ -219,6 +219,58 @@ describe.skipIf(!hasStack)('API', () => {
       expect(events.filter((e) => e.t === 'text').map((e) => e.v).join('')).toMatch(/didn't work/);
     });
 
+    it('asks a follow-up, then drafts a plan card from real availability; regenerating costs one request', async () => {
+      const u = await newUser('Planner');
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+      const text = (r: { events: any[] }) => r.events.filter((e) => e.t === 'text').map((e) => e.v).join('');
+
+      const ask = await atlas(u, 'Make me a 4-week workout plan');
+      expect(text(ask)).toMatch(/Which days and times/);
+      expect((await u.client.from('plans').select('id')).data).toEqual([]);
+
+      const r = await atlas(u, 'Mon, Wed and Fri at 6pm, 45 minutes');
+      const action = r.events.find((e) => e.t === 'action' && e.tool === 'create_plan');
+      expect(action).toMatchObject({ ok: true, summary: 'Drafted plan “4-week workout plan”' });
+      expect(r.events.at(-1)).toMatchObject({ t: 'done', remaining: 18 });
+      const plan = (await u.client.from('plans').select('*').eq('id', action.plan_id).single()).data!;
+      expect(plan).toMatchObject({ status: 'draft', weeks: 4, start_date: tomorrow });
+      expect(plan.request).toContain('4-week workout plan');
+      expect(plan.sessions).toEqual([
+        { day: 1, start: 1080, duration: 45, title: 'Leg day', details: 'squats, lunges, calf raises' },
+        { day: 3, start: 1080, duration: 45, title: 'Upper body', details: 'push-ups, rows, shoulder press' },
+        { day: 5, start: 1080, duration: 45, title: 'Full body & core', details: 'deadlifts, planks, burpees' },
+      ]);
+      // The card survives a reload: the saved reply carries the plan id.
+      const saved = (await u.client.from('atlas_messages').select('actions').eq('role', 'assistant').order('id', { ascending: false }).limit(1).single()).data!;
+      expect(saved.actions[0].plan_id).toBe(plan.id);
+
+      const g = await ai(u, { feature: 'regenerate_plan', plan_id: plan.id });
+      expect(g.status).toBe(200);
+      expect(g.data.remaining).toBe(17);
+      expect(g.data.result.sessions.map((s: any) => [s.day, s.start, s.duration])).toEqual([[1, 1080, 45], [3, 1080, 45], [5, 1080, 45]]);
+      expect(g.data.result.sessions[0].title).toBe('Intervals');
+
+      // Only drafts can be regenerated, and only by their owner — neither costs a request.
+      const other = await newUser('Other');
+      expect((await ai(other, { feature: 'regenerate_plan', plan_id: plan.id })).status).toBe(404);
+      await u.client.from('plans').update({ status: 'active' }).eq('id', plan.id);
+      expect((await ai(u, { feature: 'regenerate_plan', plan_id: plan.id })).status).toBe(409);
+      expect((await call('/api/ai', u).then((x) => x.json())).remaining).toBe(17);
+    });
+
+    it('treats recurring blocks as busy time when planning the day', async () => {
+      const u = await newUser('Busy');
+      const day = new Date().toISOString().slice(0, 10);
+      const wd = ((new Date().getUTCDay() + 6) % 7) + 1;
+      const ins = await u.client.from('block_series').insert({ title: 'Long shift', days: [wd], start_min: 360, duration_min: 720, start_date: day, end_date: day });
+      expect(ins.error).toBeNull();
+      await u.client.from('tasks').insert({ title: 'Plan me', due_date: day, priority: 'high' });
+      const res = await ai(u, { feature: 'plan_day', date: day });
+      // The mock suggests 14:00, inside the recurring block, so the server drops it.
+      expect(res.status).toBe(200);
+      expect(res.data.result.blocks.filter((b: any) => b.start < 1080 && b.start + b.duration > 360)).toEqual([]);
+    });
+
     it('refunds the request when the model call fails', async () => {
       const u = await newUser('Fail');
       const { events } = await atlas(u, 'hello [[fail]]');
