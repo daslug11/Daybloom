@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CalendarClock, Flame, Inbox, ListChecks, Lock, Smile } from 'lucide-react';
+import { ArrowRight, CalendarClock, Flame, Inbox, ListChecks, Lock, Repeat, Smile } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { MoodPicker } from '../../components/mood/MoodPicker';
@@ -11,6 +11,7 @@ import { LoadingList } from '../../components/ui/States';
 import { useHabitLogs, useHabits, useToggleHabitLog } from '../../hooks/data/habits';
 import { useMoods, useSetMood } from '../../hooks/data/moods';
 import { useNotes } from '../../hooks/data/notes';
+import { useRecurring } from '../../hooks/data/plans';
 import { useTasks, useToggleTask } from '../../hooks/data/tasks';
 import { useAi } from '../../hooks/useAi';
 import { useAppActions } from '../../hooks/useAppActions';
@@ -47,6 +48,7 @@ export default function Dashboard() {
   const setMood = useSetMood();
   const { openCapture } = useAppActions();
   const briefingAi = useAi<Briefing>('daily_briefing');
+  const recurring = useRecurring(today, today);
 
   // Today's briefing, if it was already generated (read from the cache — no AI call).
   const briefing = useQuery({
@@ -65,7 +67,10 @@ export default function Dashboard() {
   const doneToday = all.filter((t) => t.done && t.completed_at && dayIn(tz, new Date(t.completed_at)) === today).length;
 
   const schedule = useMemo(() => {
-    const items: { key: string; start: number; end: number; title: string; kind: 'event' | 'task' }[] = [];
+    const items: { key: string; start: number; end: number; title: string; kind: 'event' | 'task' | 'repeat' }[] = [];
+    for (const o of recurring) {
+      if (!o.done) items.push({ key: `${o.series_id}:${o.day}`, start: o.start, end: o.start + o.duration, title: o.title, kind: 'repeat' });
+    }
     for (const e of events) {
       if (e.allDay) continue;
       const s = new Date(e.start);
@@ -78,7 +83,7 @@ export default function Dashboard() {
       items.push({ key: t.id, start: t.sched_start, end: t.sched_start + (t.sched_duration ?? 0), title: t.title, kind: 'task' });
     }
     return items.filter((i) => i.end > minutes - 1).sort((a, b) => a.start - b.start);
-  }, [events, all, today, tz, minutes]);
+  }, [events, all, today, tz, minutes, recurring]);
   const allDayToday = events.filter((e) => e.allDay && e.start.slice(0, 10) <= today && today < e.end.slice(0, 10));
 
   const logSet = new Set(logs.filter((l) => l.day === today).map((l) => l.habit_id));
@@ -165,6 +170,7 @@ export default function Dashboard() {
                     <span className="faint w-20 shrink-0 text-xs tabular-nums">{formatMinutes(i.start)}</span>
                     <span className="min-w-0 flex-1 truncate">
                       {i.kind === 'event' && <Lock size={11} className="faint mr-1 inline" aria-label="calendar event" />}
+                      {i.kind === 'repeat' && <Repeat size={11} className="faint mr-1 inline" aria-label="repeating block" />}
                       {i.title}
                     </span>
                     {now && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">Now</span>}

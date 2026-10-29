@@ -13,10 +13,11 @@ import { supabase } from '../../lib/supabase';
 import type { AtlasAction } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { Markdown } from '../notes/Markdown';
+import { PlanCard } from '../plans/PlanCard';
 import { AiAllowance } from '../ui/Ai';
 import { OrbGlyph } from './AtlasOrb';
 
-const SUGGESTIONS = ["What's on today?", 'Add a task to call the bank tomorrow at 10', 'Process my inbox', 'Which habits have I not done today?'];
+const SUGGESTIONS = ["What's on today?", 'Add a task to call the bank tomorrow at 10', 'Process my inbox', 'Make me a 4-week workout plan'];
 
 interface Live {
   text: string;
@@ -81,7 +82,10 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     try {
       for await (const ev of atlasStream(message, 'chat', abort.current.signal)) {
         if (ev.t === 'text') setLive((l) => ({ ...l!, text: l!.text + ev.v }));
-        else if (ev.t === 'action') setLive((l) => ({ ...l!, actions: [...l!.actions, { tool: ev.tool, summary: ev.summary, ok: ev.ok }] }));
+        else if (ev.t === 'action') {
+          setLive((l) => ({ ...l!, actions: [...l!.actions, { tool: ev.tool, summary: ev.summary, ok: ev.ok, plan_id: ev.plan_id }] }));
+          if (ev.plan_id) invalidate();
+        }
         else if (ev.t === 'confirm') qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
         else if (ev.t === 'error') setLive((l) => ({ ...l!, error: ev.message }));
         else if (ev.t === 'done') updateStatus(ev.remaining);
@@ -167,7 +171,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
               <OrbGlyph size={48} />
               <p className="mt-3 font-semibold">Good to see you, {name}.</p>
               <p className="muted mx-auto mt-1 max-w-xs text-sm">
-                Ask me to add or finish tasks, sort your inbox, block time, log habits or tell you what's on. Each reply uses one of your daily AI actions.
+                Ask me to add or finish tasks, sort your inbox, block time, log habits, make a plan (workouts, study, reading…) or tell you what's on. Each reply uses one of your daily AI actions.
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {SUGGESTIONS.map((s) => (
@@ -275,6 +279,13 @@ function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'ass
           ))}
         </ul>
       )}
+      {actions
+        .filter((a) => a.plan_id)
+        .map((a) => (
+          <div key={a.plan_id} className="mt-2">
+            <PlanCard planId={a.plan_id!} />
+          </div>
+        ))}
       {error && (
         <p role="alert" className="mt-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-200">
           {error}

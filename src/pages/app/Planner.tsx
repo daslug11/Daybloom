@@ -1,11 +1,16 @@
-import { Check, ChevronLeft, ChevronRight, GripVertical, Inbox, Lock, MapPin, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, GripVertical, Inbox, Lock, MapPin, Repeat, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SyncStatusPill } from '../../components/calendars/SyncStatusPill';
+import { OccurrenceDialog } from '../../components/plans/OccurrenceDialog';
+import { PlansSection } from '../../components/plans/PlansSection';
+import { RecurringBlockDialog } from '../../components/plans/RecurringBlockDialog';
 import { QuickAddTask } from '../../components/tasks/QuickAddTask';
 import { PRIORITY_STYLES, TaskChips } from '../../components/tasks/TaskChips';
 import { AiButton } from '../../components/ui/Ai';
 import { PageHeader } from '../../components/ui/PageHeader';
+import type { Occurrence } from '../../../server/data/recurrence';
 import { useCalendars } from '../../hooks/data/calendars';
+import { usePlanActions, usePlans, useRecurring, useSeries } from '../../hooks/data/plans';
 import { useTasks, useToggleTask, useUpdateTask } from '../../hooks/data/tasks';
 import { useAi } from '../../hooks/useAi';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
@@ -96,12 +101,25 @@ export default function Planner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const [ghosts, setGhosts] = useState<Ghost[]>([]);
+  const [openOcc, setOpenOcc] = useState<Occurrence | null>(null);
+  const [newRepeat, setNewRepeat] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const columnRefs = useRef(new Map<string, HTMLDivElement>());
   const days = view === 'week' ? weekOf(cursor) : [cursor];
   const calById = useMemo(() => new Map(calendars.map((c) => [c.id, c])), [calendars]);
+  const recurring = useRecurring(days[0], days[days.length - 1]);
+  const { data: plans = [] } = usePlans();
+  const { data: allSeries = [] } = useSeries();
+  const planActions = usePlanActions();
+
+  // Planner#plans (from a plan card) scrolls to the Plans section once it has rendered.
+  useEffect(() => {
+    if (window.location.hash !== '#plans') return;
+    const id = window.setTimeout(() => document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' }), 400);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const unscheduled = useMemo(
     () =>
@@ -252,7 +270,14 @@ export default function Planner() {
       <PageHeader
         title="Planner"
         description="Time-block your day. Drag tasks onto the timeline (or tap a task, then a time), drag blocks to move them, and pull the bottom edge to resize. Synced calendar events are locked."
-        actions={<SyncStatusPill />}
+        actions={
+          <>
+            <button className="chip-off" onClick={() => setNewRepeat(true)}>
+              <Repeat size={13} aria-hidden /> Repeating block
+            </button>
+            <SyncStatusPill />
+          </>
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
@@ -410,7 +435,9 @@ export default function Planner() {
                     const dayEvents = timedEventsOn(events, d);
                     const dayTasks = tasks.map((t) => ({ task: t, block: blockFor(t) })).filter((x): x is { task: Task; block: Block } => x.block?.date === d);
                     const dayGhosts = ghosts.filter((g) => g.date === d);
+                    const dayRepeats = recurring.filter((o) => o.day === d);
                     const lanes = layoutLanes([
+                      ...dayRepeats.map((o) => ({ id: `r:${o.series_id}`, start: o.start, end: o.start + o.duration })),
                       ...dayEvents.map((e) => ({ id: `e:${e.event.id}`, start: e.start, end: e.end })),
                       ...dayTasks.map((x) => ({ id: `t:${x.task.id}`, start: x.block.start, end: x.block.start + x.block.duration })),
                       ...dayGhosts.map((g) => ({ id: `g:${g.task_id}`, start: g.start, end: g.start + g.duration })),
@@ -434,6 +461,17 @@ export default function Planner() {
                       >
                         {dayEvents.map((de) => (
                           <EventBlock key={de.event.id} de={de} lane={lanes.get(`e:${de.event.id}`)} calendar={calById.get(de.event.calendarId)} />
+                        ))}
+                        {dayRepeats.map((o) => (
+                          <RepeatBlock
+                            key={`${o.series_id}:${o.day}`}
+                            occ={o}
+                            lane={lanes.get(`r:${o.series_id}`)}
+                            onOpen={() => setOpenOcc(o)}
+                            onToggleDone={() =>
+                              planActions.setDone(o, !o.done, plans.find((p) => p.id === o.plan_id)).catch(() => toast('That change could not be saved.'))
+                            }
+                          />
                         ))}
                         {dayTasks.map(({ task, block }) => (
                           <TaskBlock
@@ -500,6 +538,9 @@ export default function Planner() {
               <span className="striped h-3 w-5 rounded" style={{ '--stripe': 'rgba(59,130,246,0.55)' } as React.CSSProperties} /> Calendar events (locked)
             </span>
             <span className="flex items-center gap-1.5">
+              <span className="h-3 w-5 rounded bg-gradient-to-br from-cyan-600 to-teal-600" /> Repeating blocks &amp; plans
+            </span>
+            <span className="flex items-center gap-1.5">
               <span className="h-3 w-5 rounded border-2 border-dashed border-violet-500" /> ✨ Suggestions
             </span>
             <span className="flex items-center gap-1.5">
@@ -508,6 +549,18 @@ export default function Planner() {
           </div>
         </div>
       </div>
+
+      <PlansSection />
+
+      {openOcc && (
+        <OccurrenceDialog
+          occ={openOcc}
+          series={allSeries.find((x) => x.id === openOcc.series_id)}
+          plan={plans.find((p) => p.id === openOcc.plan_id)}
+          onClose={() => setOpenOcc(null)}
+        />
+      )}
+      {newRepeat && <RecurringBlockDialog onClose={() => setNewRepeat(false)} initialDay={cursor} />}
     </div>
   );
 }
@@ -543,6 +596,48 @@ function EventBlock({ de, lane, calendar }: { de: DayEvent; lane?: { lane: numbe
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RepeatBlock({ occ, lane, onOpen, onToggleDone }: { occ: Occurrence; lane?: { lane: number; lanes: number }; onOpen: () => void; onToggleDone: () => void }) {
+  const height = occ.duration * PX_PER_MIN;
+  const compact = height < 40;
+  const label = `${occ.title}, ${formatMinutes(occ.start)} – ${formatMinutes(occ.start + occ.duration)}`;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
+      className={cn('absolute z-20 cursor-pointer overflow-hidden rounded-lg bg-gradient-to-br from-cyan-600 to-teal-600 text-white shadow ring-1 ring-white/20 hover:ring-white/60', occ.done && 'opacity-55')}
+      style={{ ...laneStyle(lane), top: occ.start * PX_PER_MIN, height: height - 1 }}
+      title={`${label}${occ.details ? `\n${occ.details}` : ''}\nRepeats weekly — click to edit`}
+      aria-label={`Repeating block: ${label}`}
+    >
+      <div className={cn('flex h-full gap-1 px-1.5', compact ? 'items-center' : 'items-start py-1')}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleDone();
+          }}
+          aria-label={occ.done ? `Mark “${occ.title}” not done` : `Mark “${occ.title}” done`}
+          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-white/80', occ.done && 'bg-white text-teal-700')}
+        >
+          {occ.done && <Check size={10} strokeWidth={3} />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className={cn('flex items-center gap-1 truncate text-[11px] font-semibold leading-tight', occ.done && 'line-through')}>
+            <Repeat size={9} className="shrink-0 opacity-80" aria-hidden />
+            <span className="truncate">{occ.title}</span>
+          </div>
+          {!compact && (
+            <div className="truncate text-[10px] text-white/85">
+              {formatMinutes(occ.start)} – {formatMinutes(occ.start + occ.duration)}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -34,6 +34,12 @@ const linkFrom = (html) => {
   return m[1].replace(/&amp;/g, '&');
 };
 
+/** Polls until fn() is truthy (for writes that finish after the UI updates optimistically). */
+async function eventually(fn, msg, ms = 5000) {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(150)) if (await fn()) return;
+  throw new Error(msg);
+}
+
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
@@ -269,7 +275,7 @@ await flow('voice-hud', browser, {}, async (page) => {
   await page.getByRole('button', { name: 'Switch to voice mode' }).click();
   const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
   await hud.waitFor();
-  await hud.getByText(/Systems online\. Good (morning|afternoon|evening), Dee\./).waitFor({ timeout: 10000 });
+  await hud.getByText(/Systems online\. Good (morning|afternoon|evening|night), Dee\./).waitFor({ timeout: 10000 });
   assert(await hud.getByText('Tasks left today').isVisible(), 'readouts missing');
   await hud.getByRole('button', { name: 'Type instead' }).click();
   await hud.getByLabel('Type to Atlas').fill("what's on today");
@@ -510,6 +516,149 @@ await flow('local-import', browser, {}, async (page, context) => {
   await page.getByRole('heading', { level: 1 }).waitFor();
   await sleep(800);
   assert(!(await dlg.isVisible()), 'import prompt shown again');
+});
+
+await flow('plans', browser, {}, async (page) => {
+  const user = await makeUser('Pia');
+  const dayKey = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const start = dayKey(1);
+  // An existing block on the plan's first Wednesday at 6 PM, so the plan has a conflict.
+  let wed = start;
+  for (let i = 1; new Date(`${wed}T00:00:00Z`).getUTCDay() !== 3; i++) wed = dayKey(1 + i);
+  await admin.from('tasks').insert({ user_id: user.id, title: 'Dentist', sched_date: wed, sched_start: 1080, sched_duration: 60 });
+  await logIn(page, user);
+  const left = async () => Number((await page.getByText(/\d+ left today/).first().innerText()).match(/(\d+) left/)[1]);
+
+  // 1. Ask Atlas: it asks a follow-up, then drafts the plan card.
+  await page.keyboard.press('Control+j');
+  const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
+  const say = async (text) => {
+    await panel.getByPlaceholder('Ask Atlas…').fill(text);
+    await panel.getByRole('button', { name: 'Send' }).click();
+  };
+  await say('Make me a 4-week workout plan');
+  await panel.getByText(/Which days and times suit you/).waitFor({ timeout: 15000 });
+  await say('Mon, Wed and Fri at 6pm, 45 minutes');
+  // Regenerate may retitle the plan, so find the card by role rather than by its title.
+  const card = panel.getByRole('region', { name: /^Plan: / });
+  await panel.getByRole('region', { name: 'Plan: 4-week workout plan' }).waitFor({ timeout: 15000 });
+  await card.getByText('Mon 6:00 PM · 45 min · Leg day: squats, lunges, calf raises').waitFor();
+  assert(await card.getByText(/4 weeks · 3 sessions a week/).isVisible(), 'card missing duration');
+  await sleep(500);
+  const afterCreate = await left();
+  assert(afterCreate === 13, `expected 13 AI actions left after two Atlas replies, got ${afterCreate}`);
+  await shot(page, 'plans-card');
+
+  // 2. Regenerate: one AI action, same days and times, new content.
+  await card.getByRole('button', { name: /Regenerate/ }).click();
+  await card.getByText('Mon 6:00 PM · 45 min · Intervals', { exact: false }).waitFor({ timeout: 15000 });
+  await sleep(300);
+  assert((await left()) === 12, 'regenerate should use exactly one AI action');
+
+  // 3. Edit a session (no AI): Friday moves to 7 PM.
+  await card.getByRole('button', { name: 'Edit' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit plan' });
+  await editor.getByLabel('Session 3 time').fill('19:00');
+  await editor.getByLabel('Session 3 details').fill('deadlifts, planks');
+  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await editor.waitFor({ state: 'detached' });
+  await card.getByText('Fri 7:00 PM · 45 min · Mobility & core: deadlifts, planks').waitFor();
+  assert((await left()) === 12, 'editing must not use AI');
+
+  // 4. Add to Planner: the Wednesday conflict is previewed; shift it; also track as a habit.
+  await card.getByRole('button', { name: 'Add to Planner' }).click();
+  const add = page.getByRole('dialog', { name: /Add “.*” to your Planner/ });
+  await add.getByText('Overlaps “Dentist” (task block').waitFor();
+  assert((await add.getByRole('listitem').count()) === 1, 'expected exactly one conflict');
+  await shot(page, 'plans-conflict');
+  await add.getByRole('radio', { name: /Shift to/ }).click();
+  await add.getByLabel(/Also track as a habit/).check();
+  await add.getByRole('button', { name: 'Add 12 sessions' }).click();
+  await page.getByText(/to your Planner · 12 sessions/).waitFor();
+  let { data: series } = await admin.from('block_series').select('id, days, start_min').eq('user_id', user.id);
+  assert(series.length === 3, `expected 3 repeating blocks, got ${series.length}`);
+  const { data: shifted } = await admin.from('series_occurrences').select('day, start_min, skipped').eq('user_id', user.id);
+  const moved = shifted[0]?.start_min;
+  // Nearest free slot: ends by 6 PM or starts after the Dentist block ends at 7 PM.
+  assert(shifted.length === 1 && shifted[0].day === wed && !shifted[0].skipped && (moved + 45 <= 1080 || moved >= 1140), `shift not saved: ${JSON.stringify(shifted)}`);
+  assert((await admin.from('habits').select('id').eq('user_id', user.id)).data.length === 1, 'habit not created');
+
+  // 5. Undo puts everything back.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByText('Removed it from your Planner.').waitFor();
+  ({ data: series } = await admin.from('block_series').select('id').eq('user_id', user.id));
+  assert(series.length === 0, 'undo left repeating blocks behind');
+  assert((await admin.from('habits').select('id').eq('user_id', user.id)).data.length === 0, 'undo left the habit behind');
+  const { data: draft } = await admin.from('plans').select('status').eq('user_id', user.id).single();
+  assert(draft.status === 'draft', `plan should be a draft again, is ${draft.status}`);
+
+  // 6. Re-add: skip the conflict this time, and create a goal.
+  await card.getByRole('button', { name: 'Add to Planner' }).click();
+  await add.getByRole('radio', { name: 'Skip' }).click();
+  await add.getByLabel(/Also create a goal/).check();
+  await add.getByRole('button', { name: 'Add 11 sessions' }).click();
+  await page.getByText(/to your Planner · 11 sessions/).waitFor();
+  await card.getByText('On your Planner').waitFor();
+  const { data: goal } = await admin.from('goals').select('id, target, current').eq('user_id', user.id).single();
+  assert(goal.target === 11, `goal target should be 11, is ${goal.target}`);
+  await page.getByRole('button', { name: 'Close Atlas' }).click();
+
+  // 7. Planner shows the repeating blocks; edit one session "this one only".
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('heading', { name: 'Planner' }).waitFor();
+  await page.getByRole('tab', { name: 'week' }).click();
+  const firstBlock = page.getByRole('button', { name: /^Repeating block: / }).first();
+  if (!(await firstBlock.isVisible().catch(() => false))) await page.getByRole('button', { name: 'Next week' }).click();
+  await firstBlock.waitFor();
+  await shot(page, 'plans-planner');
+  await firstBlock.click();
+  const occDialog = page.getByRole('dialog').filter({ hasText: 'repeats weekly' });
+  await occDialog.getByLabel('Title').fill('Intervals (outdoors)');
+  await occDialog.getByRole('button', { name: 'This one only' }).first().click();
+  await page.getByText('Changed this session only').waitFor();
+  const { data: edited } = await admin.from('series_occurrences').select('title').eq('user_id', user.id).not('title', 'is', null);
+  assert(edited.length === 1 && edited[0].title === 'Intervals (outdoors)', 'this-one-only edit not saved');
+
+  // 8. Plans section: progress and check-off.
+  const progress = page.getByRole('region', { name: 'Plans' }).getByTestId('plan-progress');
+  await progress.getByText(/0 of 11 sessions done/).waitFor();
+  await page.getByRole('checkbox', { name: /^Mark done: / }).first().check();
+  await progress.getByText(/1 of 11 sessions done/).waitFor();
+  await eventually(async () => Number((await admin.from('goals').select('current').eq('id', goal.id).single()).data.current) === 1, 'checking off did not move the linked goal');
+  await shot(page, 'plans-section');
+
+  // 9. Remove the plan and its upcoming blocks.
+  await page.getByRole('button', { name: 'Remove plan' }).click();
+  await page.getByRole('button', { name: 'Remove plan and upcoming blocks' }).click();
+  await page.getByText('Plan and its upcoming blocks removed').waitFor();
+  assert((await admin.from('plans').select('id').eq('user_id', user.id)).data.length === 0, 'plan not deleted');
+  assert((await admin.from('block_series').select('id').eq('user_id', user.id)).data.length === 0, 'future blocks not deleted');
+  assert((await admin.from('goals').select('id').eq('user_id', user.id)).data.length === 1, 'linked goal should be kept');
+});
+
+await flow('plans-voice', browser, {}, async (page) => {
+  const user = await makeUser('Vic');
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  await hud.getByText(/Systems online/).waitFor({ timeout: 10000 });
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  await hud.getByLabel('Type to Atlas').fill('workout plan on Mon and Thu at 7am for 3 weeks');
+  await page.keyboard.press('Enter');
+  const card = hud.getByRole('region', { name: 'Plan: 3-week workout plan' });
+  await card.waitFor({ timeout: 15000 });
+  await card.getByText('Thu 7:00 AM · 45 min · Upper body: push-ups, rows, shoulder press').waitFor();
+  await hud.getByText(/3-week workout plan, Vic/).waitFor();
+  await shot(page, 'plans-voice');
+  // Dialogs open above the HUD, and Escape closes the dialog, not voice mode.
+  await card.getByRole('button', { name: 'Edit' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit plan' });
+  await editor.getByLabel('Session 1 title').waitFor();
+  assert(await editor.getByRole('button', { name: 'Save changes' }).isVisible(), 'editor hidden behind the HUD');
+  await page.keyboard.press('Escape');
+  await editor.waitFor({ state: 'detached' });
+  assert(await hud.isVisible(), 'Escape in the editor closed voice mode');
 });
 
 await browser.close();

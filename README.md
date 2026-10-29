@@ -21,14 +21,15 @@ Live at **https://daybloom.online**: React and Vite on Vercel, Supabase for acco
 | **Brain Dump** | Capture from anywhere: the + button, the N key, the quick-add bar or voice. Supports Markdown, checklists, #tags, pinning, archiving and full-text search. Views: Inbox, Ideas, All notes, Archive. **Process inbox** goes through notes one at a time: Make task, Schedule, Add to goal, Keep as idea, or Archive. You can convert a note into a task, time block, habit or goal, and it keeps a link back to the note. | Organize inbox · Extract actions · Summarize (one note or the week) · Find patterns · Turn into a plan |
 | **Dashboard** | Today's schedule (synced events and blocks), top tasks, habits due, inbox count, a mood check-in, and a Getting started checklist. | Daily briefing (once per day; reused for free) |
 | **Tasks** | Natural-language quick add ("dentist fri 3pm #health !high for 30m"), priorities, due dates, steps, and a top 3 for today. | Read a tricky sentence · Break it down |
-| **Planner** | Day and week timeline in 15-minute steps. Drag to block time and resize blocks. Synced calendar events appear as locked blocks. | Plan my day/week: suggested blocks you accept or discard |
+| **Planner** | Day and week timeline in 15-minute steps. Drag to block time and resize blocks. Synced calendar events appear as locked blocks. Repeating blocks run weekly on chosen days until an end date or for a number of weeks; edit or delete "this one only" or every session. | Plan my day/week: suggested blocks you accept or discard |
+| **Plans** | Ask Atlas for a schedule (workouts, study, meal prep, reading, a project timeline). It asks a quick follow-up if needed, checks your Planner and calendar, and shows a plan card listing every session. Edit any session for free, then **Add to Planner** as repeating blocks, with a preview of conflicts (skip, shift or add anyway) and Undo. Planner → Plans tracks progress ("Week 2 of 4 · 5 of 12 sessions done"), check-offs, pausing and removal. Optionally also tracked as a habit and a goal. | Drafting a plan is one Atlas reply; Regenerate is one action; editing, adding and checking off use none |
 | **Calendars** | Calendar links in groups, with drag and drop between groups. Read-only ICS sync into the Planner every 10 minutes. | — |
 | **Habits** | Daily check-off, streaks and a 12-week history grid. | Suggest habits from your goals |
 | **Goals** | Numeric targets with milestones and linked tasks and habits. | Make a plan: milestones and first tasks |
 | **Focus** | Pomodoro timer linked to a task. Finished blocks log the time against it. | — |
 | **Mood** | One-tap daily check-in and a weekly chart. | Reflect |
 | **Weekly Review** | Plain stats for the last 7 days, each with a note on how it's calculated. | Summary and 3 suggestions |
-| **Atlas** | Chat panel (orb button or ⌘/Ctrl+J) that works on your real data: add, update, complete and schedule tasks, capture and process notes, log habits, update goals. It asks before deleting. History is saved per user. | Every reply counts toward the allowance |
+| **Atlas** | Chat panel (orb button or ⌘/Ctrl+J) that works on your real data: add, update, complete and schedule tasks, capture and process notes, log habits, update goals, draft plans. It asks before deleting. History is saved per user. | Every reply counts toward the allowance |
 | **Voice mode** | Full-screen HUD with live readouts (time, next event, tasks left, AI uses left). Uses Web Speech input; replies are spoken with an en-GB voice by default. Optional "Hey Atlas" wake phrase, off by default. | Same as Atlas |
 
 Accounts support sign-up with email confirmation, password or magic-link log in, password reset, change email and password, JSON export of all data, and account deletion. On first sign-in, Daybloom offers to import data saved locally by the old offline-only version.
@@ -61,6 +62,9 @@ Every AI call runs server-side in `/api`. The browser never sees the API key.
 2. **Run the migrations.** In **SQL Editor → New query**, paste and run each file in order:
    1. [`supabase/migrations/20261028000001_schema.sql`](supabase/migrations/20261028000001_schema.sql) creates the tables, Row Level Security policies and the profile trigger.
    2. [`supabase/migrations/20261028000002_ai_limits.sql`](supabase/migrations/20261028000002_ai_limits.sql) creates the usage log, limits, cache and admin functions.
+   3. [`supabase/migrations/20261029000001_plans.sql`](supabase/migrations/20261029000001_plans.sql) creates plans and repeating Planner blocks.
+
+   **Already deployed?** Run only the migrations you haven't run yet, in order. For the Plans feature, that's file 3.
 
    If you use the Supabase CLI, `supabase link` and then `supabase db push` does the same thing.
 
@@ -164,6 +168,7 @@ npm run test:e2e     # browser flows (needs supabase:up, gateway, mock:ai and th
   - Password reset, magic link and email change.
   - Export and account deletion.
   - Planner and goal AI, the admin page and local-data import.
+  - Plans: Atlas asks a follow-up and drafts a 4-week workout plan; regenerate, edit a session, add with a conflict (shift), undo, re-add (skip, with a goal), edit one session "this one only", check off a session, and remove the plan with its upcoming blocks. Also the plan card in voice mode.
   - Mobile layout, checked for horizontal overflow.
 
   Every flow fails on any console error. Set `E2E_ADMIN_EMAIL` to the dev server's `ADMIN_EMAIL` to include the admin UI flow.
@@ -176,12 +181,14 @@ server/
   ai/config.ts       MODEL (claude-haiku-5-5), pricing, max_tokens, effort, history size
   ai/limits.ts       ai_begin / ai_finish / ai_status wrappers and user-facing messages
   ai/features.ts     every ✨ feature: short prompt + zod schema + normalisation
+  data/recurrence.ts repeating-block and plan date logic, shared with the app
+  data/plans.ts      busy times and plan clean-up for Atlas's plan tools
   ai/atlas/          persona prompt, tools (short refs instead of UUIDs), streaming handler
   data/              compact context loaders shared by features and Atlas
   calendar/          ICS fetch (SSRF-guarded), parse, sync
   account.ts admin.ts auth.ts env.ts http.ts routes.ts vitePlugin.ts
 supabase/
-  migrations/        schema + RLS, AI limits/usage/admin functions
+  migrations/        schema + RLS, AI limits/usage/admin functions, plans + repeating blocks
   templates/         branded auth emails
   local/             docker-compose for the local stack
 src/

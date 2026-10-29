@@ -1,4 +1,9 @@
 /** Row types — mirror supabase/migrations. */
+import type { OccurrenceRow, PlanSession, SeriesRow } from '../../server/data/recurrence';
+
+export type { OccurrenceRow, PlanSession };
+/** A recurring Planner block (block_series row). */
+export type BlockSeries = SeriesRow;
 
 export type Priority = 'high' | 'medium' | 'low';
 export type NoteState = 'inbox' | 'idea' | 'note' | 'archived';
@@ -139,6 +144,26 @@ export interface AtlasAction {
   tool: string;
   summary: string;
   ok: boolean;
+  /** Set when Atlas drafted a plan in this reply — shown as a plan card. */
+  plan_id?: string;
+}
+
+export type PlanStatus = 'draft' | 'active' | 'paused' | 'dismissed';
+
+export interface Plan {
+  id: string;
+  title: string;
+  summary: string;
+  request: string;
+  weeks: number;
+  start_date: string | null;
+  sessions: PlanSession[];
+  status: PlanStatus;
+  habit_id: string | null;
+  goal_id: string | null;
+  added_at: string | null;
+  paused_at: string | null;
+  created_at: string;
 }
 
 export interface AtlasMessage {
