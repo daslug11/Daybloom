@@ -4,8 +4,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/*.ts": { "maxDuration": 30 },
-    "api/atlas.ts": { "maxDuration": 60 }
+    "api/account.ts": { "maxDuration": 30 },
+    "api/admin.ts": { "maxDuration": 30 },
+    "api/ai.ts": { "maxDuration": 30 },
+    "api/atlas.ts": { "maxDuration": 60 },
+    "api/calendar-sync.ts": { "maxDuration": 30 }
   },
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "headers": [
