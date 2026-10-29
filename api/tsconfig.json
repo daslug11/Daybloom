@@ -1,0 +1,5 @@
+{
+  "//": "Vercel type-checks each function with the nearest tsconfig; use the server (Node) settings, not the browser ones.",
+  "extends": "../tsconfig.node.json",
+  "include": [".", "../server"]
+}
