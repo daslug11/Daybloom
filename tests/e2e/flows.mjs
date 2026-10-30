@@ -993,7 +993,7 @@ await flow('mobile-touch', browser, { viewport: { width: 390, height: 844 }, isM
 
 // break-ui pass on the Atlas panel: worst-case history, plan card and composer, at phone and desktop widths.
 await flow('atlas-worst-case', browser, {}, async (page) => {
-  const user = await makeUser('Aleksandra Wiśniewska-Kowalczyk');
+  const user = await makeUser('Aleksandra', { name: 'Aleksandra Wiśniewska-Kowalczyk' });
   const longUrl = `https://northwind-industries-holdings.example.com/shared/documents/${'q3-planning-retrospective-final-v12-'.repeat(8)}`.slice(0, 300);
   const sessionTitles = ['Leg day: squats, lunges and Bulgarian split squats', 'Upper body push', 'Long run along the canal', 'Mobility', 'Intervals', 'Rest & stretch', 'Swim technique drills'];
   const { data: plan, error: planErr } = await admin
@@ -1082,6 +1082,10 @@ await flow('atlas-worst-case', browser, {}, async (page) => {
     assert(o.page <= 0 && o.scroller <= 0 && !o.out.length, `overflow at ${w}px: page ${o.page}px, transcript ${o.scroller}px, ${o.out.join(', ')}`);
     await shot(page, `atlas-worst-case-${w}`);
   }
+  for (const [name, target] of [['markdown', panel.getByRole('heading', { name: 'Your week at a glance' })], ['rtl', panel.getByText(/^مرحبا!/)], ['long-message', panel.getByText(/^Plan my revision/)]]) {
+    await target.scrollIntoViewIfNeeded();
+    await shot(page, `atlas-worst-case-390-${name}`);
+  }
   // RTL replies read right to left.
   assert((await panel.getByText(/^مرحبا!/).evaluate((el) => getComputedStyle(el).direction)) === 'rtl', 'Arabic reply not laid out right to left');
   // The transcript is not a live region; one sr-only status speaks for it.
@@ -1093,23 +1097,26 @@ await flow('atlas-worst-case', browser, {}, async (page) => {
   await input.fill(long);
   const hgt = await input.evaluate((el) => el.getBoundingClientRect().height);
   assert(hgt > 60 && hgt <= 130, `composer height ${hgt}px for a long message`);
-  await page.route('**/api/atlas', (route) => route.abort('failed'));
+  await page.route('**/api/atlas', (route) =>
+    route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'Easy there — try again in 30s.', reason: 'rate_limit', retryAfter: 30 }) }),
+  );
   await panel.getByRole('button', { name: 'Send' }).click();
   await panel.getByText('Not sent', { exact: true }).waitFor();
-  await panel.getByRole('alert').getByText(/Can't reach Atlas/).waitFor();
+  await panel.getByRole('alert').getByText(/Easy there/).waitFor();
   assert(await panel.getByText(long.slice(0, 120)).first().isVisible(), 'failed message not kept in the transcript');
   assert((await input.inputValue()) === '', 'composer not cleared after sending');
-  await panel.getByRole('button', { name: 'Edit' }).click();
+  await panel.getByRole('button', { name: 'Edit message' }).click();
   assert((await input.inputValue()) === long, 'Edit did not restore the failed message');
   await page.unroute('**/api/atlas');
-  await input.fill('');
 
-  // Stop: Send becomes Stop while a reply streams; Stop aborts the request and keeps what arrived.
+  // Offline (fetch rejects, no console noise from an aborted route): Retry resends the kept message.
   await page.evaluate(() => {
     const real = window.fetch;
-    window.__atlas = { aborted: false, sent: 0 };
+    window.__atlas = { mode: 'offline', aborted: false, sent: 0, calls: 0 };
     window.fetch = (url, init) => {
       if (!String(url).includes('/api/atlas') || !String(init?.body ?? '').includes('"chat"')) return real(url, init);
+      window.__atlas.calls++;
+      if (window.__atlas.mode === 'offline') return Promise.reject(new TypeError('Failed to fetch'));
       const enc = new TextEncoder();
       const body = new ReadableStream({
         start(c) {
@@ -1126,12 +1133,23 @@ await flow('atlas-worst-case', browser, {}, async (page) => {
       return Promise.resolve(new Response(body, { headers: { 'content-type': 'application/x-ndjson' } }));
     };
   });
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByRole('alert').getByText(/Can't reach Atlas/).waitFor();
+  assert((await input.inputValue()) === '', 'composer not cleared after sending');
+  await panel.getByRole('button', { name: 'Retry sending' }).click();
+  await eventually(async () => (await page.evaluate(() => window.__atlas.calls)) === 2, 'Retry did not resend');
+  await panel.getByText('Not sent', { exact: true }).waitFor();
+  await panel.getByRole('button', { name: 'Edit message' }).click();
+  await input.fill('');
+
+  // Stop: Send becomes Stop while a reply streams; Stop aborts the request and keeps what arrived.
+  await page.evaluate(() => (window.__atlas.mode = 'slow'));
   await input.fill('Write me a long essay');
   await panel.getByRole('button', { name: 'Send' }).click();
   await panel.getByText(/word5 /).waitFor();
   assert((await panel.getByRole('status').first().innerText()).includes('Atlas is thinking'), 'no thinking announcement');
   await panel.getByRole('button', { name: 'Stop' }).click();
-  await panel.getByText(/^Stopped\./).waitFor();
+  await panel.getByText(/^Stopped\. Atlas keeps/).waitFor();
   const sentAtStop = await page.evaluate(() => window.__atlas.sent);
   await sleep(400);
   const state = await page.evaluate(() => window.__atlas);

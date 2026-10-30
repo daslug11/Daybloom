@@ -292,12 +292,13 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
               <Bubble role="user" text={turn.message} actions={NO_ACTIONS} />
               <div className="mt-1 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs">
                 <span className="font-semibold text-danger">Not sent</span>
-                <button type="button" className="link inline-flex min-h-8 items-center gap-1" onClick={() => send(turn.message)} disabled={!!aiOff}>
+                <button type="button" className="link inline-flex min-h-8 items-center gap-1" onClick={() => send(turn.message)} disabled={!!aiOff} aria-label="Retry sending">
                   <RotateCcw size={12} aria-hidden /> Retry
                 </button>
                 <button
                   type="button"
                   className="link min-h-8"
+                  aria-label="Edit message"
                   onClick={() => {
                     setInput(turn.message);
                     setTurn(null);
