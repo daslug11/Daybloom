@@ -25,7 +25,7 @@ const THEMES = opt('themes', 'dark,light').split(',');
 const DEVICES = opt('devices', 'desktop,phone').split(',');
 const BASE = process.env.E2E_BASE ?? 'http://localhost:5173';
 const OUT = `test-results/visual/${LABEL}`;
-const CDP_PORT = 9333;
+const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
 const VIEWPORTS = {
   desktop: { viewport: { width: 1440, height: 900 } },
   phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
