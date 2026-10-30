@@ -424,7 +424,7 @@ await flow('pages-smoke', browser, {}, async (page) => {
 await flow('magic-link-and-email-change', browser, {}, async (page) => {
   const user = await makeUser('Jo');
   await page.goto(`${BASE}/login`);
-  await page.getByRole('tab', { name: 'Email me a link' }).click();
+  await page.getByRole('button', { name: 'Email me a link' }).click();
   await page.getByLabel('Email').fill(user.email);
   await page.getByRole('button', { name: 'Send me a sign-in link' }).click();
   await page.getByText('Check your email').waitFor();
@@ -508,8 +508,9 @@ await flow('admin', browser, {}, async (page) => {
   await page.getByLabel('User email').fill(target.email);
   await page.getByRole('button', { name: 'Find' }).click();
   await page.getByPlaceholder(/Default/).fill('3');
-  await page.getByLabel('Block AI').check();
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('switch', { name: 'Block AI' }).click();
+  // Turning the block on relabels Save so the consequence is explicit.
+  await page.getByRole('button', { name: 'Block user' }).click();
   await page.getByText(/Saved for/).waitFor();
   const { data: o } = await admin.from('ai_overrides').select('*').eq('user_id', target.id).single();
   assert(o.daily_limit === 3 && o.blocked, `override not saved: ${JSON.stringify(o)}`);
