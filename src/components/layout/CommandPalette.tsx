@@ -102,7 +102,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     onClose();
     c.run();
   };
-  let lastGroup = '';
+  // Sections in first-seen order; each option keeps its index in the flat list (for aria-activedescendant).
+  const groups: { name: string; items: { c: Command; i: number }[] }[] = [];
+  commands.forEach((c, i) => {
+    const g = groups[groups.length - 1];
+    if (g?.name === c.group) g.items.push({ c, i });
+    else groups.push({ name: c.group, items: [{ c, i }] });
+  });
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[12vh]">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden />
@@ -120,6 +126,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 setActive((a) => Math.max(a - 1, 0));
+              } else if ((e.key === 'Home' || e.key === 'End') && (e.ctrlKey || e.metaKey)) {
+                // Ctrl/Cmd+Home/End jump to the first/last option (plain Home/End still move the caret).
+                e.preventDefault();
+                setActive(e.key === 'Home' ? 0 : commands.length - 1);
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 run(commands[active]);
@@ -135,27 +145,35 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           />
           <kbd className="kbd">Esc</kbd>
         </div>
-        <div ref={listRef} id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
-          {commands.map((c, i) => {
-            const header = c.group !== lastGroup ? c.group : null;
-            lastGroup = c.group;
+        {/* Listbox pattern: focus stays in the input and the arrows move aria-activedescendant. Options are never tab stops. */}
+        <div ref={listRef} id="palette-list" role="listbox" aria-label="Commands" className="max-h-[50vh] overflow-y-auto p-2">
+          {groups.map((g) => {
+            const headerId = `palette-group-${g.name.toLowerCase()}`;
             return (
-              <div key={c.id}>
-                {header && <div className="faint px-3 pb-1 pt-3 text-xs font-medium">{header}</div>}
-                <button
-                  id={`palette-${i}`}
-                  role="option"
-                  aria-selected={i === active}
-                  data-index={i}
-                  onMouseMove={() => setActive(i)}
-                  onClick={() => run(c)}
-                  className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm', i === active ? 'bg-ink/[0.06] text-ink' : 'text-ink ')}
-                >
-                  <span className="opacity-70" aria-hidden>
-                    {c.icon}
-                  </span>
-                  <span className="truncate">{c.label}</span>
-                </button>
+              <div key={g.name} role="group" aria-labelledby={headerId}>
+                <div id={headerId} className="faint px-3 pb-1 pt-3 text-xs font-medium">
+                  {g.name}
+                </div>
+                {g.items.map(({ c, i }) => (
+                  <div
+                    key={c.id}
+                    id={`palette-${i}`}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={i === active}
+                    data-index={i}
+                    onMouseMove={() => setActive(i)}
+                    // Keep focus (and the caret) in the search field when an option is clicked.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => run(c)}
+                    className={cn('flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-ink', i === active && 'bg-ink/[0.06]')}
+                  >
+                    <span className="opacity-70" aria-hidden>
+                      {c.icon}
+                    </span>
+                    <span className="truncate">{c.label}</span>
+                  </div>
+                ))}
               </div>
             );
           })}
