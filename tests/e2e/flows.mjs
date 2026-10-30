@@ -1058,13 +1058,16 @@ await flow('harden-a', browser, {}, async (page) => {
   assert((await radios.evaluateAll((els) => els.filter((e) => e.tabIndex === 0).length)) === 1, 'mood picker should have one tab stop');
   await radios.first().focus();
   await page.keyboard.press('ArrowRight');
-  assert((await radios.nth(1).getAttribute('aria-checked')) === 'true', 'ArrowRight did not choose Meh');
+  const checked = (n) => eventually(async () => (await radios.nth(n).getAttribute('aria-checked')) === 'true', `mood ${n + 1} not chosen`);
+  await checked(1);
   assert(await radios.nth(1).evaluate((el) => el === document.activeElement), 'ArrowRight did not move focus');
   await page.keyboard.press('End');
-  assert((await radios.nth(4).getAttribute('aria-checked')) === 'true', 'End did not choose Amazing');
+  await checked(4);
   await page.keyboard.press('Home');
+  await checked(0);
   await page.keyboard.press('ArrowLeft');
-  assert((await radios.nth(4).getAttribute('aria-checked')) === 'true', 'ArrowLeft from the first did not wrap');
+  await checked(4);
+  assert(await radios.nth(4).evaluate((el) => el === document.activeElement), 'ArrowLeft from the first did not wrap focus');
   await eventually(async () => (await admin.from('moods').select('score').eq('user_id', user.id).maybeSingle()).data?.score === 5, 'mood not saved as 5');
   // The note saves while typing and says so.
   await page.getByLabel('A word about today (optional)').fill('Good run this morning');
