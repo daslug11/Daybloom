@@ -3,8 +3,11 @@ import type { ReactNode } from 'react';
 import type { Goal, Milestone } from '../../lib/types';
 import { cn } from '../../lib/utils';
 
+/** Whole percent, rounded down, so it only says 100% once the target is actually reached. */
 export function goalPercent(g: Pick<Goal, 'current' | 'target'>) {
-  return Math.min(100, Math.round((Number(g.current) / Number(g.target)) * 100));
+  const target = Number(g.target);
+  if (!(target > 0)) return 0;
+  return Math.max(0, Math.min(100, Math.floor((Number(g.current) / target) * 100)));
 }
 
 export function goalStep(target: number) {
@@ -34,9 +37,7 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
           {goal.emoji}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug">
-            {goal.title} {goal.emoji} <span className="text-ink ">– {pct}%</span>
-          </h3>
+          <h3 className="font-semibold leading-snug">{goal.title}</h3>
           <p className="muted text-sm">
             {Number(goal.current).toLocaleString()} of {Number(goal.target).toLocaleString()} {goal.unit}
             {goal.due_date && ` · by ${new Date(goal.due_date + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`}
@@ -48,8 +49,21 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
           </button>
         )}
       </div>
-      <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${goal.title} progress`}>
-        <div className={cn('h-full rounded-full transition-[width] duration-500', reached ? 'bg-success' : 'bg-ink')} style={{ width: `${pct}%` }} />
+      <div className="mt-4 flex items-center gap-3">
+        <div
+          className="h-2.5 flex-1 overflow-hidden rounded-full bg-line"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          aria-valuetext={`${pct}% — ${Number(goal.current).toLocaleString()} of ${Number(goal.target).toLocaleString()} ${goal.unit}`.trim()}
+          aria-label={`${goal.title} progress`}
+        >
+          <div className={cn('h-full rounded-full transition-[width] duration-500', reached ? 'bg-success' : 'bg-ink')} style={{ width: `${pct}%` }} />
+        </div>
+        <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums" aria-hidden>
+          {pct}%
+        </span>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="faint text-xs">

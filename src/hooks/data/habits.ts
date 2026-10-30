@@ -1,14 +1,61 @@
-import { useQuery } from '@tanstack/react-query';
-import { addDays } from '../../lib/dates';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { addDays, streak } from '../../lib/dates';
 import { supabase } from '../../lib/supabase';
 import type { Habit, HabitLog } from '../../lib/types';
 import { useUserId } from '../useAuth';
+import { useToast } from '../useToast';
 import { must, tempId, useListMutation } from './cache';
 
 export const habitsKey = (uid: string) => ['habits', uid];
-export const habitLogsKey = (uid: string) => ['habit_logs', uid];
+/** Keyed by day too, so the window moves at midnight. `['habit_logs', uid]` still matches every day for invalidation. */
+export const habitLogsKey = (uid: string, today?: string) => (today ? ['habit_logs', uid, today] : ['habit_logs', uid]);
 /** History shown in grids: the last 12 weeks (+ a little for streaks). */
 export const HISTORY_DAYS = 120;
+/** Older history is fetched in chunks of this many days, only for habits whose streak reaches the edge. */
+const CHUNK_DAYS = 365;
+const MAX_CHUNKS = 10;
+/** Streaks are counted back at most this far; a streak that reaches it is shown as "N+". */
+export const STREAK_LIMIT_DAYS = HISTORY_DAYS + CHUNK_DAYS * MAX_CHUNKS;
+
+/** First day of the current streak, or null when there is none. */
+export function streakStart(days: Set<string>, today: string) {
+  const n = streak(days, today);
+  if (!n) return null;
+  return addDays(days.has(today) ? today : addDays(today, -1), -(n - 1));
+}
+
+/** True when the streak runs all the way back to the fetch limit, so the real number may be higher. */
+export function streakIsCapped(days: Set<string>, today: string) {
+  const start = streakStart(days, today);
+  return !!start && start <= addDays(today, -STREAK_LIMIT_DAYS);
+}
+
+/**
+ * The last HISTORY_DAYS of logs, plus — for any habit whose current streak reaches back to the
+ * edge of what was fetched — older logs, a year at a time, until the streak has a gap.
+ * So streaks aren't silently capped at ~120 days.
+ */
+async function fetchHabitLogs(today: string) {
+  let edge = addDays(today, -HISTORY_DAYS);
+  const logs = must(await supabase.from('habit_logs').select('habit_id, day').gte('day', edge)) as HabitLog[];
+  for (let i = 0; i < MAX_CHUNKS; i++) {
+    const byHabit = new Map<string, Set<string>>();
+    for (const l of logs) {
+      if (!byHabit.has(l.habit_id)) byHabit.set(l.habit_id, new Set());
+      byHabit.get(l.habit_id)!.add(l.day);
+    }
+    const reaching = [...byHabit.entries()].filter(([, days]) => {
+      const start = streakStart(days, today);
+      return !!start && start <= edge;
+    }).map(([id]) => id);
+    if (!reaching.length) break;
+    const from = addDays(edge, -CHUNK_DAYS);
+    const older = must(await supabase.from('habit_logs').select('habit_id, day').in('habit_id', reaching).gte('day', from).lt('day', edge)) as HabitLog[];
+    logs.push(...older);
+    edge = from;
+  }
+  return logs;
+}
 
 export function useHabits() {
   const uid = useUserId();
@@ -22,9 +69,9 @@ export function useHabits() {
 export function useHabitLogs(today: string) {
   const uid = useUserId();
   return useQuery({
-    queryKey: habitLogsKey(uid),
+    queryKey: habitLogsKey(uid, today),
     enabled: !!uid,
-    queryFn: async () => must(await supabase.from('habit_logs').select('habit_id, day').gte('day', addDays(today, -HISTORY_DAYS))) as HabitLog[],
+    queryFn: () => fetchHabitLogs(today),
   });
 }
 
@@ -59,14 +106,32 @@ export function useDeleteHabit() {
   );
 }
 
+/** Tick or untick a day. Optimistic across every cached day-window of logs; rolls back on failure. */
 export function useToggleHabitLog() {
   const uid = useUserId();
-  return useListMutation<{ habit_id: string; day: string; done: boolean }, HabitLog>(
-    habitLogsKey(uid),
-    async ({ habit_id, day, done }) =>
+  const qc = useQueryClient();
+  const toast = useToast();
+  const key = habitLogsKey(uid);
+  const apply = (list: HabitLog[], { habit_id, day, done }: { habit_id: string; day: string; done: boolean }) => {
+    const rest = list.filter((l) => !(l.habit_id === habit_id && l.day === day));
+    return done ? [...rest, { habit_id, day }] : rest;
+  };
+  return useMutation({
+    mutationFn: async ({ habit_id, day, done }: { habit_id: string; day: string; done: boolean }) =>
       done
         ? must(await supabase.from('habit_logs').upsert({ habit_id, day }, { onConflict: 'habit_id,day', ignoreDuplicates: true }).select('habit_id'))
         : must(await supabase.from('habit_logs').delete().eq('habit_id', habit_id).eq('day', day).select('habit_id')),
-    (list, { habit_id, day, done }) => (done ? [...list.filter((l) => !(l.habit_id === habit_id && l.day === day)), { habit_id, day }] : list.filter((l) => !(l.habit_id === habit_id && l.day === day))),
-  );
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueriesData<HabitLog[]>({ queryKey: key });
+      qc.setQueriesData<HabitLog[]>({ queryKey: key }, (list) => (list ? apply(list, vars) : list));
+      return { prev };
+    },
+    onError: (err, _vars, ctx) => {
+      for (const [k, data] of ctx?.prev ?? []) qc.setQueryData(k, data);
+      console.error(err);
+      toast('That change could not be saved. Please try again.');
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+  });
 }
