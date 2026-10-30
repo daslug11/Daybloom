@@ -216,6 +216,14 @@ The audit was done after the critique was written. The detector JSON (`.scratch/
 - **Recommendation:** Done = near-white fill (dark) or near-black (light), with a single neutral grid ramp. Today = an outline in the neutral emphasis. Check-off done state = a solid neutral, or emerald (Done Emerald is the documented "completed" colour). Title = solid colour.
 - **Suggested command:** `/impeccable quieter`
 
+**[P2] Toasts ignore reduced motion**
+- **Location:** `src/hooks/useToast.tsx:44-52` (no `MotionConfig` anywhere in `src/`)
+- **Category:** Accessibility
+- **Impact:** The archive-undo and "Added …" toasts on this surface still rise and scale with reduced motion on, because the global CSS kill (`index.css:32-41`) doesn't reach Framer's JavaScript animations. This breaks PRODUCT.md's "Respects reduced-motion settings".
+- **WCAG:** 2.3.3 Animation from Interactions (AAA); product commitment
+- **Recommendation:** Wrap the app in `<MotionConfig reducedMotion="user">`, or use opacity-only variants when `useReducedMotion()` is true.
+- **Suggested command:** `/impeccable harden`
+
 **[P3] Heading level skip and duplicated emoji**
 - **Location:** `src/components/habits/HabitCard.tsx:35,38-39`
 - **Category:** Accessibility
@@ -273,6 +281,7 @@ Reduced motion: the global rule (`index.css:32-41`) cuts every animation and tra
   {"id":"habits-8","severity":"P2","title":"Violet used for done, today, selected, focus, AI and primary; gradient title and glowing button","fix":"Neutral near-white/near-black done fill and grid ramp, neutral today outline, emerald or neutral check-off done state, solid page title, no glow","command":"/impeccable quieter","files":["src/components/habits/ContributionGrid.tsx:4","src/components/habits/HabitCard.tsx:30","src/components/ui/PageHeader.tsx:8","src/index.css:78"],"source":"both"},
   {"id":"habits-9","severity":"P3","title":"h1 to h3 heading skip; emoji duplicated in button and title (truncates titles on phone)","fix":"Render habit name as h2; drop emoji from the title text","command":"/impeccable polish","files":["src/components/habits/HabitCard.tsx:35","src/components/habits/HabitCard.tsx:38"],"source":"both"},
   {"id":"habits-10","severity":"P3","title":"EmojiPicker options have no selected state or names for assistive tech","fix":"radiogroup/radio with aria-checked and descriptive aria-labels","command":"/impeccable harden","files":["src/components/ui/EmojiPicker.tsx:7"],"source":"audit"},
+  {"id":"habits-12","severity":"P2","title":"Framer toasts (archive undo, Added) ignore prefers-reduced-motion","fix":"Wrap the app in MotionConfig reducedMotion=\"user\" or use opacity-only variants under useReducedMotion","command":"/impeccable harden","files":["src/hooks/useToast.tsx:48"],"source":"audit"},
   {"id":"habits-11","severity":"P3","title":"Grid transition animates the focus ring; emoji hover scale is decorative","fix":"Use transition-colors on grid cells so focus appears instantly; replace hover:scale-110 with a tint","command":"remove-animations","files":["src/components/habits/ContributionGrid.tsx:54","src/components/ui/EmojiPicker.tsx:12"],"source":"audit"}
  ]}
 ```
