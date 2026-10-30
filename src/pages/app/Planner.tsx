@@ -137,6 +137,7 @@ export default function Planner() {
   const [openEvent, setOpenEvent] = useState<SyncedEvent | null>(null);
   /** Repeating-block check-offs in flight: a second tap waits, so a linked goal is never counted twice. */
   const [doneBusy, setDoneBusy] = useState<Set<string>>(() => new Set());
+  const doneBusyRef = useRef(new Set<string>());
   const [newRepeat, setNewRepeat] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -557,18 +558,21 @@ export default function Planner() {
   };
   const toggleRepeatDone = (occ: Occurrence) => {
     const k = repeatKey(occ);
-    if (doneBusy.has(k)) return;
+    // The ref catches a second tap in the same frame, before React has re-rendered.
+    if (doneBusyRef.current.has(k)) return;
+    doneBusyRef.current.add(k);
     setDoneBusy((st) => new Set(st).add(k));
     planActions
       .setDone(occ, !occ.done, plans.find((p) => p.id === occ.plan_id))
       .catch(() => toast('That change could not be saved.'))
-      .finally(() =>
+      .finally(() => {
+        doneBusyRef.current.delete(k);
         setDoneBusy((st) => {
           const n = new Set(st);
           n.delete(k);
           return n;
-        }),
-      );
+        });
+      });
   };
 
   const shift = (dir: number) => setCursor((c) => addDaysKey(c, dir * (view === 'week' ? 7 : 1)));
