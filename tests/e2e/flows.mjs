@@ -471,7 +471,7 @@ await flow('admin', browser, {}, async (page) => {
   assert(res.status === 401, `admin API without login returned ${res.status}`);
   const adminEmail = process.env.E2E_ADMIN_EMAIL;
   if (!adminEmail) return console.log('  (skipped admin UI: set E2E_ADMIN_EMAIL to the dev server ADMIN_EMAIL)');
-  const { data: list } = await admin.auth.admin.listUsers();
+  const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
   const existing = list.users.find((u) => u.email === adminEmail);
   if (existing) await admin.auth.admin.deleteUser(existing.id);
   const { data, error } = await admin.auth.admin.createUser({ email: adminEmail, password: 'bloom-e2e-pass-1', email_confirm: true, user_metadata: { name: 'Boss' } });
@@ -608,7 +608,7 @@ await flow('plans', browser, {}, async (page) => {
   await page.getByRole('heading', { name: 'Planner' }).waitFor();
   await page.getByRole('tab', { name: 'week' }).click();
   const firstBlock = page.getByRole('button', { name: /^Repeating block: / }).first();
-  if (!(await firstBlock.isVisible().catch(() => false))) await page.getByRole('button', { name: 'Next week' }).click();
+  if (!(await firstBlock.isVisible().catch(() => false))) await page.getByRole('button', { name: 'Next week' }).first().click();
   await firstBlock.waitFor();
   await shot(page, 'plans-planner');
   await firstBlock.click();
