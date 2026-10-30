@@ -955,6 +955,41 @@ for (const reduce of [false, true]) {
   });
 }
 
+await flow('mobile-touch', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, async (page) => {
+  const user = await makeUser('Tess');
+  await admin.from('tasks').insert({ user_id: user.id, title: 'Return library books' });
+  await logIn(page, user);
+  // Capture lives in the tab bar; nothing floats over content except the Atlas orb.
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Capture' }).tap();
+  await page.getByRole('dialog', { name: 'Capture' }).waitFor();
+  await page.getByRole('button', { name: 'Close' }).first().tap();
+  assert(!(await page.getByRole('button', { name: 'Capture (N)' }).isVisible()), 'floating capture button shown on a phone');
+  // Small controls get a 44px hit area on touch screens.
+  await page.goto(`${BASE}/app/tasks`);
+  const circle = page.getByRole('button', { name: /Complete “Return library books”/ });
+  await circle.waitFor();
+  const hit = await circle.evaluate((el) => {
+    const a = getComputedStyle(el, '::after');
+    const r = el.getBoundingClientRect();
+    return { h: r.height - parseFloat(a.top) - parseFloat(a.bottom), w: r.width - parseFloat(a.left) - parseFloat(a.right) };
+  });
+  assert(hit.h >= 44 && hit.w >= 44, `task circle hit area ${hit.w}x${hit.h}`);
+  // Planner: Unscheduled is folded so the timeline is near the top; it opens on tap.
+  await page.goto(`${BASE}/app/planner`);
+  const toggle = page.getByRole('button', { name: /Unscheduled/ });
+  await toggle.waitFor();
+  assert((await toggle.getAttribute('aria-expanded')) === 'false', 'Unscheduled should start folded on phones');
+  await toggle.tap();
+  await page.getByText('Return library books').first().waitFor();
+  // No sideways scrolling on any main page.
+  for (const path of ['', '/brain-dump', '/tasks', '/planner', '/habits', '/settings']) {
+    await page.goto(`${BASE}/app${path}`);
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert(over <= 0, `/app${path} scrolls sideways by ${over}px`);
+  }
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

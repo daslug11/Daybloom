@@ -19,15 +19,15 @@ export function PublicHeader() {
             FAQ
           </a>
           {user ? (
-            <Link to="/app" className="btn-primary !px-3.5 !py-2">
+            <Link to="/app" className="btn-primary min-h-11 !px-3.5 !py-2 sm:min-h-10">
               Open Daybloom
             </Link>
           ) : (
             <>
-              <Link to="/login" className="rounded-lg px-3 py-2 font-medium text-ink hover:bg-raised">
+              <Link to="/login" className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 font-medium text-ink hover:bg-raised sm:min-h-10">
                 Log in
               </Link>
-              <Link to="/signup" className="btn-primary !px-3.5 !py-2">
+              <Link to="/signup" className="btn-primary min-h-11 !px-3.5 !py-2 sm:min-h-10">
                 Sign up free
               </Link>
             </>
@@ -62,7 +62,7 @@ export function PublicFooter() {
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       <PublicHeader />
       <main className="flex-1">{children}</main>
       <PublicFooter />

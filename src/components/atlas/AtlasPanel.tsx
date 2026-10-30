@@ -242,7 +242,8 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
             </label>
             <textarea
               id="atlas-input"
-              autoFocus
+              // On touch screens, opening the panel shouldn't throw the keyboard over the conversation.
+              autoFocus={typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches}
               rows={1}
               value={input}
               maxLength={2000}

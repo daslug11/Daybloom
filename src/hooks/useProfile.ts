@@ -65,6 +65,8 @@ export function getStoredTheme(): 'dark' | 'light' {
 
 export function applyTheme(theme: 'dark' | 'light') {
   document.documentElement.classList.toggle('dark', theme === 'dark');
+  // The browser chrome (status bar, address bar) matches the canvas colour.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b0b0c' : '#f3f3f4');
   try {
     localStorage.setItem(THEME_KEY, theme);
   } catch {

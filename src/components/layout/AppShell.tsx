@@ -75,14 +75,14 @@ export function AppShell() {
 
   if (profile.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center">
         <Spinner label="Loading your account" size={24} />
       </div>
     );
   }
   if (profile.error) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center">
         <ErrorState message="Couldn't load your account. Check your connection." onRetry={() => profile.refetch()} />
       </div>
     );
@@ -104,7 +104,7 @@ export function AppShell() {
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:shadow">
           Skip to content
         </a>
-        <div className="flex min-h-screen">
+        <div className="flex min-h-dvh">
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBar />
@@ -121,12 +121,12 @@ export function AppShell() {
             </main>
           </div>
         </div>
-        <MobileNav />
+        <MobileNav onCapture={() => openCapture()} />
 
-        <div className="fixed bottom-20 right-4 z-30 flex flex-col items-end gap-3 md:bottom-6 md:right-6">
+        <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex flex-col items-end gap-3 md:bottom-6 md:right-6">
           <button
             onClick={() => openCapture()}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-ink shadow-pop transition-colors duration-fast hover:bg-accent/90 focus-visible:ring-offset-2"
+            className="hidden h-12 w-12 items-center justify-center rounded-full md:flex bg-accent text-accent-ink shadow-pop transition-colors duration-fast hover:bg-accent/90 focus-visible:ring-offset-2"
             aria-label="Capture (N)"
             data-tour="capture"
             title="Capture a note or task (N)"

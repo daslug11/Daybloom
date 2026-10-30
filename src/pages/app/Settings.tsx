@@ -264,10 +264,10 @@ export default function Settings() {
             </div>
           </Row>
           <Row label={`Speed · ${(voice.rate ?? 1).toFixed(2)}×`} htmlFor="s-rate">
-            <input id="s-rate" type="range" min={0.7} max={1.4} step={0.05} value={voice.rate ?? 1} onChange={(e) => setVoice({ rate: Number(e.target.value) })} className="w-48 accent-ink" />
+            <input id="s-rate" type="range" min={0.7} max={1.4} step={0.05} value={voice.rate ?? 1} onChange={(e) => setVoice({ rate: Number(e.target.value) })} className="h-6 w-full accent-ink sm:w-48" />
           </Row>
           <Row label={`Pitch · ${(voice.pitch ?? 0.85).toFixed(2)}`} htmlFor="s-pitch">
-            <input id="s-pitch" type="range" min={0.5} max={1.5} step={0.05} value={voice.pitch ?? 0.85} onChange={(e) => setVoice({ pitch: Number(e.target.value) })} className="w-48 accent-ink" />
+            <input id="s-pitch" type="range" min={0.5} max={1.5} step={0.05} value={voice.pitch ?? 0.85} onChange={(e) => setVoice({ pitch: Number(e.target.value) })} className="h-6 w-full accent-ink sm:w-48" />
           </Row>
           <Row label="Speak replies aloud" hint="In voice mode, Atlas reads its answers out.">
             <Switch label="Speak replies aloud" checked={voice.speak !== false} onChange={(v) => setVoice({ speak: v })} />

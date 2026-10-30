@@ -11,8 +11,9 @@ export function ProgressRing({ progress, size = 260, stroke = 12, children }: Pr
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90" aria-hidden>
+    // Scales down on narrow screens (320px phones) instead of overflowing its card.
+    <div className="relative aspect-square" style={{ width: `min(${size}px, 100%)` }}>
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90" aria-hidden>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-line" />
         <circle
           cx={size / 2}

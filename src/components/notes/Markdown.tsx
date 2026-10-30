@@ -76,7 +76,8 @@ export function Markdown({ text, className, onToggleCheck, maxLines }: Props) {
         list = { type: 'ul', items: [] };
       }
       list!.items.push(
-        <li key={idx} className="-ml-5 flex list-none items-start gap-2">
+        <li key={idx} className="-ml-5 list-none">
+          <label className="flex cursor-pointer items-start gap-2 py-0.5 [@media(pointer:coarse)]:py-2" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             checked={done}
@@ -87,6 +88,7 @@ export function Markdown({ text, className, onToggleCheck, maxLines }: Props) {
             aria-label={m[3]}
           />
           <span className={cn(done && 'faint line-through')}>{inline(m[3], `l${idx}`)}</span>
+          </label>
         </li>,
       );
     } else if ((m = line.match(BULLET)) || (m = line.match(NUMBERED))) {

@@ -174,7 +174,7 @@ export function TaskEditor({ task, onClose }: Props) {
               <li key={s.id} className="flex items-center gap-2 text-sm">
                 <button
                   onClick={() => update.mutate({ id: s.id, patch: { done: !s.done, completed_at: s.done ? null : new Date().toISOString() } })}
-                  className={cn('flex h-4 w-4 items-center justify-center rounded border', s.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
+                  className={cn('hit flex h-4 w-4 shrink-0 items-center justify-center rounded border', s.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
                   aria-label={s.done ? `Mark step “${s.title}” not done` : `Complete step “${s.title}”`}
                 >
                   {s.done && <Check size={10} strokeWidth={3} />}

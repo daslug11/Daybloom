@@ -37,7 +37,7 @@ export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goal
       <button
         onClick={() => onToggle?.(task)}
         className={cn(
-          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,color,background-color,border-color] duration-press ease-out motion-safe:active:scale-[0.9]',
+          'hit mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,color,background-color,border-color] duration-press ease-out motion-safe:active:scale-[0.9]',
           task.done ? 'border-transparent bg-accent text-accent-ink' : 'border-control hover:border-ink hover:bg-raised',
         )}
         aria-label={task.done ? `Mark “${task.title}” as not done` : `Complete “${task.title}”`}
@@ -81,7 +81,7 @@ export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goal
       {onStar && !task.done && (
         <button
           onClick={() => onStar(task)}
-          className={cn('icon-btn h-8 w-8', starred ? '!text-warning' : 'opacity-60 group-hover:opacity-100 md:opacity-0 md:focus:opacity-100')}
+          className={cn('icon-btn h-8 w-8', starred ? '!text-warning' : 'opacity-60 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:focus-visible:opacity-100')}
           aria-label={starred ? 'Remove from today’s top 3' : 'Add to today’s top 3'}
           aria-pressed={starred}
           title={starred ? 'In today’s top 3' : 'Make it one of today’s top 3'}
