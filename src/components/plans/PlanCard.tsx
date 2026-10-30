@@ -1,16 +1,22 @@
 import { CalendarPlus, CalendarRange, Check, Pencil, Undo2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { sessionLine, weeksLabel } from '../../../server/data/recurrence';
+import { weeksLabel, type PlanSession } from '../../../server/data/recurrence';
 import { usePlanActions, usePlans } from '../../hooks/data/plans';
 import { useAi } from '../../hooks/useAi';
 import { useToast } from '../../hooks/useToast';
 import { parseKey } from '../../lib/dates';
+import { formatMinutes, weekdayShort } from '../../lib/planner';
 import type { Plan } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { AiButton } from '../ui/Ai';
 import { AddPlanDialog } from './AddPlanDialog';
 import { PlanEditor } from './PlanEditor';
+
+/** "Mon 6:00 PM · 45 min · Leg day: squats", with the day and time in the user's locale (like the Planner grid). */
+function sessionText(s: Pick<PlanSession, 'day' | 'start' | 'duration' | 'title' | 'details'>) {
+  return `${weekdayShort(s.day)} ${formatMinutes(s.start)} · ${s.duration} min · ${s.title}${s.details ? `: ${s.details}` : ''}`;
+}
 
 /**
  * A plan Atlas drafted: title, length and every weekly session, with
@@ -63,7 +69,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
         {plan.sessions.map((s, i) => (
           <li key={i} className="flex gap-2">
             <span className={cn('mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full', hud ? 'bg-cyan-300' : 'bg-atlas')} aria-hidden />
-            <span>{sessionLine(s)}</span>
+            <span>{sessionText(s)}</span>
           </li>
         ))}
       </ul>

@@ -19,16 +19,20 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
   const [start, setStart] = useState(occ.start);
   const [duration, setDuration] = useState(occ.duration);
   const [busy, setBusy] = useState(false);
-  const all = plan ? `All “${series?.title ?? occ.title}” sessions in this plan` : 'All repeats';
+  // Checking a session off keeps the dialog open, so it tracks its own copy of "done".
+  const [done, setDone] = useState(occ.done);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const allLabel = plan ? 'all sessions in this plan' : 'all sessions';
   const changed = title.trim() !== occ.title || details.trim() !== occ.details || start !== occ.start || duration !== occ.duration;
   const valid = !!title.trim() && start + duration <= 1440;
 
-  const run = async (fn: () => Promise<unknown>, message: string) => {
+  const run = async (fn: () => Promise<unknown>, message: string, keepOpen = false) => {
     setBusy(true);
     try {
       await fn();
       toast(message);
-      onClose();
+      if (keepOpen) setBusy(false);
+      else onClose();
     } catch {
       toast('That change could not be saved. Please try again.');
       setBusy(false);
@@ -48,8 +52,18 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
         </>
       }
     >
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" className="accent-ink" checked={occ.done} disabled={busy} onChange={(e) => run(() => actions.setDone(occ, e.target.checked, plan), e.target.checked ? 'Session done ✓' : 'Marked not done')} />
+      <label className="-mx-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-control px-2 text-sm hover:bg-raised">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-ink"
+          checked={done}
+          disabled={busy}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setDone(next);
+            void run(() => actions.setDone({ ...occ, done: !next }, next, plan).catch((err) => (setDone(!next), Promise.reject(err))), next ? 'Session done ✓' : 'Marked not done', true);
+          }}
+        />
         Done
       </label>
 
@@ -92,9 +106,8 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
             </select>
           </label>
         </div>
-        {!valid && <p className="text-sm text-danger">Needs a title, and must end by midnight.</p>}
+        {!valid && <p className="text-sm text-danger">{!title.trim() ? 'Give the session a title.' : 'The session has to end by midnight. Pick an earlier time or a shorter length.'}</p>}
         <div>
-          <p className="label">Save changes for</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -104,7 +117,7 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
                 run(() => actions.editOccurrence(occ, { title: title.trim(), details: details.trim(), start_min: start, duration_min: duration }), 'Changed this session only')
               }
             >
-              This one only
+              Save for this session
             </button>
             <button
               type="button"
@@ -114,7 +127,7 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
                 run(() => actions.editSeries(occ.series_id, { title: title.trim(), details: details.trim(), start_min: start, duration_min: duration }), 'Changed every session')
               }
             >
-              {all}
+              Save for {allLabel}
             </button>
           </div>
         </div>
@@ -124,19 +137,29 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
         <p className="label">Delete</p>
         <div className="flex flex-wrap gap-2">
           <button className="btn-ghost !py-2 text-danger" disabled={busy} onClick={() => run(() => actions.editOccurrence(occ, { skipped: true }), 'Removed this session')}>
-            This one only
+            Delete this session
           </button>
-          <button
-            className="btn-danger !py-2"
-            disabled={busy}
-            onClick={() => {
-              if (window.confirm(`Delete every session of “${series?.title ?? occ.title}”? Checked-off history for it goes too.`)) void run(() => actions.deleteSeries(occ.series_id), 'Deleted the repeating block');
-            }}
-          >
-            {all}
+          <button className="btn-danger !py-2" disabled={busy} onClick={() => setConfirmDelete(true)}>
+            Delete {allLabel}
           </button>
         </div>
       </div>
+
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title={`Delete every session of “${series?.title ?? occ.title}”?`}
+        description="Its checked-off history goes too. This can’t be undone."
+      >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </button>
+          <button className="btn-danger" disabled={busy} onClick={() => run(() => actions.deleteSeries(occ.series_id), 'Deleted the repeating block')}>
+            Delete {allLabel}
+          </button>
+        </div>
+      </Modal>
     </Modal>
   );
 }

@@ -614,7 +614,7 @@ await flow('plans', browser, {}, async (page) => {
   await firstBlock.click();
   const occDialog = page.getByRole('dialog').filter({ hasText: 'repeats weekly' });
   await occDialog.getByLabel('Title').fill('Intervals (outdoors)');
-  await occDialog.getByRole('button', { name: 'This one only' }).first().click();
+  await occDialog.getByRole('button', { name: 'Save for this session' }).click();
   await page.getByText('Changed this session only').waitFor();
   const { data: edited } = await admin.from('series_occurrences').select('title').eq('user_id', user.id).not('title', 'is', null);
   assert(edited.length === 1 && edited[0].title === 'Intervals (outdoors)', 'this-one-only edit not saved');
@@ -716,6 +716,53 @@ await flow('overlays', browser, {}, async (page) => {
   assert(await panel.isVisible(), 'Escape in the palette also closed Atlas');
   await page.keyboard.press('Escape');
   await panel.waitFor({ state: 'detached' });
+});
+
+await flow('planner-keyboard', browser, {}, async (page) => {
+  const user = await makeUser('Kay');
+  await admin.from('tasks').insert({ user_id: user.id, title: 'Read chapter 4', estimate_min: 60 });
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('heading', { name: 'Planner' }).waitFor();
+  await page.getByRole('tab', { name: 'day' }).click();
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '');
+  // Schedule with the keyboard: from the quick-add field, Tab to the task, then to its clock button.
+  await page.getByPlaceholder(/Add…/).focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert((await focused()).includes('Pick a time for “Read chapter 4”'), `expected the clock button, focus is on ${await focused()}`);
+  await page.keyboard.press('Enter');
+  const dlg = page.getByRole('dialog', { name: 'Schedule task' });
+  await dlg.waitFor();
+  // Start has focus (the day defaults to the one on screen).
+  await page.keyboard.type('1000A');
+  await page.keyboard.press('Enter');
+  await dlg.waitFor({ state: 'detached' });
+  await page.getByText(/Scheduled for .*10:00/).waitFor();
+  const row = async () => (await admin.from('tasks').select('sched_date, sched_start, sched_duration').eq('user_id', user.id).single()).data;
+  await eventually(async () => (await row()).sched_start === 600, 'keyboard scheduling did not save 10:00');
+  assert((await row()).sched_duration === 60, `duration ${(await row()).sched_duration}`);
+  // Focus lands on the new block: ↓ moves it 15 minutes, Shift+↓ makes it 15 minutes longer.
+  await eventually(async () => (await focused()).startsWith('Task block: Read chapter 4'), 'focus did not move to the new block');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.locator('[role="status"]').filter({ hasText: /Length 1h 15m/ }).waitFor();
+  await eventually(async () => {
+    const r = await row();
+    return r.sched_start === 615 && r.sched_duration === 75;
+  }, 'keyboard nudge was not saved');
+  // Escape undoes a nudge that hasn't been saved yet.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Escape');
+  await sleep(1000);
+  assert((await row()).sched_start === 615, 'Escape did not undo the nudge');
+  // Enter opens the block's time; Escape closes it and focus returns to the block.
+  await page.keyboard.press('Enter');
+  await page.getByRole('dialog', { name: 'Change time' }).waitFor();
+  await shot(page, 'planner-keyboard');
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: 'Change time' }).waitFor({ state: 'detached' });
+  assert((await focused()).startsWith('Task block: Read chapter 4'), `focus after closing: ${await focused()}`);
 });
 
 await browser.close();

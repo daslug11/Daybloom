@@ -91,3 +91,16 @@ export function looksLikeFeed(input: string) {
     (url.hostname.endsWith('icloud.com') && path.includes('/published/'))
   );
 }
+
+/** A starting name for a pasted link ("Google Calendar", "timetable.uni.edu"), so the URL can come first. */
+export function suggestCalendarName(input: string): string {
+  const url = parseCalendarUrl(input);
+  if (!url) return '';
+  const type = detectCalendarType(input);
+  if (type === 'google') return 'Google Calendar';
+  if (type === 'outlook') return 'Outlook calendar';
+  if (type === 'apple') return 'iCloud calendar';
+  if (type === 'notion') return 'Notion calendar';
+  if (type === 'calendly') return 'Calendly';
+  return url.hostname.replace(/^www\./, '');
+}

@@ -1,7 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Copy, ExternalLink, Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, Copy, ExternalLink, Eye, EyeOff, FolderInput, GripVertical, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { calendarTile, detectCalendarType, isGoogleEmbed } from '../../lib/calendars';
+import { Link } from 'react-router-dom';
+import { calendarTile, detectCalendarType, isGoogleEmbed, looksLikeFeed } from '../../lib/calendars';
 import type { FeedStatus } from '../../hooks/useCalendarSync';
 import type { CalendarLink } from '../../lib/types';
 import { cn } from '../../lib/utils';
@@ -19,6 +20,11 @@ interface Props {
   onEdit: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  /** Keyboard and touch equivalents of dragging; undefined when the card is already at that end. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  /** Undefined when there are no groups to move to. */
+  onMoveToGroup?: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   onDragOver: () => void;
@@ -39,6 +45,9 @@ export function CalendarCard(p: Props) {
   const reduce = useReducedMotion();
   const type = detectCalendarType(c.url);
   const embeddable = isGoogleEmbed(c.url);
+  // Opening a raw .ics/webcal feed just downloads a file, so feeds open in the Planner instead.
+  const feed = looksLikeFeed(c.url);
+  const primary = 'mr-auto inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-raised';
 
   const action = 'icon-btn h-8 w-8';
 
@@ -49,6 +58,7 @@ export function CalendarCard(p: Props) {
       animate={{ opacity: p.dragging ? 0.4 : 1 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
       className={cn(preview && 'sm:col-span-2')}
+      data-calendar-id={c.id}
     >
       {p.dropBefore && <div className="mb-2 h-0.5 rounded-full bg-ink" />}
       <div
@@ -93,9 +103,19 @@ export function CalendarCard(p: Props) {
         </div>
 
         <div className="relative mt-auto flex flex-wrap items-center gap-0.5 border-t border-line px-3 py-1.5">
-          <a href={c.url} target="_blank" rel="noopener noreferrer" className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-raised">
-            <ExternalLink size={14} /> Open
-          </a>
+          {feed && c.sync ? (
+            <Link to="/app/planner" className={primary}>
+              <CalendarDays size={14} aria-hidden /> View in Planner
+            </Link>
+          ) : feed ? (
+            <button className={primary} onClick={p.onCopy}>
+              <Copy size={14} aria-hidden /> Copy link
+            </button>
+          ) : (
+            <a href={c.url} target="_blank" rel="noopener noreferrer" className={primary}>
+              <ExternalLink size={14} aria-hidden /> Open<span className="sr-only"> {c.name} (opens in a new tab)</span>
+            </a>
+          )}
           {embeddable && (
             <button className={cn(action, preview && '!text-ink')} onClick={() => setPreview((v) => !v)} title={preview ? 'Hide preview' : 'Preview'} aria-label={preview ? 'Hide preview' : 'Preview'}>
               {preview ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -104,14 +124,28 @@ export function CalendarCard(p: Props) {
           <Menu label={`More actions for ${c.name}`} trigger={<MoreHorizontal size={15} />}>
             {(close) => (
               <>
-                <MenuItem onClick={() => (close(), p.onCopy())}>
-                  <Copy size={14} aria-hidden /> Copy link
-                </MenuItem>
+                {/* An unsynced feed already has Copy link as its main action. */}
+                {!(feed && !c.sync) && (
+                  <MenuItem onClick={() => (close(), p.onCopy())}>
+                    <Copy size={14} aria-hidden /> Copy link
+                  </MenuItem>
+                )}
                 <MenuItem onClick={() => (close(), p.onEdit())}>
                   <Pencil size={14} aria-hidden /> Edit
                 </MenuItem>
                 <MenuItem onClick={() => (close(), p.onTogglePin())}>
                   <Star size={14} aria-hidden /> {c.pinned ? 'Unpin' : 'Pin to top'}
+                </MenuItem>
+                {p.onMoveToGroup && (
+                  <MenuItem onClick={() => (close(), p.onMoveToGroup?.())}>
+                    <FolderInput size={14} aria-hidden /> Move to group…
+                  </MenuItem>
+                )}
+                <MenuItem disabled={!p.onMoveUp} onClick={() => (close(), p.onMoveUp?.())}>
+                  <ArrowUp size={14} aria-hidden /> Move up
+                </MenuItem>
+                <MenuItem disabled={!p.onMoveDown} onClick={() => (close(), p.onMoveDown?.())}>
+                  <ArrowDown size={14} aria-hidden /> Move down
                 </MenuItem>
                 <MenuItem danger onClick={() => (close(), p.onDelete())}>
                   <Trash2 size={14} aria-hidden /> Delete
