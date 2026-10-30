@@ -237,6 +237,29 @@ await flow('brain-dump', browser, {}, async (page) => {
   await page.goto(`${BASE}/app/tasks`);
   await page.getByText('Buy candles for the party').first().waitFor();
   assert(first, 'noop');
+  // Capture drafts survive a backdrop tap and Escape until saved (brain-dump-2).
+  await page.goto(`${BASE}/app/brain-dump`);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  await page.keyboard.press('n');
+  const cap = page.getByRole('dialog', { name: 'Capture' });
+  await page.locator('#capture-text').fill('Half a thought');
+  await page.mouse.click(5, 5);
+  await sleep(200);
+  assert(await cap.isVisible(), 'a backdrop tap closed a capture with unsaved text');
+  await page.keyboard.press('Escape');
+  await cap.waitFor({ state: 'detached' });
+  await page.keyboard.press('n');
+  await cap.waitFor();
+  assert((await page.locator('#capture-text').inputValue()) === 'Half a thought', 'capture draft was lost');
+  await page.keyboard.press('Control+Enter');
+  await cap.waitFor({ state: 'detached' });
+  // Process inbox by keyboard: 4 keeps it as an idea, with an Undo toast, and ends at Inbox zero (brain-dump-3).
+  await page.goto(`${BASE}/app/brain-dump?process=1`);
+  const proc2 = page.getByRole('dialog', { name: 'Process inbox' });
+  await proc2.getByText('Half a thought').waitFor();
+  await page.keyboard.press('4');
+  await page.locator('[role="status"][aria-live="polite"]').getByText('Kept as an idea').waitFor();
+  await proc2.getByText('Inbox zero').waitFor();
 });
 
 await flow('atlas', browser, {}, async (page) => {
@@ -705,6 +728,13 @@ await flow('overlays', browser, {}, async (page) => {
   await page.keyboard.press('Escape');
   await editor.waitFor({ state: 'detached' });
   await page.getByText('Draft the history essay').first().waitFor();
+  // The editor saves automatically: tags typed and then Escape are kept (tasks-2).
+  await page.getByRole('button', { name: 'Open task Draft the history essay' }).click();
+  await editor.waitFor();
+  await editor.locator('input[placeholder="work, errands"]').fill('essay, history');
+  await page.keyboard.press('Escape');
+  await editor.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '#essay' }).waitFor();
   await page.keyboard.press('Control+j');
   const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
   await panel.waitFor();

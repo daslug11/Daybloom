@@ -80,6 +80,23 @@ export function minutesFromTime(time: string) {
   return h * 60 + m;
 }
 
+/**
+ * The Planner block a quick add will create: a date and a time block the time, snapped to
+ * 15 minutes (an hour unless a length was given). `null` when nothing goes on the Planner.
+ */
+export function plannerBlock(p: Pick<ParsedTask, 'due' | 'time' | 'duration'>): { date: string; start: number; duration: number } | null {
+  if (!p.due || !p.time) return null;
+  const start = Math.floor(minutesFromTime(p.time) / 15) * 15;
+  return { date: p.due, start, duration: Math.max(15, Math.min(Math.round((p.duration ?? 60) / 15) * 15, 24 * 60 - start)) };
+}
+
+/** "14:00–15:00", for saying exactly which time a block takes. */
+export function blockRange(block: { start: number; duration: number }) {
+  const hhmm = (m: number) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+  const end = block.start + block.duration;
+  return `${hhmm(block.start)}–${end >= 24 * 60 ? '24:00' : hhmm(end)}`;
+}
+
 /** Turns a parse result into a new task row. A date + time also puts it on the Planner. */
 export function taskFromParsed(p: ParsedTask, fallbackTitle: string, extra: Partial<NewTask> = {}): NewTask {
   const task: NewTask = { title: (p.title || fallbackTitle.trim()).slice(0, 300), ...extra };
@@ -87,11 +104,11 @@ export function taskFromParsed(p: ParsedTask, fallbackTitle: string, extra: Part
   if (p.priority) task.priority = p.priority;
   if (p.due) task.due_date = p.due;
   if (p.time) task.due_time = p.time;
-  if (p.due && p.time) {
-    const start = Math.floor(minutesFromTime(p.time) / 15) * 15;
-    task.sched_date = p.due;
-    task.sched_start = start;
-    task.sched_duration = Math.max(15, Math.min(Math.round((p.duration ?? 60) / 15) * 15, 24 * 60 - start));
+  const block = plannerBlock(p);
+  if (block) {
+    task.sched_date = block.date;
+    task.sched_start = block.start;
+    task.sched_duration = block.duration;
   } else if (p.duration) {
     task.estimate_min = p.duration;
   }
