@@ -8,8 +8,10 @@ import { Logo } from './Logo';
 
 const KEY = 'daybloom:sidebar-collapsed';
 
+/** Notes waiting in the inbox; `null` when they couldn't be loaded (shown as '—', never as 0). */
 export function useInboxCount() {
-  const { data } = useNotes();
+  const { data, isError } = useNotes();
+  if (isError && !data) return null;
   return data?.filter((n) => n.state === 'inbox').length ?? 0;
 }
 
@@ -58,12 +60,10 @@ export function Sidebar() {
           <NavLink key={to} to={to} end={to === '/app'} className={linkClass} title={collapsed ? label : undefined} data-tour={`nav-${to.split('/').pop()}`}>
             <Icon size={18} className="shrink-0" aria-hidden />
             {!collapsed && <span className="truncate">{label}</span>}
-            {to === '/app/brain-dump' && inbox > 0 && (
-              <span
-                className={cn('badge', collapsed ? 'absolute right-1.5 top-1' : 'ml-auto')}
-                aria-label={`${inbox} in inbox`}
-              >
-                {inbox}
+            {to === '/app/brain-dump' && inbox !== 0 && (
+              <span className={cn('badge', collapsed ? 'absolute right-1.5 top-1' : 'ml-auto')} title={inbox === null ? 'Inbox count couldn’t be loaded' : undefined}>
+                <span aria-hidden>{inbox ?? '—'}</span>
+                <span className="sr-only">{inbox === null ? ', inbox count unavailable' : `, ${inbox} in inbox`}</span>
               </span>
             )}
           </NavLink>

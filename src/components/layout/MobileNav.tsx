@@ -25,7 +25,12 @@ export function MobileNav() {
             <NavLink key={to} to={to} end={to === '/app'} className={tab}>
               <Icon size={20} aria-hidden />
               <span className="max-w-full truncate">{label === 'Dashboard' ? 'Today' : label}</span>
-              {to === '/app/brain-dump' && inbox > 0 && <span className="badge absolute right-[18%] top-0.5">{inbox}</span>}
+              {to === '/app/brain-dump' && inbox !== 0 && (
+                <span className="badge absolute right-[18%] top-0.5">
+                  <span aria-hidden>{inbox ?? '—'}</span>
+                  <span className="sr-only">{inbox === null ? ', inbox count unavailable' : `, ${inbox} in inbox`}</span>
+                </span>
+              )}
             </NavLink>
           ))}
           <button className={tab({ isActive: inMore })} onClick={() => setMore(true)} aria-haspopup="dialog">
