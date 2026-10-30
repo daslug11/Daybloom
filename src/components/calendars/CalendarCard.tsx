@@ -99,7 +99,7 @@ export function CalendarCard(p: Props) {
         </div>
 
         <div className="relative">
-          <SyncRow enabled={!!c.sync} status={p.syncStatus} onToggle={p.onToggleSync} />
+          <SyncRow id={c.id} name={c.name} enabled={!!c.sync} status={p.syncStatus} onToggle={p.onToggleSync} />
         </div>
 
         <div className="relative mt-auto flex flex-wrap items-center gap-0.5 border-t border-line px-3 py-1.5">
