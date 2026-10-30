@@ -1,6 +1,6 @@
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { CALENDAR_EMOJIS, detectCalendarType, calendarTile, isGoogleEmbed, looksLikeFeed, validateCalendarUrl } from '../../lib/calendars';
+import { CALENDAR_EMOJIS, calendarColor, detectCalendarType, calendarTile, isGoogleEmbed, looksLikeFeed, suggestCalendarName, validateCalendarUrl } from '../../lib/calendars';
 import type { CalendarGroup, CalendarLink } from '../../lib/types';
 import type { CalendarDraft } from '../../hooks/data/calendars';
 import { EmojiPicker } from '../ui/EmojiPicker';
@@ -26,12 +26,15 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
   const [touched, setTouched] = useState(false);
   /** Until the user flips the switch, sync follows "does this URL look like a feed?". */
   const [syncTouched, setSyncTouched] = useState(false);
+  /** Until the user types a name, it follows the link ("Google Calendar", the host name…). */
+  const [nameTouched, setNameTouched] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setTouched(false);
     setSyncTouched(!!initial);
+    setNameTouched(!!initial);
     setShowHelp(false);
     setDraft(
       initial
@@ -53,7 +56,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={initial ? 'Edit calendar ✏️' : 'Add calendar 📅'}>
+    <Modal open={open} onClose={onClose} title={initial ? 'Edit calendar' : 'Add calendar'}>
       <form onSubmit={submit} className="space-y-5" noValidate>
         {/* Live preview */}
         <div className="flex items-center gap-3 overflow-hidden rounded-2xl border border-line bg-surface">
@@ -67,30 +70,24 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
         </div>
 
         <div>
-          <label className="label" htmlFor="cal-name">Name</label>
-          <input
-            id="cal-name"
-            autoFocus
-            className="input"
-            placeholder="e.g. Team standups"
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            aria-invalid={nameError}
-          />
-          {nameError && <p className="mt-1.5 text-xs text-danger">Give it a name so future-you knows what it is ✍️</p>}
-        </div>
-
-        <div>
           <div className="mb-1.5 flex items-center justify-between gap-2">
-            <label className="label !mb-0" htmlFor="cal-url">URL</label>
+            <label className="label !mb-0" htmlFor="cal-url">Link</label>
             {draft.url.trim() && !urlError && <TypeBadge type={type} />}
           </div>
           <input
             id="cal-url"
-            className={`input font-mono text-xs ${showError ? '!border-danger !ring-danger/30' : ''}`}
-            placeholder="https://calendar.google.com/calendar/embed?src=…"
+            autoFocus
+            className={`input font-mono text-base sm:text-xs ${showError ? '!border-danger !ring-danger/30' : ''}`}
+            placeholder="webcal://… or https://…/basic.ics"
             value={draft.url}
-            onChange={(e) => setDraft({ ...draft, url: e.target.value, sync: syncTouched ? draft.sync : looksLikeFeed(e.target.value) })}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                url: e.target.value,
+                name: nameTouched ? draft.name : suggestCalendarName(e.target.value),
+                sync: syncTouched ? draft.sync : looksLikeFeed(e.target.value),
+              })
+            }
             onBlur={() => draft.url && setTouched(true)}
             aria-invalid={showError}
             aria-describedby="cal-url-help"
@@ -103,10 +100,26 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
           ) : (
             <p id="cal-url-help" className="muted mt-1.5 text-xs">
               {isGoogleEmbed(draft.url)
-                ? '✨ Google embed link detected — you can preview it right in the card.'
-                : 'Google, Outlook, iCloud, Notion, Calendly, .ics/webcal feeds — anything with a link.'}
+                ? 'Google embed link: you can preview it in the card, but it can’t sync events. For that, use the secret iCal address.'
+                : 'To see its events in your Planner, paste the calendar’s secret ICS (iCal) address. Any other calendar link works as a shortcut.'}
             </p>
           )}
+        </div>
+
+        <div>
+          <label className="label" htmlFor="cal-name">Name</label>
+          <input
+            id="cal-name"
+            className="input"
+            placeholder="e.g. Lecture timetable"
+            value={draft.name}
+            onChange={(e) => {
+              setNameTouched(true);
+              setDraft({ ...draft, name: e.target.value });
+            }}
+            aria-invalid={nameError}
+          />
+          {nameError && <p className="mt-1.5 text-xs text-danger">Give the calendar a name.</p>}
         </div>
 
         <div className="rounded-2xl border border-line bg-surface p-3">
@@ -139,15 +152,26 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
           )}
         </div>
 
-        <div>
-          <span className="label">Emoji</span>
-          <EmojiPicker options={CALENDAR_EMOJIS} value={draft.emoji} onChange={(emoji) => setDraft({ ...draft, emoji })} />
-        </div>
-
-        <div>
-          <span className="label">Color</span>
-          <ColorSwatches value={draft.color} onChange={(color) => setDraft({ ...draft, color })} />
-        </div>
+        <details className="group rounded-2xl border border-line">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-2xl px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            Appearance
+            <span className="muted ml-auto flex items-center gap-2 font-normal">
+              <span aria-hidden>{draft.emoji}</span>
+              <span className="h-3.5 w-3.5 rounded-full" style={{ background: calendarColor(draft.color) }} aria-hidden />
+              <ChevronDown size={16} className="transition-transform duration-fast ease-out group-open:rotate-180" aria-hidden />
+            </span>
+          </summary>
+          <div className="space-y-4 border-t border-line p-3">
+            <div>
+              <span className="label">Emoji</span>
+              <EmojiPicker options={CALENDAR_EMOJIS} value={draft.emoji} onChange={(emoji) => setDraft({ ...draft, emoji })} />
+            </div>
+            <div>
+              <span className="label">Colour</span>
+              <ColorSwatches value={draft.color} onChange={(color) => setDraft({ ...draft, color })} />
+            </div>
+          </div>
+        </details>
 
         <div>
           <label className="label" htmlFor="cal-group">Group</label>
@@ -165,7 +189,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
         </div>
 
         <button className="btn-primary w-full" type="submit">
-          {initial ? 'Save changes' : 'Add calendar'} {draft.emoji}
+          {initial ? 'Save changes' : 'Add calendar'}
         </button>
       </form>
     </Modal>

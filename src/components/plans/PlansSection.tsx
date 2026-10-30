@@ -152,23 +152,26 @@ function PlanProgress({ plan, series, rows }: { plan: Plan; series: BlockSeries[
           <ChevronRight size={14} />
         </button>
       </div>
-      <ul className="mt-1 space-y-1">
+      <ul className="mt-1">
         {thisWeek.map((o) => (
-          <li key={`${o.series_id}:${o.day}`} className={cn('flex items-center gap-2 text-sm', o.skipped && 'faint')}>
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-ink"
-              checked={o.done}
-              disabled={busy || o.skipped || `${o.series_id}:${o.day}` in pending}
-              onChange={() => void toggle(o)}
-              aria-label={`${o.done ? 'Done' : 'Mark done'}: ${o.title} on ${dayLabel(o.day)}`}
-            />
-            <span className={cn('w-24 shrink-0 text-xs tabular-nums', o.day === today ? 'font-bold text-atlas' : 'muted')}>
-              {dayLabel(o.day)}
-            </span>
-            <span className="faint w-16 shrink-0 text-xs tabular-nums">{formatMinutes(o.start)}</span>
-            <span className={cn('min-w-0 flex-1 truncate', (o.done || o.skipped) && 'line-through')}>{o.title}</span>
-            {o.skipped && <span className="text-xs">skipped</span>}
+          <li key={`${o.series_id}:${o.day}`}>
+            {/* The whole row is the check-off target, not just the 16px box. */}
+            <label className={cn('-mx-2 flex min-h-10 items-center gap-2 rounded-control px-2 text-sm', o.skipped ? 'faint' : 'cursor-pointer hover:bg-raised')}>
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0 accent-ink"
+                checked={o.done}
+                disabled={busy || o.skipped || `${o.series_id}:${o.day}` in pending}
+                onChange={() => void toggle(o)}
+                aria-label={`${o.done ? 'Done' : 'Mark done'}: ${o.title} on ${dayLabel(o.day)}`}
+              />
+              <span className={cn('w-24 shrink-0 text-xs tabular-nums', o.day === today ? 'font-bold text-atlas' : 'muted')}>
+                {dayLabel(o.day)}
+              </span>
+              <span className="faint w-16 shrink-0 text-xs tabular-nums">{formatMinutes(o.start)}</span>
+              <span className={cn('min-w-0 flex-1 truncate', (o.done || o.skipped) && 'line-through')}>{o.title}</span>
+              {o.skipped && <span className="text-xs">skipped</span>}
+            </label>
           </li>
         ))}
         {!thisWeek.length && <li className="muted text-sm">No sessions this week.</li>}

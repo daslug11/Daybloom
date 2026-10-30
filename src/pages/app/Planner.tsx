@@ -1,11 +1,14 @@
-import { Check, ChevronLeft, ChevronRight, GripVertical, Inbox, Lock, MapPin, Repeat, X } from 'lucide-react';
+import { CalendarClock, Check, ChevronLeft, ChevronRight, GripVertical, Inbox, Lock, Repeat, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SyncStatusPill } from '../../components/calendars/SyncStatusPill';
+import { MoveRepeatDialog } from '../../components/plans/MoveRepeatDialog';
 import { OccurrenceDialog } from '../../components/plans/OccurrenceDialog';
 import { PlansSection } from '../../components/plans/PlansSection';
 import { RecurringBlockDialog } from '../../components/plans/RecurringBlockDialog';
+import { ScheduleDialog } from '../../components/plans/ScheduleDialog';
+import { BLOCK_HELP_ID, EventBlock, laneStyle, PX_PER_MIN, RepeatBlock, SLOT, TaskBlock, TimePill } from '../../components/plans/TimelineBlocks';
 import { QuickAddTask } from '../../components/tasks/QuickAddTask';
-import { PRIORITY_STYLES, TaskChips } from '../../components/tasks/TaskChips';
+import { TaskChips } from '../../components/tasks/TaskChips';
 import { AiButton } from '../../components/ui/Ai';
 import { PageHeader } from '../../components/ui/PageHeader';
 import type { Occurrence } from '../../../server/data/recurrence';
@@ -22,52 +25,66 @@ import {
   addDaysKey,
   allDayEventsOn,
   clampStart,
+  dayLabel,
   DAY_MINUTES,
+  edgeScrollSpeed,
   formatMinutes,
   hourLabel,
   layoutLanes,
-  SNAP,
-  snap,
+  moveBlock,
+  nudgeBlock,
+  rangeLabel,
+  resizeBlock,
+  sameBlock,
+  slotFloor,
   timedEventsOn,
   weekOf,
-  type DayEvent,
+  type TimeBlock,
 } from '../../lib/planner';
 import { formatDuration } from '../../lib/quickAdd';
 import type { Task } from '../../lib/types';
 import { cn } from '../../lib/utils';
 
-/** Pixels per 15-minute slot. */
-const SLOT = 14;
-const PX_PER_MIN = SLOT / SNAP;
 const TASK_MIME = 'application/x-daybloom-task';
 const DEFAULT_DURATION = 60;
 const VIEW_KEY = 'daybloom:planner-view';
+/** Touch: how long to hold a block before it lifts (until then the page scrolls as usual). */
+const LONG_PRESS_MS = 350;
+/** Touch: moving further than this before the lift means the person is scrolling. */
+const TOUCH_SLOP = 8;
+/** Mouse/pen: movement before a press becomes a drag (smaller moves are clicks). */
+const DRAG_THRESHOLD = 4;
+/** Keyboard nudges are saved once the keys stop for this long (or on blur). */
+const NUDGE_SAVE_MS = 600;
 
 type View = 'day' | 'week';
-interface Block {
-  date: string;
-  start: number;
-  duration: number;
-}
+type Block = TimeBlock;
 interface Ghost extends Block {
   task_id: string;
   title: string;
   reason: string;
 }
-interface Interaction {
-  taskId: string;
+type DragTarget = { kind: 'task'; id: string } | { kind: 'repeat'; id: string; occ: Occurrence };
+interface Drag {
+  target: DragTarget;
   mode: 'move' | 'resize';
+  pointerId: number;
+  touch: boolean;
+  /** pressing: touch waiting for the long-press · pending: mouse down, not moved yet · dragging: lifted. */
+  phase: 'pressing' | 'pending' | 'dragging';
   originX: number;
   originY: number;
   originScroll: number;
+  x: number;
+  y: number;
   orig: Block;
   preview: Block;
-  moved: boolean;
   overSidebar: boolean;
 }
 
 const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
 const blockOf = (t: Task): Block | null => (t.sched_date && t.sched_start != null && t.sched_duration ? { date: t.sched_date, start: t.sched_start, duration: t.sched_duration } : null);
+const repeatKey = (o: Occurrence) => `${o.series_id}:${o.day}`;
 
 export default function Planner() {
   const { data: tasks = [], isLoading } = useTasks();
@@ -99,7 +116,11 @@ export default function Planner() {
   const [dropGhost, setDropGhost] = useState<Block | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [interaction, setInteraction] = useState<Interaction | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [nudge, setNudge] = useState<{ id: string; orig: Block; preview: Block } | null>(null);
+  const [scheduling, setScheduling] = useState<{ task: Task; initial: Block; scheduled: boolean } | null>(null);
+  const [movingRepeat, setMovingRepeat] = useState<{ occ: Occurrence; start: number; duration: number } | null>(null);
+  const [announcement, setAnnouncement] = useState('');
   const [ghosts, setGhosts] = useState<Ghost[]>([]);
   const [openOcc, setOpenOcc] = useState<Occurrence | null>(null);
   const [newRepeat, setNewRepeat] = useState(false);
@@ -114,10 +135,14 @@ export default function Planner() {
   const { data: allSeries = [] } = useSeries();
   const planActions = usePlanActions();
 
+  /** Polite screen-reader announcement; a trailing space toggles so repeating the same words is still read. */
+  const announce = useCallback((text: string) => setAnnouncement((prev) => (prev === text ? `${text} ` : text)), []);
+
   // Planner#plans (from a plan card) scrolls to the Plans section once it has rendered.
   useEffect(() => {
     if (window.location.hash !== '#plans') return;
-    const id = window.setTimeout(() => document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' }), 400);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const id = window.setTimeout(() => document.getElementById('plans')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' }), 400);
     return () => window.clearTimeout(id);
   }, []);
 
@@ -147,14 +172,38 @@ export default function Planner() {
       update.mutate({ id, patch: b ? { sched_date: b.date, sched_start: b.start, sched_duration: b.duration } : { sched_date: null, sched_start: null, sched_duration: null } }),
     [update],
   );
+  const scheduleRef = useRef(schedule);
+  scheduleRef.current = schedule;
+
+  /** Schedules (or moves) a task and offers Undo back to where it was. */
+  const scheduleWithUndo = useCallback(
+    (task: { id: string; title: string }, b: Block | null, before: Block | null, message: string) => {
+      scheduleRef.current(task.id, b);
+      toast(message, { label: 'Undo', onClick: () => scheduleRef.current(task.id, before) });
+    },
+    [toast],
+  );
 
   const durationFor = (id: string | null) => {
     const t = tasks.find((x) => x.id === id);
     return Math.max(15, Math.round((t?.estimate_min ?? DEFAULT_DURATION) / 15) * 15);
   };
-  const minuteAt = (column: HTMLElement, clientY: number, duration: number) => clampStart(snap((clientY - column.getBoundingClientRect().top) / PX_PER_MIN - duration / 2), duration);
+  /** One anchor rule for drop and tap: the block starts in the 15-minute slot under the pointer. */
+  const minuteAt = (column: HTMLElement, clientY: number, duration: number) => clampStart(slotFloor((clientY - column.getBoundingClientRect().top) / PX_PER_MIN), duration);
 
-  // ---- drag from the Unscheduled list (HTML5 DnD) ----
+  /** A sensible first suggestion for the schedule dialog: the next quarter hour today, or 9:00. */
+  const suggestBlock = (task: Task): Block => {
+    const duration = durationFor(task.id);
+    const date = days.includes(today) ? today : days[0];
+    const start = date === today ? Math.ceil((nowMinutes + 1) / 15) * 15 : 9 * 60;
+    return { date, duration, start: clampStart(start, duration) };
+  };
+  const openScheduler = (task: Task) => {
+    const b = blockOf(task);
+    setScheduling({ task, initial: b ?? suggestBlock(task), scheduled: !!b });
+  };
+
+  // ---- drag from the Unscheduled list (HTML5 DnD, mouse) ----
   const onColumnDragOver = (e: React.DragEvent<HTMLDivElement>, date: string) => {
     if (!e.dataTransfer.types.includes(TASK_MIME)) return;
     e.preventDefault();
@@ -167,89 +216,292 @@ export default function Planner() {
     const id = e.dataTransfer.getData(TASK_MIME);
     setDropGhost(null);
     setDraggingId(null);
-    if (!id) return;
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
     e.preventDefault();
     const duration = durationFor(id);
     const start = minuteAt(e.currentTarget, e.clientY, duration);
-    schedule(id, { date, start, duration });
+    scheduleWithUndo(task, { date, start, duration }, null, `Scheduled for ${formatMinutes(start)}`);
     setSelectedId(null);
-    toast(`Scheduled for ${formatMinutes(start)}`);
   };
   // ---- tap to place (touch screens) ----
   const onColumnClick = (e: React.MouseEvent<HTMLDivElement>, date: string) => {
-    if (!selectedId || e.target !== e.currentTarget) return;
-    const duration = durationFor(selectedId);
-    const start = clampStart(snap((e.clientY - e.currentTarget.getBoundingClientRect().top) / PX_PER_MIN), duration);
-    schedule(selectedId, { date, start, duration });
+    const task = tasks.find((t) => t.id === selectedId);
+    if (!task || e.target !== e.currentTarget) return;
+    const duration = durationFor(task.id);
+    const start = minuteAt(e.currentTarget, e.clientY, duration);
+    scheduleWithUndo(task, { date, start, duration }, null, `Scheduled for ${formatMinutes(start)}`);
     setSelectedId(null);
-    toast(`Scheduled for ${formatMinutes(start)}`);
   };
 
-  // ---- move / resize scheduled blocks (pointer events) ----
-  const interactionRef = useRef<Interaction | null>(null);
-  interactionRef.current = interaction;
-  const startInteraction = (e: React.PointerEvent, task: Task, mode: Interaction['mode']) => {
-    const b = blockOf(task);
-    if (e.button !== 0 || !b) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setInteraction({ taskId: task.id, mode, originX: e.clientX, originY: e.clientY, originScroll: scrollRef.current?.scrollTop ?? 0, orig: b, preview: b, moved: false, overSidebar: false });
+  // ---- move / resize blocks (pointer events) ----
+  // The live gesture is kept in a ref; React state only changes when what's drawn changes
+  // (phase, the snapped preview, or the sidebar hover), not on every pointermove.
+  const dragRef = useRef<Drag | null>(null);
+  const longPress = useRef(0);
+  const suppressClick = useRef(false);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
+  const publish = (next: Drag | null) => {
+    const prev = dragRef.current;
+    dragRef.current = next;
+    if (!next || !prev || prev.phase !== next.phase || prev.overSidebar !== next.overSidebar || !sameBlock(prev.preview, next.preview) || prev.target.id !== next.target.id) setDrag(next);
   };
-  useEffect(() => {
-    if (!interaction) return;
-    const onMove = (e: PointerEvent) => {
-      const cur = interactionRef.current;
-      if (!cur) return;
-      const scroller = scrollRef.current;
-      if (scroller && cur.moved) {
-        const r = scroller.getBoundingClientRect();
-        if (e.clientY < r.top + 40 && e.clientY < cur.originY) scroller.scrollTop -= 12;
-        else if (e.clientY > r.bottom - 40 && e.clientY > cur.originY) scroller.scrollTop += 12;
+
+  const previewAt = (cur: Drag): Drag => {
+    const scroller = scrollRef.current;
+    const dy = cur.y - cur.originY + ((scroller?.scrollTop ?? 0) - cur.originScroll);
+    const delta = dy / PX_PER_MIN;
+    if (cur.mode === 'resize') return { ...cur, preview: resizeBlock(cur.orig, delta), overSidebar: false };
+    let date = cur.orig.date;
+    if (cur.target.kind === 'task') {
+      for (const [key, el] of columnRefs.current) {
+        const r = el.getBoundingClientRect();
+        if (cur.x >= r.left && cur.x < r.right) date = key;
       }
-      const dy = e.clientY - cur.originY + ((scroller?.scrollTop ?? 0) - cur.originScroll);
-      const delta = snap(dy / PX_PER_MIN);
-      const moved = cur.moved || Math.abs(e.clientX - cur.originX) > 3 || Math.abs(e.clientY - cur.originY) > 3;
-      let preview: Block;
-      if (cur.mode === 'resize') preview = { ...cur.orig, duration: Math.max(SNAP, Math.min(DAY_MINUTES - cur.orig.start, cur.orig.duration + delta)) };
-      else {
-        let date = cur.orig.date;
-        for (const [key, el] of columnRefs.current) {
-          const r = el.getBoundingClientRect();
-          if (e.clientX >= r.left && e.clientX < r.right) date = key;
-        }
-        preview = { ...cur.orig, date, start: clampStart(cur.orig.start + delta, cur.orig.duration) };
-      }
-      const sb = sidebarRef.current?.getBoundingClientRect();
-      const overSidebar = cur.mode === 'move' && !!sb && e.clientX >= sb.left && e.clientX <= sb.right && e.clientY >= sb.top && e.clientY <= sb.bottom;
-      setInteraction({ ...cur, preview, moved, overSidebar });
+    }
+    const sb = sidebarRef.current?.getBoundingClientRect();
+    const overSidebar = cur.target.kind === 'task' && !!sb && cur.x >= sb.left && cur.x <= sb.right && cur.y >= sb.top && cur.y <= sb.bottom;
+    return { ...cur, preview: moveBlock(cur.orig, delta, date), overSidebar };
+  };
+
+  const endDrag = useCallback(() => {
+    window.clearTimeout(longPress.current);
+    dragRef.current = null;
+    setDrag(null);
+  }, []);
+
+  const startDrag = (e: React.PointerEvent, target: DragTarget, block: Block, mode: Drag['mode']) => {
+    // One gesture at a time: a second finger never takes over the first drag.
+    if (e.button !== 0 || dragRef.current) return;
+    e.stopPropagation();
+    const touch = e.pointerType === 'touch';
+    const d: Drag = {
+      target,
+      mode,
+      pointerId: e.pointerId,
+      touch,
+      phase: touch ? 'pressing' : 'pending',
+      originX: e.clientX,
+      originY: e.clientY,
+      originScroll: scrollRef.current?.scrollTop ?? 0,
+      x: e.clientX,
+      y: e.clientY,
+      orig: block,
+      preview: block,
+      overSidebar: false,
     };
-    const onUp = () => {
-      const cur = interactionRef.current;
-      setInteraction(null);
-      if (!cur?.moved) return;
-      if (cur.overSidebar) {
-        schedule(cur.taskId, null);
-        toast('Moved back to Unscheduled');
-      } else schedule(cur.taskId, cur.preview);
+    publish(d);
+    if (touch) {
+      longPress.current = window.setTimeout(() => {
+        const cur = dragRef.current;
+        if (!cur || cur.pointerId !== d.pointerId || cur.phase !== 'pressing') return;
+        navigator.vibrate?.(10);
+        publish({ ...cur, phase: 'dragging' });
+      }, LONG_PRESS_MS);
+    }
+  };
+
+  const commitDrag = useCallback(
+    (cur: Drag) => {
+      if (cur.target.kind === 'repeat') {
+        if (!sameBlock(cur.preview, cur.orig)) setMovingRepeat({ occ: cur.target.occ, start: cur.preview.start, duration: cur.preview.duration });
+        return;
+      }
+      const task = tasksRef.current.find((t) => t.id === cur.target.id);
+      if (!task) return;
+      if (cur.overSidebar) return scheduleWithUndo(task, null, cur.orig, 'Moved back to Unscheduled');
+      if (sameBlock(cur.preview, cur.orig)) return;
+      const p = cur.preview;
+      const message =
+        cur.mode === 'resize'
+          ? `Now ${rangeLabel(p.start, p.duration)} (${formatDuration(p.duration)})`
+          : `Moved to ${p.date !== cur.orig.date ? `${dayLabel(p.date)}, ` : ''}${rangeLabel(p.start, p.duration)}`;
+      scheduleWithUndo(task, p, cur.orig, message);
+    },
+    [scheduleWithUndo],
+  );
+
+  // Window-level listeners for the gesture in progress.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const cur = dragRef.current;
+      if (!cur || e.pointerId !== cur.pointerId) return;
+      const dist = Math.hypot(e.clientX - cur.originX, e.clientY - cur.originY);
+      if (cur.phase === 'pressing') {
+        // Moved before the long-press: they're scrolling, so let the page have it.
+        if (dist > TOUCH_SLOP) endDrag();
+        return;
+      }
+      let next: Drag = { ...cur, x: e.clientX, y: e.clientY };
+      if (cur.phase === 'pending') {
+        if (dist < DRAG_THRESHOLD) return;
+        next.phase = 'dragging';
+      }
+      next = previewAt(next);
+      publish(next);
+    };
+    const onUp = (e: PointerEvent) => {
+      const cur = dragRef.current;
+      if (!cur || e.pointerId !== cur.pointerId) return;
+      endDrag();
+      if (cur.phase !== 'dragging') return;
+      // The click that follows a drag must not open the block's dialog.
+      suppressClick.current = true;
+      window.setTimeout(() => (suppressClick.current = false), 0);
+      commitDrag(cur);
+    };
+    const cancel = (announceIt: boolean) => {
+      const cur = dragRef.current;
+      if (!cur) return;
+      endDrag();
+      if (cur.phase === 'dragging') {
+        suppressClick.current = true;
+        window.setTimeout(() => (suppressClick.current = false), 400);
+        if (announceIt) announce('Move cancelled');
+      }
+    };
+    const onCancel = (e: PointerEvent) => {
+      if (dragRef.current && e.pointerId === dragRef.current.pointerId) cancel(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !dragRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancel(true);
+    };
+    const onBlur = () => cancel(false);
+    // Once a touch drag has lifted, the finger moves the block, not the page.
+    const onTouchMove = (e: TouchEvent) => {
+      if (dragRef.current?.touch && dragRef.current.phase === 'dragging' && e.cancelable) e.preventDefault();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('touchmove', onTouchMove);
     };
-  }, [interaction?.taskId, interaction?.mode, schedule, toast]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [commitDrag, endDrag, announce]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const blockFor = (t: Task) => (interaction?.taskId === t.id ? interaction.preview : blockOf(t));
+  // Auto-scroll while dragging near the top or bottom of the timeline: faster the closer to the edge,
+  // and it keeps going while the pointer rests there.
+  const dragging = drag?.phase === 'dragging';
+  useEffect(() => {
+    if (!dragging) return;
+    let frame = 0;
+    const tick = () => {
+      const cur = dragRef.current;
+      const scroller = scrollRef.current;
+      if (cur && scroller) {
+        const r = scroller.getBoundingClientRect();
+        const speed = edgeScrollSpeed(cur.y, r.top, r.bottom);
+        if (speed) {
+          const before = scroller.scrollTop;
+          scroller.scrollTop += speed;
+          if (scroller.scrollTop !== before) publish(previewAt(cur));
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [dragging]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- keyboard: ↑/↓ move, Shift+↑/↓ resize, ←/→ change day, Escape reverts ----
+  const nudgeRef = useRef(nudge);
+  nudgeRef.current = nudge;
+  const nudgeTimer = useRef(0);
+  const refocus = useRef<string | null>(null);
+
+  const saveNudge = useCallback(() => {
+    window.clearTimeout(nudgeTimer.current);
+    const n = nudgeRef.current;
+    if (!n) return;
+    nudgeRef.current = null;
+    setNudge(null);
+    if (!sameBlock(n.preview, n.orig)) scheduleRef.current(n.id, n.preview);
+  }, []);
+  useEffect(() => () => saveNudge(), [saveNudge]);
+
+  const onBlockKey = (e: React.KeyboardEvent, task: Task, block: Block) => {
+    if (e.key === 'Escape') {
+      const n = nudgeRef.current;
+      if (!n || n.id !== task.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.clearTimeout(nudgeTimer.current);
+      nudgeRef.current = null;
+      setNudge(null);
+      refocus.current = task.id;
+      if (n.orig.date !== n.preview.date && !days.includes(n.orig.date)) setCursor(n.orig.date);
+      announce(`Change undone. ${dayLabel(n.orig.date)}, ${rangeLabel(n.orig.start, n.orig.duration)}`);
+      return;
+    }
+    const current = nudgeRef.current?.id === task.id ? nudgeRef.current : null;
+    const base = current?.preview ?? block;
+    const next = nudgeBlock(base, e.key, e.shiftKey);
+    if (!next) return;
+    e.preventDefault();
+    if (current === null && nudgeRef.current) saveNudge();
+    const n = { id: task.id, orig: current?.orig ?? block, preview: next };
+    nudgeRef.current = n;
+    setNudge(n);
+    if (next.date !== base.date) {
+      refocus.current = task.id;
+      if (!days.includes(next.date)) setCursor(next.date);
+    }
+    if (sameBlock(next, base)) announce(e.shiftKey ? 'Can’t change the length any further' : 'Can’t move any further');
+    else if (e.shiftKey) announce(`Length ${formatDuration(next.duration)}, ends ${formatMinutes((next.start + next.duration) % DAY_MINUTES)}`);
+    else announce(`${next.date !== base.date ? `${dayLabel(next.date)}, ` : ''}${rangeLabel(next.start, next.duration)}`);
+    window.clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = window.setTimeout(saveNudge, NUDGE_SAVE_MS);
+  };
+  const onBlockBlur = (id: string) => {
+    // Moving to another day re-mounts the block; focus comes straight back, so don't save yet.
+    window.setTimeout(() => {
+      if ((document.activeElement as HTMLElement | null)?.dataset?.blockHandle !== id && refocus.current !== id) saveNudge();
+    }, 0);
+  };
+  useEffect(() => {
+    const id = refocus.current;
+    if (!id) return;
+    const el = document.querySelector<HTMLElement>(`[data-block-handle="${id}"]`);
+    if (el && document.activeElement !== el) el.focus({ preventScroll: false });
+    if (el) refocus.current = null;
+  });
+
+  const blockFor = (t: Task) => {
+    if (drag?.target.kind === 'task' && drag.target.id === t.id) return drag.preview;
+    if (nudge?.id === t.id) return nudge.preview;
+    return blockOf(t);
+  };
+  const repeatBlockFor = (o: Occurrence): Block => {
+    if (drag?.target.kind === 'repeat' && drag.target.id === repeatKey(o)) return drag.preview;
+    if (movingRepeat && repeatKey(movingRepeat.occ) === repeatKey(o)) return { date: o.day, start: movingRepeat.start, duration: movingRepeat.duration };
+    return { date: o.day, start: o.start, duration: o.duration };
+  };
+  const afterClick = (fn: () => void) => () => {
+    if (suppressClick.current) return;
+    fn();
+  };
 
   // ---- ✨ plan my day / week ----
   const runPlan = () => {
-    const opts = { onSuccess: (r: { result: { blocks: Ghost[] } }) => {
-      setGhosts(r.result.blocks.map((b) => ({ ...b, start: b.start, duration: b.duration })));
-      if (!r.result.blocks.length) toast('No free slots or suitable tasks to plan.');
-    } };
+    const opts = {
+      onSuccess: (r: { result: { blocks: Ghost[] } }) => {
+        setGhosts(r.result.blocks.map((b) => ({ ...b, start: b.start, duration: b.duration })));
+        if (!r.result.blocks.length) toast('No free slots or suitable tasks to plan.');
+      },
+    };
     if (view === 'day') planDay.mutate({ date: cursor }, opts);
     else planWeek.mutate({ date: cursor }, opts);
   };
@@ -259,17 +511,19 @@ export default function Planner() {
   };
 
   const shift = (dir: number) => setCursor((c) => addDaysKey(c, dir * (view === 'week' ? 7 : 1)));
-  const rangeLabel =
+  const rangeTitle =
     view === 'week'
       ? `${parseKey(days[0]).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${parseKey(days[6]).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
       : parseKey(cursor).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   const selectedTask = tasks.find((t) => t.id === selectedId);
+  const lifted = drag?.phase === 'dragging' ? drag : null;
+  const pillLabel = (d: Drag) => `${view === 'week' && d.preview.date !== d.orig.date ? `${dayLabel(d.preview.date)} · ` : ''}${rangeLabel(d.preview.start, d.preview.duration)}`;
 
   return (
-    <div className={cn(interaction && 'select-none')}>
+    <div className={cn(lifted && 'select-none')}>
       <PageHeader
         title="Planner"
-        description="Time-block your day. Drag tasks onto the timeline (or tap a task, then a time), drag blocks to move them, and pull the bottom edge to resize. Synced calendar events are locked."
+        description="Time-block your day: drag a task onto the timeline, or tap it and then a time. Drag blocks to move them and pull the bottom edge to resize (on a touch screen, press and hold first). Synced calendar events are locked."
         actions={
           <>
             <button className="chip-off" onClick={() => setNewRepeat(true)}>
@@ -280,9 +534,16 @@ export default function Planner() {
         }
       />
 
+      <p id={BLOCK_HELP_ID} className="sr-only">
+        Up and down arrows move the block 15 minutes. Shift with up or down changes its length. Left and right arrows move it a day. Escape undoes the change. Enter opens its time.
+      </p>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <div ref={sidebarRef} className="lg:sticky lg:top-20 lg:self-start" data-tour="planner-unscheduled">
-          <div className={cn('card p-4 transition-colors', interaction?.overSidebar && 'border-ink/40 ring-2 ring-ink/30')}>
+          <div className={cn('card p-4 transition-colors', lifted?.overSidebar && 'border-ink/40 ring-2 ring-ink/30')}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
                 <Inbox size={16} className="text-muted" aria-hidden /> Unscheduled
@@ -290,7 +551,7 @@ export default function Planner() {
               <span className="faint text-xs">{unscheduled.length}</span>
             </div>
             <QuickAddTask inset className="mb-3" placeholder="Add… “review PR 3pm for 30m”" />
-            {interaction?.overSidebar && <div className="mb-2 rounded-control border-2 border-dashed border-ink/40 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
+            {lifted?.overSidebar && <div className="mb-2 rounded-control border-2 border-dashed border-ink/40 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
             <div className="-mx-1 max-h-56 divide-y divide-line overflow-y-auto px-1 lg:max-h-[calc(100vh-22rem)]">
               {!isLoading && unscheduled.length === 0 && (
                 <p className="muted py-4 text-center text-sm">Everything open is scheduled. Add a task above, or drag a block here to unschedule it.</p>
@@ -308,29 +569,36 @@ export default function Planner() {
                     setDraggingId(null);
                     setDropGhost(null);
                   }}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={selectedId === t.id}
-                  onClick={() => setSelectedId((s) => (s === t.id ? null : t.id))}
-                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelectedId((s) => (s === t.id ? null : t.id)))}
                   className={cn(
-                    'flex cursor-grab items-start gap-2 rounded-control px-1.5 py-2.5 text-sm transition-colors duration-fast active:cursor-grabbing',
+                    'flex cursor-grab items-start gap-1 rounded-control text-sm transition-colors duration-fast active:cursor-grabbing',
                     selectedId === t.id ? 'bg-raised ring-2 ring-inset ring-ink' : 'hover:bg-raised',
                     draggingId === t.id && 'opacity-40',
                   )}
                 >
-                  <GripVertical size={14} className="faint mt-0.5 shrink-0" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium leading-snug">
-                      {t.top_date === today && '⭐ '}
-                      {t.title}
-                    </p>
-                    <TaskChips className="mt-1" due={t.due_date ?? undefined} tags={t.tags} priority={t.priority ?? undefined} duration={t.estimate_min ?? undefined} size={10} />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedId === t.id}
+                    onClick={() => setSelectedId((s) => (s === t.id ? null : t.id))}
+                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelectedId((s) => (s === t.id ? null : t.id)))}
+                    className="flex min-w-0 flex-1 items-start gap-2 rounded-control py-2.5 pl-1.5"
+                  >
+                    <GripVertical size={14} className="faint mt-0.5 shrink-0" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium leading-snug">
+                        {t.top_date === today && '⭐ '}
+                        {t.title}
+                      </p>
+                      <TaskChips className="mt-1" due={t.due_date ?? undefined} tags={t.tags} priority={t.priority ?? undefined} duration={t.estimate_min ?? undefined} size={10} />
+                    </div>
                   </div>
+                  <button className="icon-btn my-1.5 h-9 w-9 shrink-0" onClick={() => openScheduler(t)} aria-label={`Pick a time for “${t.title}”`} title="Pick a time">
+                    <CalendarClock size={16} />
+                  </button>
                 </div>
               ))}
             </div>
-            <p className="faint mt-3 text-xs">Tip: tap a task, then tap a time on the timeline — works on phones too.</p>
+            <p className="faint mt-3 text-xs">Tip: tap a task, then tap a time on the timeline, or use its clock button to pick a day and time.</p>
           </div>
         </div>
 
@@ -354,7 +622,7 @@ export default function Planner() {
                 <ChevronRight size={16} />
               </button>
             </div>
-            <h2 className="text-sm font-bold">{rangeLabel}</h2>
+            <h2 className="text-sm font-bold">{rangeTitle}</h2>
             <AiButton size="sm" className="ml-auto" loading={planDay.isPending || planWeek.isPending} onClick={runPlan} hint="Suggest time blocks for your open tasks around your calendar">
               Plan my {view}
             </AiButton>
@@ -381,11 +649,18 @@ export default function Planner() {
             </div>
           )}
           {selectedTask && (
-            <div className="flex items-center gap-2 bg-ink/[0.06] px-4 py-2 text-xs">
-              Tap a time to schedule <strong className="truncate">“{selectedTask.title}”</strong>
-              <button className="link ml-auto" onClick={() => setSelectedId(null)}>
-                Cancel
-              </button>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-ink/[0.06] px-4 py-2 text-xs">
+              <span className="min-w-0">
+                Tap a time to schedule <strong className="break-words">“{selectedTask.title}”</strong>
+              </span>
+              <span className="ml-auto flex items-center gap-3">
+                <button className="link" onClick={() => openScheduler(selectedTask)}>
+                  Pick a time…
+                </button>
+                <button className="link" onClick={() => setSelectedId(null)}>
+                  Cancel
+                </button>
+              </span>
             </div>
           )}
 
@@ -435,13 +710,14 @@ export default function Planner() {
                     const dayEvents = timedEventsOn(events, d);
                     const dayTasks = tasks.map((t) => ({ task: t, block: blockFor(t) })).filter((x): x is { task: Task; block: Block } => x.block?.date === d);
                     const dayGhosts = ghosts.filter((g) => g.date === d);
-                    const dayRepeats = recurring.filter((o) => o.day === d);
+                    const dayRepeats = recurring.filter((o) => o.day === d).map((o) => ({ occ: o, block: repeatBlockFor(o) }));
                     const lanes = layoutLanes([
-                      ...dayRepeats.map((o) => ({ id: `r:${o.series_id}`, start: o.start, end: o.start + o.duration })),
+                      ...dayRepeats.map(({ occ, block }) => ({ id: `r:${occ.series_id}`, start: block.start, end: block.start + block.duration })),
                       ...dayEvents.map((e) => ({ id: `e:${e.event.id}`, start: e.start, end: e.end })),
                       ...dayTasks.map((x) => ({ id: `t:${x.task.id}`, start: x.block.start, end: x.block.start + x.block.duration })),
                       ...dayGhosts.map((g) => ({ id: `g:${g.task_id}`, start: g.start, end: g.start + g.duration })),
                     ]);
+                    const liftedLane = lifted && lifted.preview.date === d ? lanes.get(lifted.target.kind === 'task' ? `t:${lifted.target.id}` : `r:${lifted.target.occ.series_id}`) : undefined;
                     return (
                       <div
                         key={d}
@@ -459,18 +735,28 @@ export default function Planner() {
                           backgroundImage: `repeating-linear-gradient(to bottom, var(--hour-line) 0 1px, transparent 1px ${SLOT * 4}px), repeating-linear-gradient(to bottom, var(--slot-line) 0 1px, transparent 1px ${SLOT}px)`,
                         }}
                       >
+                        {/* Where the lifted block came from, so the move is easy to judge (and to abandon with Escape). */}
+                        {lifted && lifted.orig.date === d && !sameBlock(lifted.preview, lifted.orig) && (
+                          <div
+                            className="pointer-events-none absolute inset-x-1 z-10 rounded-lg border-2 border-dashed border-ink/30"
+                            style={{ top: lifted.orig.start * PX_PER_MIN, height: lifted.orig.duration * PX_PER_MIN - 1 }}
+                            aria-hidden
+                          />
+                        )}
                         {dayEvents.map((de) => (
                           <EventBlock key={de.event.id} de={de} lane={lanes.get(`e:${de.event.id}`)} calendar={calById.get(de.event.calendarId)} />
                         ))}
-                        {dayRepeats.map((o) => (
+                        {dayRepeats.map(({ occ, block }) => (
                           <RepeatBlock
-                            key={`${o.series_id}:${o.day}`}
-                            occ={o}
-                            lane={lanes.get(`r:${o.series_id}`)}
-                            onOpen={() => setOpenOcc(o)}
-                            onToggleDone={() =>
-                              planActions.setDone(o, !o.done, plans.find((p) => p.id === o.plan_id)).catch(() => toast('That change could not be saved.'))
-                            }
+                            key={repeatKey(occ)}
+                            occ={occ}
+                            block={block}
+                            lane={lanes.get(`r:${occ.series_id}`)}
+                            lifted={lifted?.target.id === repeatKey(occ)}
+                            onMoveStart={(e) => startDrag(e, { kind: 'repeat', id: repeatKey(occ), occ }, { date: occ.day, start: occ.start, duration: occ.duration }, 'move')}
+                            onResizeStart={(e) => startDrag(e, { kind: 'repeat', id: repeatKey(occ), occ }, { date: occ.day, start: occ.start, duration: occ.duration }, 'resize')}
+                            onOpen={afterClick(() => setOpenOcc(occ))}
+                            onToggleDone={() => planActions.setDone(occ, !occ.done, plans.find((p) => p.id === occ.plan_id)).catch(() => toast('That change could not be saved.'))}
                           />
                         ))}
                         {dayTasks.map(({ task, block }) => (
@@ -479,17 +765,27 @@ export default function Planner() {
                             task={task}
                             block={block}
                             lane={lanes.get(`t:${task.id}`)}
-                            active={interaction?.taskId === task.id}
-                            fading={interaction?.taskId === task.id && interaction.overSidebar}
-                            onMoveStart={(e) => startInteraction(e, task, 'move')}
-                            onResizeStart={(e) => startInteraction(e, task, 'resize')}
-                            onToggleDone={() => toggle(task)}
-                            onUnschedule={() => {
-                              schedule(task.id, null);
-                              toast('Moved back to Unscheduled');
+                            lifted={lifted?.target.id === task.id}
+                            fading={lifted?.target.id === task.id && lifted.overSidebar}
+                            onMoveStart={(e) => {
+                              saveNudge();
+                              startDrag(e, { kind: 'task', id: task.id }, block, 'move');
                             }}
+                            onResizeStart={(e) => {
+                              saveNudge();
+                              startDrag(e, { kind: 'task', id: task.id }, block, 'resize');
+                            }}
+                            onOpen={afterClick(() => {
+                              saveNudge();
+                              openScheduler(task);
+                            })}
+                            onKeyDown={(e) => onBlockKey(e, task, block)}
+                            onBlur={() => onBlockBlur(task.id)}
+                            onToggleDone={() => toggle(task)}
+                            onUnschedule={() => scheduleWithUndo(task, null, blockOf(task), 'Moved back to Unscheduled')}
                           />
                         ))}
+                        {lifted && lifted.preview.date === d && !lifted.overSidebar && <TimePill block={lifted.preview} lane={liftedLane} label={pillLabel(lifted)} />}
                         {dayGhosts.map((g) => (
                           <div
                             key={`g-${g.task_id}`}
@@ -497,21 +793,36 @@ export default function Planner() {
                             style={{ ...laneStyle(lanes.get(`g:${g.task_id}`)), top: g.start * PX_PER_MIN, height: g.duration * PX_PER_MIN - 1 }}
                             title={`Suggested: ${g.title} — ${g.reason}`}
                           >
-                            <div className="flex items-start gap-1">
+                            <div className="flex items-start gap-1.5">
                               <span className="min-w-0 flex-1 truncate font-semibold">✨ {g.title}</span>
-                              <button className="rounded bg-accent p-0.5 text-accent-ink" onClick={() => acceptGhost(g)} aria-label={`Accept suggested block for ${g.title}`}>
-                                <Check size={11} />
+                              <button
+                                className="relative -my-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent text-accent-ink before:absolute before:-inset-1 before:content-[''] [@media(pointer:coarse)]:before:-inset-2.5"
+                                onClick={() => acceptGhost(g)}
+                                aria-label={`Accept suggested block for ${g.title}`}
+                              >
+                                <Check size={13} />
                               </button>
-                              <button className="rounded p-0.5 hover:bg-raised" onClick={() => setGhosts((l) => l.filter((x) => x !== g))} aria-label={`Dismiss suggestion for ${g.title}`}>
-                                <X size={11} />
+                              <button
+                                className="relative -my-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-raised"
+                                onClick={() => setGhosts((l) => l.filter((x) => x !== g))}
+                                aria-label={`Dismiss suggestion for ${g.title}`}
+                              >
+                                <X size={13} />
                               </button>
                             </div>
-                            {g.duration >= 45 && <div className="truncate opacity-80">{formatMinutes(g.start)} · {g.reason}</div>}
+                            {g.duration >= 45 && (
+                              <div className="truncate opacity-80">
+                                {formatMinutes(g.start)} · {g.reason}
+                              </div>
+                            )}
                           </div>
                         ))}
                         {dropGhost?.date === d && (
-                          <div className="pointer-events-none absolute inset-x-1 z-20 rounded-lg border-2 border-dashed border-ink/40 bg-ink/[0.06] px-2 py-1 text-xs font-semibold" style={{ top: dropGhost.start * PX_PER_MIN, height: dropGhost.duration * PX_PER_MIN }}>
-                            {formatMinutes(dropGhost.start)} – {formatMinutes(dropGhost.start + dropGhost.duration)}
+                          <div
+                            className="pointer-events-none absolute inset-x-1 z-20 rounded-lg border-2 border-dashed border-ink/40 bg-ink/[0.06] px-2 py-1 text-xs font-semibold tabular-nums"
+                            style={{ top: dropGhost.start * PX_PER_MIN, height: dropGhost.duration * PX_PER_MIN }}
+                          >
+                            {rangeLabel(dropGhost.start, dropGhost.duration)}
                           </div>
                         )}
                         {d === today && (
@@ -535,7 +846,7 @@ export default function Planner() {
               <span className="h-3 w-5 rounded bg-accent" /> Your tasks
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="striped h-3 w-5 rounded" style={{ '--stripe': 'rgba(113,113,122,0.55)' } as React.CSSProperties} /> Calendar events (locked)
+              <span className="striped h-3 w-5 rounded" style={{ '--stripe': 'rgb(var(--faint) / 0.55)' } as React.CSSProperties} /> Calendar events (locked)
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-5 rounded border border-line-strong bg-raised" /> Repeating blocks &amp; plans
@@ -560,144 +871,39 @@ export default function Planner() {
           onClose={() => setOpenOcc(null)}
         />
       )}
-      {newRepeat && <RecurringBlockDialog onClose={() => setNewRepeat(false)} initialDay={cursor} />}
-    </div>
-  );
-}
-
-function laneStyle(lane: { lane: number; lanes: number } | undefined) {
-  const l = lane ?? { lane: 0, lanes: 1 };
-  const width = 100 / l.lanes;
-  return { left: `calc(${l.lane * width}% + 3px)`, width: `calc(${width}% - 6px)` };
-}
-
-function EventBlock({ de, lane, calendar }: { de: DayEvent; lane?: { lane: number; lanes: number }; calendar?: { color: number; emoji: string; name: string } }) {
-  const c = CALENDAR_COLORS[calendar?.color ?? 1] ?? CALENDAR_COLORS[1];
-  const height = (de.end - de.start) * PX_PER_MIN;
-  const label = [de.event.title, `${formatMinutes(de.start)} – ${formatMinutes(de.end % DAY_MINUTES)}`, de.event.location, calendar && `${calendar.emoji} ${calendar.name} (synced, read-only)`].filter(Boolean).join('\n');
-  return (
-    <div
-      className="striped absolute z-10 cursor-not-allowed overflow-hidden rounded-lg border px-1.5 py-0.5"
-      style={{ ...laneStyle(lane), top: de.start * PX_PER_MIN, height: Math.max(height, SLOT) - 1, '--stripe': `${c.hex}40`, borderColor: `${c.hex}99` } as React.CSSProperties}
-      title={label}
-      aria-label={`Calendar event: ${label}`}
-    >
-      <div className="flex items-center gap-1 truncate text-xs font-semibold leading-tight">
-        <Lock size={9} className="shrink-0 opacity-60" aria-hidden />
-        <span className="truncate">{de.event.title}</span>
-      </div>
-      {height >= 34 && (
-        <div className="truncate text-xs opacity-75">
-          {formatMinutes(de.start)} – {formatMinutes(de.end % DAY_MINUTES)}
-          {de.event.location && (
-            <span className="ml-1 inline-flex items-center gap-0.5">
-              · <MapPin size={9} aria-hidden /> {de.event.location}
-            </span>
-          )}
-        </div>
+      {movingRepeat && (
+        <MoveRepeatDialog
+          occ={movingRepeat.occ}
+          series={allSeries.find((x) => x.id === movingRepeat.occ.series_id)}
+          start={movingRepeat.start}
+          duration={movingRepeat.duration}
+          onClose={() => setMovingRepeat(null)}
+        />
       )}
-    </div>
-  );
-}
-
-function RepeatBlock({ occ, lane, onOpen, onToggleDone }: { occ: Occurrence; lane?: { lane: number; lanes: number }; onOpen: () => void; onToggleDone: () => void }) {
-  const height = occ.duration * PX_PER_MIN;
-  const compact = height < 40;
-  const label = `${occ.title}, ${formatMinutes(occ.start)} – ${formatMinutes(occ.start + occ.duration)}`;
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
-      className={cn('absolute z-20 cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-raised text-ink shadow-card hover:border-ink/40', occ.done && 'bg-surface text-muted')}
-      style={{ ...laneStyle(lane), top: occ.start * PX_PER_MIN, height: height - 1 }}
-      title={`${label}${occ.details ? `\n${occ.details}` : ''}\nRepeats weekly — click to edit`}
-      aria-label={`Repeating block: ${label}`}
-    >
-      <div className={cn('flex h-full gap-1 px-1.5', compact ? 'items-center' : 'items-start py-1')}>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleDone();
+      {scheduling && (
+        <ScheduleDialog
+          title={scheduling.task.title}
+          initial={scheduling.initial}
+          scheduled={scheduling.scheduled}
+          onClose={() => setScheduling(null)}
+          onUnschedule={() => {
+            scheduleWithUndo(scheduling.task, null, scheduling.initial, 'Moved back to Unscheduled');
+            setScheduling(null);
           }}
-          aria-label={occ.done ? `Mark “${occ.title}” not done` : `Mark “${occ.title}” done`}
-          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas')}
-        >
-          {occ.done && <Check size={10} strokeWidth={3} />}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className={cn('flex items-center gap-1 truncate text-xs font-semibold leading-tight', occ.done && 'line-through')}>
-            <Repeat size={9} className="shrink-0 opacity-80" aria-hidden />
-            <span className="truncate">{occ.title}</span>
-          </div>
-          {!compact && (
-            <div className="muted truncate text-xs">
-              {formatMinutes(occ.start)} – {formatMinutes(occ.start + occ.duration)}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface TaskBlockProps {
-  task: Task;
-  block: Block;
-  lane?: { lane: number; lanes: number };
-  active: boolean;
-  fading: boolean;
-  onMoveStart: (e: React.PointerEvent) => void;
-  onResizeStart: (e: React.PointerEvent) => void;
-  onToggleDone: () => void;
-  onUnschedule: () => void;
-}
-
-function TaskBlock({ task, block, lane, active, fading, onMoveStart, onResizeStart, onToggleDone, onUnschedule }: TaskBlockProps) {
-  const height = block.duration * PX_PER_MIN;
-  const compact = height < 40;
-  return (
-    <div
-      onPointerDown={onMoveStart}
-      className={cn(
-        'group absolute z-20 cursor-grab touch-none overflow-hidden rounded-lg bg-ink text-canvas shadow-card ring-1 ring-canvas/10',
-        active && 'z-40 cursor-grabbing shadow-pop ring-2 ring-canvas/60',
-        task.done && 'opacity-55',
-        fading && 'opacity-30',
+          onSave={(b) => {
+            const { task, initial, scheduled } = scheduling;
+            setScheduling(null);
+            setSelectedId(null);
+            if (scheduled && sameBlock(b, initial)) return;
+            scheduleWithUndo(task, b, scheduled ? initial : null, `${scheduled ? 'Moved to' : 'Scheduled for'} ${dayLabel(b.date)}, ${rangeLabel(b.start, b.duration)}`);
+            // Keyboard users carry on from the block itself (arrows nudge it).
+            refocus.current = task.id;
+            // Show the day the block landed on.
+            if (!days.includes(b.date)) setCursor(b.date);
+          }}
+        />
       )}
-      style={{ ...laneStyle(lane), top: block.start * PX_PER_MIN, height: height - 1 }}
-      title={`${task.title}\n${formatMinutes(block.start)} – ${formatMinutes(block.start + block.duration)} (${formatDuration(block.duration)})`}
-    >
-      <div className={cn('flex h-full gap-1 px-1.5', compact ? 'items-center' : 'items-start py-1')}>
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={onToggleDone}
-          aria-label={task.done ? `Mark “${task.title}” not done` : `Complete “${task.title}”`}
-          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-canvas/70', task.done && 'bg-canvas text-ink')}
-        >
-          {task.done && <Check size={10} strokeWidth={3} />}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className={cn('flex items-center gap-1 truncate text-xs font-semibold leading-tight', task.done && 'line-through')}>
-            {task.priority && (
-              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', PRIORITY_STYLES[task.priority].dot)} role="img" aria-label={`${PRIORITY_STYLES[task.priority].label} priority`} />
-            )}
-            <span className="truncate">{task.title}</span>
-          </div>
-          {!compact && (
-            <div className="truncate text-xs text-canvas/75">
-              {formatMinutes(block.start)} – {formatMinutes(block.start + block.duration)}
-            </div>
-          )}
-        </div>
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={onUnschedule} aria-label={`Unschedule “${task.title}”`} className="shrink-0 rounded p-0.5 opacity-70 hover:bg-canvas/20 hover:opacity-100 focus:opacity-100">
-          <X size={11} />
-        </button>
-      </div>
-      <div onPointerDown={onResizeStart} className="absolute inset-x-0 bottom-0 flex h-2 cursor-ns-resize items-center justify-center" aria-hidden>
-        <span className="h-0.5 w-6 rounded-full bg-surface opacity-0 group-hover:opacity-100" />
-      </div>
+      {newRepeat && <RecurringBlockDialog onClose={() => setNewRepeat(false)} initialDay={cursor} />}
     </div>
   );
 }
