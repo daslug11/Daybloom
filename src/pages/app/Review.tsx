@@ -1,6 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { AiButton } from '../../components/ui/Ai';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -15,9 +14,12 @@ import { useAi, useAiStatus } from '../../hooks/useAi';
 import { useToday } from '../../hooks/useProfile';
 import { addDays, dayIn, formatDay, parseKey } from '../../lib/dates';
 import { MOODS } from '../../lib/moods';
-import { formatDuration } from '../../lib/quickAdd';
+import { formatDuration } from '../../lib/format';
 import { useSavedResult } from '../../lib/savedResult';
 import { deltaText, habitDays, habitStartDay, lastDays, meanScore } from '../../lib/stats';
+
+// The chart library is large; load it after the numbers are on screen.
+const ReviewChart = lazy(() => import('../../components/review/ReviewChart'));
 
 interface Source {
   isLoading: boolean;
@@ -274,16 +276,9 @@ export default function Review() {
                     role="img"
                     aria-label={`Tasks completed and habits done per day, last 7 days: ${s.perDay.map((d) => `${d.day}${d.key === today ? ' so far' : ''}: ${d.Tasks} task${d.Tasks === 1 ? '' : 's'}, ${d.Habits} habit${d.Habits === 1 ? '' : 's'}`).join('; ')}`}
                   >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={s.perDay} margin={{ top: 4, right: 4, bottom: 0, left: -24 }} accessibilityLayer={false}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--line))" vertical={false} />
-                        <XAxis dataKey="day" tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
-                        <Tooltip cursor={{ fill: 'rgb(var(--ink) / 0.05)' }} contentStyle={{ background: 'rgb(var(--overlay))', border: '1px solid rgb(var(--line-strong))', borderRadius: 10, fontSize: 12, color: 'rgb(var(--ink))' }} />
-                        <Bar dataKey="Tasks" name="Tasks done" fill="rgb(var(--ink))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                        <Bar dataKey="Habits" name="Habits done" fill="rgb(var(--faint))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <Suspense fallback={null}>
+                      <ReviewChart data={s.perDay} />
+                    </Suspense>
                   </div>
                   <p className="muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     <span className="flex items-center gap-1.5">

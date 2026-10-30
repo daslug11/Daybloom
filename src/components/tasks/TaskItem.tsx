@@ -1,7 +1,7 @@
 import { CalendarClock, Check, ChevronRight, FileText, Star } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { formatMinutesShort } from '../../lib/planner';
-import { formatDue } from '../../lib/quickAdd';
+import { formatDue } from '../../lib/format';
 import { cn } from '../../lib/utils';
 import { PRIORITY_STYLES, TaskChips } from './TaskChips';
 

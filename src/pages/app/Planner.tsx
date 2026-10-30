@@ -44,7 +44,7 @@ import {
   weekOf,
   type TimeBlock,
 } from '../../lib/planner';
-import { formatDuration } from '../../lib/quickAdd';
+import { formatDuration } from '../../lib/format';
 import type { Task } from '../../lib/types';
 import { cn } from '../../lib/utils';
 

@@ -1,7 +1,6 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { uid } from '../lib/utils';
+import { cn, uid } from '../lib/utils';
 
 interface ToastAction {
   label: string;
@@ -11,6 +10,8 @@ interface Toast {
   id: string;
   message: string;
   action?: ToastAction;
+  /** Playing its exit animation; removed when that ends. */
+  leaving?: boolean;
 }
 type ShowToast = (message: string, action?: ToastAction) => void;
 
@@ -22,18 +23,21 @@ export function useToast() {
 
 /** How long a toast stays: long enough to read, longer when there's something to do (Undo). */
 const DURATION = { plain: 5000, action: 8000 };
+/** Matches `animate-toast-out` in tailwind.config.js. */
+const EXIT_MS = 150;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const reduce = useReducedMotion();
   // Per toast: the running timer and how much time it has left (paused while hovered or focused).
   const timers = useRef(new Map<string, { handle: number; left: number; started: number }>());
   const paused = useRef(false);
 
+  // Plain CSS keyframes (no animation library), so toasts don't pull one into every page's first load.
   const dismiss = useCallback((id: string) => {
-    setToasts((t) => t.filter((x) => x.id !== id));
     window.clearTimeout(timers.current.get(id)?.handle);
     timers.current.delete(id);
+    setToasts((t) => t.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), EXIT_MS);
   }, []);
 
   const start = useCallback(
@@ -89,36 +93,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         onFocus={pause}
         onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && resume()}
       >
-        <AnimatePresence>
-          {toasts.map((t) => (
-            <motion.div
-              key={t.id}
-              layout
-              // Full transform strings run on the compositor; Framer's x/y/scale shorthands don't.
-              initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(20px) scale(0.95)' }}
-              animate={reduce ? { opacity: 1 } : { opacity: 1, transform: 'translateY(0px) scale(1)' }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px) scale(0.95)' }}
-              transition={reduce ? { duration: 0.15 } : { type: 'spring', duration: 0.5, bounce: 0.2 }}
-              className="toast pointer-events-auto"
-            >
-              <span className="min-w-0 flex-1">{t.message}</span>
-              {t.action && (
-                <button
-                  className="toast-action"
-                  onClick={() => {
-                    t.action!.onClick();
-                    dismiss(t.id);
-                  }}
-                >
-                  {t.action.label}
-                </button>
-              )}
-              <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Dismiss">
-                <X size={14} aria-hidden />
+        {toasts.map((t) => (
+          <div key={t.id} className={cn('toast pointer-events-auto', t.leaving ? 'animate-toast-out' : 'animate-toast-in')}>
+            <span className="min-w-0 flex-1">{t.message}</span>
+            {t.action && (
+              <button
+                className="toast-action"
+                onClick={() => {
+                  t.action!.onClick();
+                  dismiss(t.id);
+                }}
+              >
+                {t.action.label}
               </button>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+            )}
+            <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Dismiss">
+              <X size={14} aria-hidden />
+            </button>
+          </div>
+        ))}
       </div>
     </ToastContext.Provider>
   );

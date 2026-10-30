@@ -1,9 +1,14 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { AppShell } from './components/layout/AppShell';
 import { Spinner } from './components/ui/States';
 import { useAuth } from './hooks/useAuth';
 import { isConfigured } from './lib/env';
+
+// The signed-in shell (capture, palette, timer, date parsing) is its own chunk, so public pages don't
+// download it. On /app URLs it starts loading straight away, alongside the auth check.
+const loadShell = () => import('./components/layout/AppShell').then((m) => ({ default: m.AppShell }));
+if (typeof window !== 'undefined' && window.location.pathname.startsWith('/app')) void loadShell();
+const AppShell = lazy(loadShell);
 
 const Landing = lazy(() => import('./pages/public/Landing'));
 const SignUp = lazy(() => import('./pages/auth/SignUp'));
@@ -16,18 +21,37 @@ const Privacy = lazy(() => import('./pages/public/Privacy'));
 const NotFound = lazy(() => import('./pages/public/NotFound'));
 const Admin = lazy(() => import('./pages/Admin'));
 
-const Dashboard = lazy(() => import('./pages/app/Dashboard'));
-const Onboarding = lazy(() => import('./pages/app/Onboarding'));
-const BrainDump = lazy(() => import('./pages/app/BrainDump'));
-const Tasks = lazy(() => import('./pages/app/Tasks'));
-const Planner = lazy(() => import('./pages/app/Planner'));
-const Calendars = lazy(() => import('./pages/app/Calendars'));
-const Habits = lazy(() => import('./pages/app/Habits'));
-const Goals = lazy(() => import('./pages/app/Goals'));
-const Focus = lazy(() => import('./pages/app/Focus'));
-const Mood = lazy(() => import('./pages/app/Mood'));
-const Review = lazy(() => import('./pages/app/Review'));
-const Settings = lazy(() => import('./pages/app/Settings'));
+// Signed-in pages, by path segment. The current one is fetched alongside the shell instead of after it.
+const appPages = {
+  '': () => import('./pages/app/Dashboard'),
+  welcome: () => import('./pages/app/Onboarding'),
+  'brain-dump': () => import('./pages/app/BrainDump'),
+  tasks: () => import('./pages/app/Tasks'),
+  planner: () => import('./pages/app/Planner'),
+  calendars: () => import('./pages/app/Calendars'),
+  habits: () => import('./pages/app/Habits'),
+  goals: () => import('./pages/app/Goals'),
+  focus: () => import('./pages/app/Focus'),
+  mood: () => import('./pages/app/Mood'),
+  review: () => import('./pages/app/Review'),
+  settings: () => import('./pages/app/Settings'),
+};
+if (typeof window !== 'undefined') {
+  const m = window.location.pathname.match(/^\/app\/?([^/]*)/);
+  if (m && m[1] in appPages) void appPages[m[1] as keyof typeof appPages]();
+}
+const Dashboard = lazy(appPages['']);
+const Onboarding = lazy(appPages.welcome);
+const BrainDump = lazy(appPages['brain-dump']);
+const Tasks = lazy(appPages.tasks);
+const Planner = lazy(appPages.planner);
+const Calendars = lazy(appPages.calendars);
+const Habits = lazy(appPages.habits);
+const Goals = lazy(appPages.goals);
+const Focus = lazy(appPages.focus);
+const Mood = lazy(appPages.mood);
+const Review = lazy(appPages.review);
+const Settings = lazy(appPages.settings);
 
 function FullPageSpinner() {
   return (

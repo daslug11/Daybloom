@@ -5,10 +5,7 @@ import { AppActionsContext, type AppActions, type CaptureMode } from '../../hook
 import { useProfile, useThemeSync } from '../../hooks/useProfile';
 import { TimerProvider } from '../../hooks/useTimer';
 import { AtlasOrb } from '../atlas/AtlasOrb';
-import { CaptureComposer } from '../capture/CaptureComposer';
-import { LocalImportPrompt } from '../onboarding/LocalImportPrompt';
 import { ErrorState, Spinner } from '../ui/States';
-import { CommandPalette } from './CommandPalette';
 import { FocusOverlay } from './FocusOverlay';
 import { MobileNav } from './MobileNav';
 import { Sidebar } from './Sidebar';
@@ -22,6 +19,27 @@ function isTyping(el: EventTarget | null) {
   return el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
 }
 
+// Opened on demand (N, ⌘K) or only sometimes shown: loaded when the browser is idle, or on first use.
+const CaptureComposer = lazy(() => import('../capture/CaptureComposer').then((m) => ({ default: m.CaptureComposer })));
+const CommandPalette = lazy(() => import('./CommandPalette').then((m) => ({ default: m.CommandPalette })));
+const LocalImportPrompt = lazy(() => import('../onboarding/LocalImportPrompt').then((m) => ({ default: m.LocalImportPrompt })));
+
+/** True once the browser has had an idle moment after the first paint. */
+function useIdle() {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    const done = () => setIdle(true);
+    // Safari has no requestIdleCallback.
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(done, { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(done, 1200);
+    return () => clearTimeout(id);
+  }, []);
+  return idle;
+}
+
 /** Layout for signed-in pages: navigation, capture, Atlas, palette and timer. */
 export function AppShell() {
   useThemeSync();
@@ -32,6 +50,7 @@ export function AppShell() {
   const [atlas, setAtlas] = useState<{ open: boolean; prefill: string }>({ open: false, prefill: '' });
   const [voice, setVoice] = useState(false);
   const [palette, setPalette] = useState(false);
+  const idle = useIdle();
   const [tour, setTour] = useState(false);
 
   const openCapture = useCallback<AppActions['openCapture']>((opts = {}) => {
@@ -136,16 +155,20 @@ export function AppShell() {
           <AtlasOrb onClick={() => setAtlas({ open: true, prefill: '' })} />
         </div>
 
-        <CaptureComposer
-          open={capture.open}
-          initialMode={capture.mode}
-          initialText={capture.text}
-          startVoice={capture.voice}
-          onClose={() => setCapture((c) => ({ ...c, open: false }))}
-        />
-        <CommandPalette open={palette} onClose={() => setPalette(false)} />
+        <Suspense fallback={null}>
+          {(idle || capture.open) && (
+            <CaptureComposer
+              open={capture.open}
+              initialMode={capture.mode}
+              initialText={capture.text}
+              startVoice={capture.voice}
+              onClose={() => setCapture((c) => ({ ...c, open: false }))}
+            />
+          )}
+          {(idle || palette) && <CommandPalette open={palette} onClose={() => setPalette(false)} />}
+          {idle && <LocalImportPrompt />}
+        </Suspense>
         <FocusOverlay />
-        <LocalImportPrompt />
         <Suspense fallback={null}>
           {atlas.open && (
             <AtlasPanel

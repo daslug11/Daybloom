@@ -130,10 +130,22 @@ export default function BrainDump() {
   const tags = [...viewTags].sort();
   const clearFilters = () => (setQuery(''), setTag(null));
 
+  // One pass over tasks, habits and goals per change, instead of three scans for every note on every render.
+  const linkCounts = useMemo(() => {
+    const m = new Map<string, [number, number, number]>();
+    const add = (id: string | null, i: 0 | 1 | 2) => {
+      if (!id) return;
+      const c = m.get(id) ?? [0, 0, 0];
+      c[i]++;
+      m.set(id, c);
+    };
+    for (const x of tasks) add(x.source_note_id, 0);
+    for (const x of habits) add(x.source_note_id, 1);
+    for (const x of goals) add(x.source_note_id, 2);
+    return m;
+  }, [tasks, habits, goals]);
   const linkText = (id: string) => {
-    const t = tasks.filter((x) => x.source_note_id === id).length;
-    const h = habits.filter((x) => x.source_note_id === id).length;
-    const g = goals.filter((x) => x.source_note_id === id).length;
+    const [t, h, g] = linkCounts.get(id) ?? [0, 0, 0];
     return [t && `${t} task${t > 1 ? 's' : ''}`, h && `${h} habit${h > 1 ? 's' : ''}`, g && `${g} goal${g > 1 ? 's' : ''}`].filter(Boolean).join(' · ') || undefined;
   };
 

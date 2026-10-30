@@ -53,7 +53,8 @@ export function CalendarCard(p: Props) {
 
   return (
     <motion.div
-      layout
+      // Reorder slides into place; under reduced motion it just moves.
+      layout={!reduce}
       initial={false}
       animate={{ opacity: p.dragging ? 0.4 : 1 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, transform: 'scale(0.95)' }}

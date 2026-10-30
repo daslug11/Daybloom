@@ -1,7 +1,10 @@
 import * as chrono from 'chrono-node';
 import type { NewTask } from '../hooks/data/tasks';
-import { addDays, dateKey, daysBetween, parseKey } from './dates';
+import { dateKey } from './dates';
 import type { Priority } from './types';
+import { minutesFromTime } from './format';
+
+export { formatDue, formatDuration, formatTime, minutesFromTime } from './format';
 
 export interface ParsedTask {
   title: string;
@@ -75,11 +78,6 @@ export function parseQuickAdd(input: string, now = new Date()): ParsedTask {
   return { title, due, time, tags, priority, duration: duration && duration > 0 ? duration : undefined };
 }
 
-export function minutesFromTime(time: string) {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
-}
-
 /**
  * The Planner block a quick add will create: a date and a time block the time, snapped to
  * 15 minutes (an hour unless a length was given). `null` when nothing goes on the Planner.
@@ -115,24 +113,3 @@ export function taskFromParsed(p: ParsedTask, fallbackTitle: string, extra: Part
   return task;
 }
 
-export function formatTime(time: string) {
-  const [h, m] = time.split(':').map(Number);
-  const d = new Date(2000, 0, 1, h, m);
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
-
-export function formatDue(key: string, today: string = dateKey()) {
-  if (key === today) return 'Today';
-  if (key === addDays(today, 1)) return 'Tomorrow';
-  if (key === addDays(today, -1)) return 'Yesterday';
-  const diff = daysBetween(today, key);
-  const date = parseKey(key);
-  return date.toLocaleDateString(undefined, diff > 0 && diff < 6 ? { weekday: 'long' } : { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
-export function formatDuration(mins: number) {
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
-}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DAY_MINUTES, formatMinutesShort, parseTimeInput, rangeLabel, type TimeBlock } from '../../lib/planner';
-import { formatDuration } from '../../lib/quickAdd';
+import { formatDuration } from '../../lib/format';
 import { Modal } from '../ui/Modal';
 
 /** 15 minutes to 8 hours, in 15-minute steps. */
