@@ -76,7 +76,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
  */
 export function Pending({ children }: { children: ReactNode }) {
   return (
-    <mark className="rounded-[4px] border border-dashed border-warning/60 bg-warning/10 px-1 font-medium text-warning [box-decoration-break:clone]">
+    <mark className="rounded-[4px] border border-dashed border-warning/60 bg-warning/10 px-1 font-medium text-ink [box-decoration-break:clone]">
       <span className="sr-only">Not filled in yet: </span>
       {children}
     </mark>
@@ -94,7 +94,7 @@ export function LegalPage({ title, updated, children }: { title: string; updated
         </div>
         <h1 className="text-3xl font-semibold tracking-[-0.02em]">{title}</h1>
         <p className="muted mt-2 text-sm">Last updated: {updated}</p>
-        <div className="legal mt-8 max-w-[68ch] space-y-4 text-[15px] leading-relaxed [&_h2]:!mt-12 [&_h2]:text-lg [&_h2]:font-semibold [&_li]:ml-5 [&_li]:list-disc">{children}</div>
+        <div className="legal mt-8 max-w-[60ch] space-y-4 text-[15px] leading-relaxed [&_h2]:!mt-12 [&_h2]:text-lg [&_h2]:font-semibold [&_li]:ml-5 [&_li]:list-disc">{children}</div>
       </article>
     </PublicLayout>
   );
