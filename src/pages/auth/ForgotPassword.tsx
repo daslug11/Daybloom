@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SITE_URL } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, FormError } from './AuthLayout';
+import { AuthLayout, authMessage, FormError, SendAgain } from './AuthLayout';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -13,21 +13,28 @@ export default function ForgotPassword() {
     e.preventDefault();
     setBusy(true);
     setError('');
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${SITE_URL}/reset-password` });
+    const err = await sendLink();
     setBusy(false);
-    if (error) return setError(authMessage(error));
+    if (err) return setError(err);
     setSent(true);
   };
+  async function sendLink() {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${SITE_URL}/reset-password` });
+    return error ? authMessage(error) : '';
+  }
   return (
     <AuthLayout
-      title={sent ? 'Check your email 🔑' : 'Reset your password'}
+      title={sent ? 'Check your email' : 'Reset your password'}
       subtitle={sent ? undefined : 'Enter your email and we’ll send you a link to choose a new password.'}
       footer={<Link to="/login" className="link">Back to log in</Link>}
     >
       {sent ? (
-        <p className="text-sm">
-          If there’s an account for <strong>{email}</strong>, a reset link is on its way. Open it on this device; it expires in an hour.
-        </p>
+        <>
+          <p className="text-sm">
+            If there’s an account for <strong>{email}</strong>, a reset link is on its way. Open it on this device; it expires in an hour.
+          </p>
+          <SendAgain send={sendLink} />
+        </>
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div>

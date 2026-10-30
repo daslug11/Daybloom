@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Mic, Send, Trash2, X } from 'lucide-react';
+import { AlertCircle, Check, Mic, Send, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { atlasKey, useAtlasMessages } from '../../hooks/data/atlas';
@@ -16,7 +16,7 @@ import { cn } from '../../lib/utils';
 import { Markdown } from '../notes/Markdown';
 import { PlanCard } from '../plans/PlanCard';
 import { AiAllowance } from '../ui/Ai';
-import { OrbGlyph } from './AtlasOrb';
+import { OrbGlyph, takePointerOpen } from './AtlasOrb';
 
 const SUGGESTIONS = ["What's on today?", 'Add a task to call the bank tomorrow at 10', 'Process my inbox', 'Make me a 4-week workout plan'];
 
@@ -63,7 +63,17 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   });
 
   const root = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLElement>(null);
+  const scrim = useRef<HTMLDivElement>(null);
   useOverlay({ open: true, onEscape: onClose, container: root });
+  // Opened from the orb with a pointer: slide in from the right edge. Keyboard opens (⌘J) and
+  // reduced motion show the panel instantly.
+  useEffect(() => {
+    if (!takePointerOpen() || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
+    sheet.current?.animate?.([{ transform: 'translateX(100%)' }, { transform: 'translateX(0)' }], { duration: 240, easing: ease });
+    scrim.current?.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: ease });
+  }, []);
   // Closing the panel stops a reply that is still streaming.
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -130,12 +140,14 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   const all = history.data ?? [];
   const messages = live && shownCount.current !== null ? all.slice(0, shownCount.current) : all;
   const aiOff = status.data && (!status.data.enabled || status.data.remaining <= 0);
+  const offMessage = status.data?.message ?? "You've used today's AI allowance. It resets at midnight UTC.";
+  const empty = !history.isLoading && messages.length === 0 && !sending;
   const name = profile?.name || 'there';
 
   return createPortal(
     <div ref={root} className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Atlas assistant">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
-      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-overlay shadow-modal">
+      <div ref={scrim} className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+      <aside ref={sheet} className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-overlay shadow-modal">
         <header className="flex items-center gap-3 border-b border-line px-4 py-3">
           <OrbGlyph size={28} active={!!sending} />
           <div className="min-w-0 flex-1">
@@ -169,20 +181,24 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
 
         <div ref={scroller} className="flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
           {history.isLoading && <p className="muted text-sm">Loading conversation…</p>}
-          {!history.isLoading && messages.length === 0 && !sending && (
+          {empty && (
             <div className="py-6 text-center">
               <OrbGlyph size={48} />
               <p className="mt-3 font-semibold">Good to see you, {name}.</p>
               <p className="muted mx-auto mt-1 max-w-xs text-sm">
                 Ask me to add or finish tasks, sort your inbox, block time, log habits, make a plan (workouts, study, reading…) or tell you what's on. Each reply uses one of your daily AI actions.
               </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} className="chip-off" onClick={() => send(s)} disabled={!!aiOff}>
-                    {s}
-                  </button>
-                ))}
-              </div>
+              {aiOff ? (
+                <p className="mx-auto mt-4 max-w-xs rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">{offMessage}</p>
+              ) : (
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {SUGGESTIONS.map((s) => (
+                    <button key={s} className="chip-off" onClick={() => send(s)}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {messages.map((m) => (
@@ -198,14 +214,14 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
           ) : null}
           {(pending.data ?? []).map((p) => (
             <div key={p.id} className="rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm">
-              <p className="font-medium">Confirm: {p.summary}?</p>
-              <p className="muted mt-0.5 text-xs">This can't be undone.</p>
+              <p className="font-medium">{p.summary}?</p>
+              <p className="muted mt-0.5 text-xs">Atlas is asking first. This can't be undone.</p>
               <div className="mt-2 flex gap-2">
                 <button className="btn-danger !px-3 !py-1.5" onClick={() => decide(p, true)}>
-                  <Check size={14} /> Confirm
+                  Delete
                 </button>
                 <button className="btn-ghost !px-3 !py-1.5" onClick={() => decide(p, false)}>
-                  Cancel
+                  Keep
                 </button>
               </div>
             </div>
@@ -219,7 +235,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
             send(input);
           }}
         >
-          {aiOff && <p className="mb-2 text-xs text-warning">{status.data?.message ?? "You've used today's AI allowance. It resets at midnight UTC."}</p>}
+          {aiOff && !empty && <p className="mb-2 text-xs text-warning">{offMessage}</p>}
           <div className="flex items-end gap-2">
             <label htmlFor="atlas-input" className="sr-only">
               Message Atlas
@@ -276,8 +292,12 @@ function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'ass
       {shownActions.length > 0 && (
         <ul className="mt-1.5 space-y-1" aria-label="What Atlas did">
           {shownActions.map((a, i) => (
-            <li key={i} className={cn('flex items-start gap-1.5 text-xs', a.ok ? 'text-success ' : 'text-danger')}>
-              <Check size={13} className="mt-0.5 shrink-0" aria-hidden /> {a.summary}
+            <li key={i} className={cn('flex items-start gap-1.5 text-xs', a.ok ? 'text-success' : 'text-danger')}>
+              {a.ok ? <Check size={13} className="mt-0.5 shrink-0" aria-hidden /> : <AlertCircle size={13} className="mt-0.5 shrink-0" aria-hidden />}
+              <span>
+                {!a.ok && <span className="font-semibold">Didn't work: </span>}
+                {a.summary}
+              </span>
             </li>
           ))}
         </ul>

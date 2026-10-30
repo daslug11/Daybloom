@@ -22,13 +22,18 @@ export function MobileNav() {
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Main navigation">
         <div className="flex">
           {NAV.filter((n) => n.primary).map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} end={to === '/app'} className={tab}>
+            <NavLink key={to} to={to} end={to === '/app'} className={tab} data-tour={`nav-${to.split('/').pop()}`}>
               <Icon size={20} aria-hidden />
               <span className="max-w-full truncate">{label === 'Dashboard' ? 'Today' : label}</span>
-              {to === '/app/brain-dump' && inbox > 0 && <span className="badge absolute right-[18%] top-0.5">{inbox}</span>}
+              {to === '/app/brain-dump' && inbox !== 0 && (
+                <span className="badge absolute right-[18%] top-0.5">
+                  <span aria-hidden>{inbox ?? '—'}</span>
+                  <span className="sr-only">{inbox === null ? ', inbox count unavailable' : `, ${inbox} in inbox`}</span>
+                </span>
+              )}
             </NavLink>
           ))}
-          <button className={tab({ isActive: inMore })} onClick={() => setMore(true)} aria-haspopup="dialog">
+          <button className={tab({ isActive: inMore })} onClick={() => setMore(true)} aria-haspopup="dialog" data-tour="nav-habits">
             <MoreHorizontal size={20} aria-hidden />
             More
           </button>

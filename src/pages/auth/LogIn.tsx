@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SITE_URL } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, authMessageFromUrl, FormError } from './AuthLayout';
+import { AuthLayout, authMessage, authMessageFromUrl, FormError, SendAgain } from './AuthLayout';
 
 export default function LogIn() {
   const [params] = useSearchParams();
   const next = params.get('next')?.startsWith('/') ? params.get('next')! : '/app';
-  const [mode, setMode] = useState<'password' | 'magic'>('password');
+  // ?method=link opens on "Email me a link" (used by "Send a new link" on expired-link pages).
+  const [mode, setMode] = useState<'password' | 'magic'>(params.get('method') === 'link' ? 'magic' : 'password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,17 +26,23 @@ export default function LogIn() {
       if (error) return setError(authMessage(error));
       navigate(next, { replace: true });
     } else {
-      const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${SITE_URL}/auth/callback?next=${encodeURIComponent(next)}` } });
+      const err = await sendLink();
       setBusy(false);
-      if (error) return setError(authMessage(error));
+      if (err) return setError(err);
       setSent(true);
     }
   };
 
+  async function sendLink() {
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${SITE_URL}/auth/callback?next=${encodeURIComponent(next)}` } });
+    return error ? authMessage(error) : '';
+  }
+
   if (sent) {
     return (
-      <AuthLayout title="Check your email ✉️" subtitle={<>We sent a sign-in link to <strong>{email}</strong>.</>} footer={<button className="link" onClick={() => setSent(false)}>Use a different method</button>}>
+      <AuthLayout title="Check your email" subtitle={<>We sent a sign-in link to <strong>{email}</strong>.</>} footer={<button className="link" onClick={() => setSent(false)}>Use a different method</button>}>
         <p className="text-sm">Open it on this device to log in. The link works once and expires in an hour.</p>
+        <SendAgain send={sendLink} />
       </AuthLayout>
     );
   }
@@ -43,7 +50,8 @@ export default function LogIn() {
   return (
     <AuthLayout
       title="Welcome back"
-      subtitle="Log in to your Daybloom."
+      pageTitle="Log in"
+      subtitle="Log in to pick up where you left off."
       footer={
         <>
           New here? <Link to="/signup" className="link">Sign up free</Link>

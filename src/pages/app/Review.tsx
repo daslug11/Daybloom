@@ -1,33 +1,85 @@
-import { useMemo, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { useMemo, type ReactNode } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AiButton } from '../../components/ui/Ai';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
-import { QueryState } from '../../components/ui/States';
+import { LoadingList } from '../../components/ui/States';
 import { useFocusSessions } from '../../hooks/data/focus';
 import { useHabitLogs, useHabits } from '../../hooks/data/habits';
 import { useMoods } from '../../hooks/data/moods';
 import { useNotes } from '../../hooks/data/notes';
 import { useTasks } from '../../hooks/data/tasks';
-import { useAi } from '../../hooks/useAi';
+import { useUserId } from '../../hooks/useAuth';
+import { useAi, useAiStatus } from '../../hooks/useAi';
 import { useToday } from '../../hooks/useProfile';
-import { addDays, dayIn, parseKey } from '../../lib/dates';
+import { addDays, dayIn, formatDay, parseKey } from '../../lib/dates';
 import { MOODS } from '../../lib/moods';
 import { formatDuration } from '../../lib/quickAdd';
+import { useSavedResult } from '../../lib/savedResult';
+import { deltaText, habitDays, habitStartDay, lastDays, meanScore } from '../../lib/stats';
+
+interface Source {
+  isLoading: boolean;
+  error: unknown;
+  refetch: () => unknown;
+}
+
+/** Loading / error / retry across the queries a section depends on. */
+function from(...qs: Source[]) {
+  return {
+    loading: qs.some((q) => q.isLoading),
+    failed: qs.some((q) => q.error),
+    retry: () => qs.forEach((q) => q.error && q.refetch()),
+  };
+}
+
+/** Shown in place of a number when its data didn't load — never a fake zero. */
+function Failed({ what, onRetry }: { what: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="text-sm">
+      <p className="muted">{what} didn’t load, so it isn’t shown.</p>
+      <button className="btn-ghost mt-2 !px-3 !py-1.5 text-xs" onClick={onRetry}>
+        <RefreshCw size={13} aria-hidden /> Try again
+      </button>
+    </div>
+  );
+}
+
+interface Summary {
+  summary: string;
+  suggestions: string[];
+  cached: boolean;
+  /** The stats it was written from, to tell the user when their numbers have moved on. */
+  stats: string;
+}
+
+const LIST_MAX = 20;
 
 export default function Review() {
   const { today, tz } = useToday();
+  const uid = useUserId();
   const tasks = useTasks();
-  const { data: habits = [] } = useHabits();
+  const habits = useHabits();
   const logs = useHabitLogs(today);
-  const { data: moods = [] } = useMoods(today);
-  const { data: sessions = [] } = useFocusSessions();
-  const { data: notes = [] } = useNotes();
+  const moods = useMoods(today);
+  const sessions = useFocusSessions();
+  const notes = useNotes();
   const summary = useAi<{ summary: string; suggestions: string[] }>('weekly_summary');
-  const [ai, setAi] = useState<{ summary: string; suggestions: string[]; cached: boolean } | null>(null);
+  const { data: aiStatus } = useAiStatus();
   const start = addDays(today, -6);
   const prevStart = addDays(today, -13);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const [ai, setAi] = useSavedResult<Summary>(['weekly_summary', uid, start]);
+  const days = lastDays(today, 7);
+
+  const src = {
+    tasks: from(tasks),
+    habits: from(habits, logs),
+    moods: from(moods),
+    focus: from(sessions),
+    notes: from(notes),
+    all: from(tasks, habits, logs, moods, sessions, notes),
+  };
 
   const s = useMemo(() => {
     const all = tasks.data ?? [];
@@ -36,30 +88,33 @@ export default function Review() {
     const donePrev = all.filter((t) => t.done && !t.parent_id && (doneOn(t) ?? '') >= prevStart && (doneOn(t) ?? '') < start);
     const overdue = all.filter((t) => !t.done && !t.parent_id && t.due_date && t.due_date < today);
 
-    // Habit consistency: only count days on/after the habit was created.
-    let possible = 0;
-    let hits = 0;
-    const logSet = new Set((logs.data ?? []).map((l) => `${l.habit_id}:${l.day}`));
-    const perHabit = habits.map((h) => {
-      const created = dayIn(tz, new Date(h.created_at));
-      const eligible = days.filter((d) => d >= created);
-      const n = eligible.filter((d) => logSet.has(`${h.id}:${d}`)).length;
-      possible += eligible.length;
-      hits += n;
-      return { habit: h, n, of: eligible.length };
+    // One rule for the tile, the per-habit list and the chart (see habitDays).
+    const logDays = new Map<string, Set<string>>();
+    for (const l of logs.data ?? []) {
+      if (!logDays.has(l.habit_id)) logDays.set(l.habit_id, new Set());
+      logDays.get(l.habit_id)!.add(l.day);
+    }
+    const perHabit = (habits.data ?? []).map((h) => {
+      const set = logDays.get(h.id) ?? new Set<string>();
+      const first = habitStartDay(dayIn(tz, new Date(h.created_at)), set);
+      return { habit: h, set, first, ...habitDays({ start: first, logDays: set, days, today }) };
     });
-    const weekMoods = moods.filter((m) => m.day >= start && m.day <= today);
-    const avgMood = weekMoods.length ? weekMoods.reduce((a, m) => a + m.score, 0) / weekMoods.length : null;
-    const focusMin = sessions.filter((x) => dayIn(tz, new Date(x.started_at)) >= start).reduce((a, x) => a + x.minutes, 0);
-    const captured = notes.filter((n) => dayIn(tz, new Date(n.created_at)) >= start).length;
-    const processed = notes.filter((n) => n.processed_at && dayIn(tz, new Date(n.processed_at)) >= start).length;
+    const hits = perHabit.reduce((a, h) => a + h.done, 0);
+    const possible = perHabit.reduce((a, h) => a + h.possible, 0);
+
+    const weekMoods = (moods.data ?? []).filter((m) => m.day >= start && m.day <= today);
+    const avgMood = meanScore(weekMoods.map((m) => m.score));
+    const focusMin = (sessions.data ?? []).filter((x) => dayIn(tz, new Date(x.started_at)) >= start).reduce((a, x) => a + x.minutes, 0);
+    const captured = (notes.data ?? []).filter((n) => dayIn(tz, new Date(n.created_at)) >= start).length;
+    const processed = (notes.data ?? []).filter((n) => n.processed_at && dayIn(tz, new Date(n.processed_at)) >= start).length;
     const perDay = days.map((d) => ({
-      day: parseKey(d).toLocaleDateString(undefined, { weekday: 'short' }),
+      key: d,
+      day: d === today ? 'Today' : parseKey(d).toLocaleDateString(undefined, { weekday: 'short' }),
       Tasks: done.filter((t) => doneOn(t) === d).length,
-      Habits: habits.filter((h) => logSet.has(`${h.id}:${d}`)).length,
+      Habits: perHabit.reduce((a, h) => a + habitDays({ start: h.first, logDays: h.set, days: [d], today }).done, 0),
     }));
     return { done, donePrev, overdue, perHabit, consistency: possible ? Math.round((hits / possible) * 100) : null, hits, possible, avgMood, moodCount: weekMoods.length, focusMin, captured, processed, perDay };
-  }, [tasks.data, logs.data, habits, moods, sessions, notes, start, prevStart, today, tz]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tasks.data, logs.data, habits.data, moods.data, sessions.data, notes.data, start, prevStart, today, tz]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const delta = s.done.length - s.donePrev.length;
   const range = `${parseKey(start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${parseKey(today).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
@@ -70,55 +125,88 @@ export default function Review() {
     completed_titles: s.done.slice(0, 15).map((t) => t.title),
     still_overdue: s.overdue.slice(0, 10).map((t) => t.title),
     habit_consistency_percent: s.consistency,
-    habits: s.perHabit.map((h) => `${h.habit.name}: ${h.n}/${h.of}`),
-    average_mood_1_to_5: s.avgMood ? Number(s.avgMood.toFixed(1)) : null,
+    habits: s.perHabit.map((h) => `${h.habit.name}: ${h.done}/${h.possible}`),
+    average_mood_1_to_5: s.avgMood !== null ? Number(s.avgMood.toFixed(1)) : null,
     mood_check_ins: s.moodCount,
     focus_minutes: s.focusMin,
     notes_captured: s.captured,
     notes_processed: s.processed,
   };
+  const statsKey = JSON.stringify(statsForAi);
+  const ready = !src.all.loading && !src.all.failed;
+  const outOfActions = !!aiStatus?.enabled && aiStatus.remaining <= 0;
+  const runSummary = (force: boolean) =>
+    summary.mutate({ week_start: start, stats: statsForAi, force }, { onSuccess: (r) => setAi({ ...r.result, cached: r.cached, stats: statsKey }) });
 
-  const tiles = [
+  const roundedMood = s.avgMood !== null ? MOODS.find((m) => m.value === Math.round(s.avgMood!)) : undefined;
+  const tiles: { label: string; src: ReturnType<typeof from>; value: string; sub: ReactNode; how: string }[] = [
     {
       label: 'Tasks completed',
+      src: src.tasks,
       value: String(s.done.length),
-      sub: delta === 0 ? 'Same as the 7 days before' : `${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)} vs the 7 days before`,
+      sub: (
+        <>
+          {delta !== 0 && <span aria-hidden>{delta > 0 ? '▲ ' : '▼ '}</span>}
+          {deltaText(delta)}
+        </>
+      ),
       how: 'Tasks (not steps) you marked done in the last 7 days.',
     },
     {
       label: 'Habit consistency',
+      src: src.habits,
       value: s.consistency == null ? '—' : `${s.consistency}%`,
-      sub: s.possible ? `${s.hits} of ${s.possible} habit-days` : 'No habits yet',
-      how: 'Days you did each habit ÷ days each habit existed this week.',
+      sub: s.possible ? `${s.hits} of ${s.possible} habit-days` : (habits.data ?? []).length ? 'Nothing to count yet' : 'No habits yet',
+      how: 'Days you did each habit ÷ days it could have been done in the last 7 days, from the day it started. Today counts once it’s done.',
     },
     {
       label: 'Average mood',
-      value: s.avgMood ? `${s.avgMood.toFixed(1)}/5` : '—',
-      sub: s.moodCount ? `${MOODS[Math.round(s.avgMood!) - 1].emoji} from ${s.moodCount} check-in${s.moodCount === 1 ? '' : 's'}` : 'No check-ins this week',
-      how: 'Mean of your daily mood check-ins (1 = rough, 5 = amazing).',
+      src: src.moods,
+      value: s.avgMood !== null ? `${s.avgMood.toFixed(1)}/5` : '—',
+      sub: s.moodCount ? (
+        <>
+          {roundedMood && <span aria-hidden>{roundedMood.emoji} </span>}
+          {roundedMood ? `About “${roundedMood.label}”, ` : ''}from {s.moodCount} check-in{s.moodCount === 1 ? '' : 's'}
+        </>
+      ) : (
+        'No check-ins in the last 7 days'
+      ),
+      how: 'Mean of your daily mood check-ins (1 = Rough, 5 = Amazing). Skipped days aren’t counted.',
     },
     {
       label: 'Focus time',
+      src: src.focus,
       value: formatDuration(s.focusMin),
-      sub: 'From finished Pomodoro blocks',
-      how: 'Minutes logged by focus sessions that ran to the end.',
+      sub: 'From the Focus timer',
+      how: 'Minutes the Focus timer actually ran in the last 7 days, as logged.',
     },
   ];
 
-  const loading = tasks.isLoading || logs.isLoading;
+  const initialLoad = src.all.loading && !tasks.data && !habits.data;
   return (
     <div>
       <PageHeader title="Weekly Review" description={`${range}. A plain look at your last 7 days — what got done, what slipped — so you can adjust next week.`} />
-      <QueryState isLoading={loading} error={tasks.error} onRetry={() => tasks.refetch()} />
-      {!loading && (
+      {initialLoad ? (
+        <LoadingList />
+      ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {tiles.map((t) => (
               <Card key={t.label} className="!p-4">
                 <p className="muted text-xs font-medium">{t.label}</p>
-                <p className="mt-1 text-3xl font-extrabold tabular-nums">{t.value}</p>
-                <p className="muted mt-0.5 text-xs">{t.sub}</p>
-                <p className="faint mt-2 text-xs leading-snug">{t.how}</p>
+                {t.src.loading ? (
+                  <div className="mt-2 h-9 w-16 animate-pulse rounded-control bg-raised" role="status" aria-label={`Loading ${t.label.toLowerCase()}`} />
+                ) : t.src.failed ? (
+                  <div className="mt-2">
+                    <Failed what="This number" onRetry={t.src.retry} />
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-1 text-3xl font-extrabold tabular-nums">{t.value}</p>
+                    <p className="muted mt-0.5 text-xs">{t.sub}</p>
+                  </>
+                )}
+                <p className="muted mt-2 text-xs leading-snug">{t.how}</p>
               </Card>
             ))}
           </div>
@@ -126,69 +214,128 @@ export default function Review() {
           <Card>
             <CardTitle
               action={
-                <AiButton
-                  size="sm"
-                  loading={summary.isPending}
-                  onClick={() => summary.mutate({ week_start: start, stats: statsForAi, force: !!ai }, { onSuccess: (r) => setAi({ ...r.result, cached: r.cached }) })}
-                  hint="A short written review and 3 suggestions for next week"
-                >
-                  {ai ? 'Regenerate' : 'AI summary'}
-                </AiButton>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {outOfActions && ready && !ai && (
+                    <button className="btn-ghost !px-2.5 !py-1.5 !text-xs" disabled={summary.isPending} onClick={() => runSummary(false)}>
+                      Show saved summary
+                    </button>
+                  )}
+                  <AiButton
+                    size="sm"
+                    loading={summary.isPending}
+                    disabled={!ready}
+                    onClick={() => runSummary(!!ai)}
+                    hint={ai ? 'Writes a fresh summary — always uses an action' : 'A short written review and 3 suggestions for next week'}
+                  >
+                    {ai ? 'Regenerate' : 'AI summary'}
+                  </AiButton>
+                </div>
               }
             >
               ✨ Summary & suggestions
             </CardTitle>
-            {ai ? (
-              <div className="space-y-3 text-sm">
-                <p className="leading-relaxed">{ai.summary}</p>
-                <ol className="list-decimal space-y-1 pl-5">
-                  {ai.suggestions.map((x, i) => (
-                    <li key={i}>{x}</li>
-                  ))}
-                </ol>
-              </div>
-            ) : (
-              <p className="muted text-sm">Get a short written review of these numbers and three specific suggestions for next week. Uses one AI action (free if nothing changed since last time).</p>
-            )}
+            <div aria-live="polite">
+              {ai ? (
+                <div className="space-y-3 rounded-card border border-atlas/30 bg-atlas/[0.04] p-4 text-sm">
+                  <p className="leading-relaxed">{ai.summary}</p>
+                  <ol className="list-decimal space-y-1 pl-5">
+                    {ai.suggestions.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ol>
+                  <p className="muted text-xs">
+                    {ai.cached ? 'Saved summary — no action used.' : 'Used 1 ✨ action.'}
+                    {ai.stats !== statsKey ? ' Your numbers have changed since this was written.' : ''} Regenerate always uses 1 action.
+                  </p>
+                </div>
+              ) : (
+                <p className="muted text-sm">
+                  {!ready
+                    ? src.all.failed
+                      ? 'Some of your numbers didn’t load, so the summary is off until they do — it would be written from wrong numbers.'
+                      : 'Waiting for all your numbers to load…'
+                    : `Get a short written review of these numbers and three specific suggestions for next week. Uses 1 ✨ action${aiStatus?.enabled ? ` (${aiStatus.remaining} left today)` : ''} — free if nothing changed since your last summary.`}
+                </p>
+              )}
+            </div>
           </Card>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardTitle>Day by day</CardTitle>
-              <div className="h-52" role="img" aria-label="Tasks completed and habits done per day this week">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={s.perDay} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--line))" vertical={false} />
-                    <XAxis dataKey="day" tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: 'rgb(var(--ink) / 0.05)' }} contentStyle={{ background: 'rgb(var(--overlay))', border: '1px solid rgb(var(--line-strong))', borderRadius: 10, fontSize: 12, color: 'rgb(var(--ink))' }} />
-                    <Bar dataKey="Tasks" fill="rgb(var(--ink))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                    <Bar dataKey="Habits" fill="rgb(var(--faint))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="faint mt-2 text-xs">
-                Dark bars: tasks completed · Light bars: habits done · Brain Dump: {s.captured} captured, {s.processed} processed
+              {src.tasks.loading || src.habits.loading ? (
+                <div className="h-52 animate-pulse rounded-control bg-raised" role="status" aria-label="Loading chart" />
+              ) : src.tasks.failed || src.habits.failed ? (
+                <Failed what="The chart" onRetry={() => (src.tasks.retry(), src.habits.retry())} />
+              ) : (
+                <>
+                  <div
+                    className="h-52"
+                    role="img"
+                    aria-label={`Tasks completed and habits done per day, last 7 days: ${s.perDay.map((d) => `${d.day}${d.key === today ? ' so far' : ''}: ${d.Tasks} task${d.Tasks === 1 ? '' : 's'}, ${d.Habits} habit${d.Habits === 1 ? '' : 's'}`).join('; ')}`}
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={s.perDay} margin={{ top: 4, right: 4, bottom: 0, left: -24 }} accessibilityLayer={false}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--line))" vertical={false} />
+                        <XAxis dataKey="day" tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
+                        <Tooltip cursor={{ fill: 'rgb(var(--ink) / 0.05)' }} contentStyle={{ background: 'rgb(var(--overlay))', border: '1px solid rgb(var(--line-strong))', borderRadius: 10, fontSize: 12, color: 'rgb(var(--ink))' }} />
+                        <Bar dataKey="Tasks" name="Tasks done" fill="rgb(var(--ink))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                        <Bar dataKey="Habits" name="Habits done" fill="rgb(var(--faint))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-ink" aria-hidden /> Tasks done
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-faint" aria-hidden /> Habits done
+                    </span>
+                    <span>Today counts so far.</span>
+                  </p>
+                </>
+              )}
+              <p className="muted mt-1 text-xs">
+                {src.notes.loading ? (
+                  'Brain Dump: loading…'
+                ) : src.notes.failed ? (
+                  <>
+                    Brain Dump counts didn’t load.{' '}
+                    <button className="underline underline-offset-2 hover:text-ink" onClick={src.notes.retry}>
+                      Try again
+                    </button>
+                  </>
+                ) : (
+                  `Brain Dump, last 7 days: ${s.captured} captured, ${s.processed} processed (turned into something or archived).`
+                )}
               </p>
             </Card>
             <Card>
-              <CardTitle>Habits this week</CardTitle>
-              {s.perHabit.length ? (
-                <ul className="space-y-2 text-sm">
-                  {s.perHabit.map(({ habit, n, of }) => (
-                    <li key={habit.id} className="flex items-center gap-3">
-                      <span className="w-40 truncate">
-                        {habit.emoji} {habit.name}
-                      </span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-line" aria-hidden>
-                        <div className="h-full bg-accent" style={{ width: of ? `${(n / of) * 100}%` : 0 }} />
-                      </div>
-                      <span className="faint w-10 text-right tabular-nums">
-                        {n}/{of}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              <CardTitle>Habits, last 7 days</CardTitle>
+              {src.habits.loading ? (
+                <LoadingList rows={3} label="Loading habits" />
+              ) : src.habits.failed ? (
+                <Failed what="Your habits" onRetry={src.habits.retry} />
+              ) : s.perHabit.length ? (
+                <>
+                  <ul className="space-y-2 text-sm">
+                    {s.perHabit.map(({ habit, done, possible }) => (
+                      <li key={habit.id} className="flex items-center gap-3">
+                        <span className="w-40 truncate">
+                          <span aria-hidden>{habit.emoji}</span> {habit.name}
+                        </span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-line" aria-hidden>
+                          <div className="h-full bg-accent" style={{ width: possible ? `${(done / possible) * 100}%` : 0 }} />
+                        </div>
+                        <span className="muted w-20 shrink-0 text-right text-xs tabular-nums">
+                          {possible ? `${done} of ${possible} days` : 'Starts today'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="muted mt-3 text-xs">Counted from the day each habit started; today counts once it’s done.</p>
+                </>
               ) : (
                 <p className="muted text-sm">No habits yet.</p>
               )}
@@ -197,10 +344,14 @@ export default function Review() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
-              <CardTitle>Done this week ({s.done.length})</CardTitle>
-              {s.done.length ? (
+              <CardTitle>Done in the last 7 days{src.tasks.loading || src.tasks.failed ? '' : ` (${s.done.length})`}</CardTitle>
+              {src.tasks.loading ? (
+                <LoadingList rows={3} label="Loading tasks" />
+              ) : src.tasks.failed ? (
+                <Failed what="Your tasks" onRetry={src.tasks.retry} />
+              ) : s.done.length ? (
                 <ul className="space-y-1 text-sm">
-                  {s.done.slice(0, 20).map((t) => (
+                  {s.done.slice(0, LIST_MAX).map((t) => (
                     <li key={t.id} className="flex gap-2">
                       <span className="text-success" aria-hidden>
                         ✓
@@ -208,21 +359,28 @@ export default function Review() {
                       {t.title}
                     </li>
                   ))}
+                  {s.done.length > LIST_MAX && <li className="muted text-xs">…and {s.done.length - LIST_MAX} more</li>}
                 </ul>
               ) : (
                 <p className="muted text-sm">Nothing completed in the last 7 days.</p>
               )}
             </Card>
             <Card>
-              <CardTitle>Still overdue ({s.overdue.length})</CardTitle>
-              {s.overdue.length ? (
+              <CardTitle>Still overdue{src.tasks.loading || src.tasks.failed ? '' : ` (${s.overdue.length})`}</CardTitle>
+              <p className="muted -mt-2 mb-3 text-xs">Open tasks whose due date has passed — from any week, not just the last 7 days.</p>
+              {src.tasks.loading ? (
+                <LoadingList rows={3} label="Loading tasks" />
+              ) : src.tasks.failed ? (
+                <Failed what="Your tasks" onRetry={src.tasks.retry} />
+              ) : s.overdue.length ? (
                 <ul className="space-y-1 text-sm">
-                  {s.overdue.slice(0, 20).map((t) => (
+                  {s.overdue.slice(0, LIST_MAX).map((t) => (
                     <li key={t.id} className="flex justify-between gap-2">
                       <span className="truncate">{t.title}</span>
-                      <span className="faint shrink-0 text-xs">due {t.due_date}</span>
+                      <span className="muted shrink-0 text-xs">due {formatDay(t.due_date!, today)}</span>
                     </li>
                   ))}
+                  {s.overdue.length > LIST_MAX && <li className="muted text-xs">…and {s.overdue.length - LIST_MAX} more</li>}
                 </ul>
               ) : (
                 <p className="muted text-sm">Nothing overdue. 👏</p>

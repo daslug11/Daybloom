@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SITE_URL } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, FormError } from './AuthLayout';
+import { AuthLayout, authMessage, FormError, SendAgain } from './AuthLayout';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -28,21 +28,14 @@ export default function SignUp() {
 
   if (sentTo) {
     return (
-      <AuthLayout title="Check your email 📬" subtitle={<>We sent a confirmation link to <strong>{sentTo}</strong>.</>} footer={<Link to="/login" className="link">Back to log in</Link>}>
+      <AuthLayout title="Check your email" subtitle={<>We sent a confirmation link to <strong>{sentTo}</strong>.</>} footer={<Link to="/login" className="link">Back to log in</Link>}>
         <p className="text-sm">Open the link on this device to finish setting up your account. It can take a minute to arrive — check your spam folder too.</p>
-        <button
-          className="btn-ghost mt-4 w-full"
-          onClick={async () => {
+        <SendAgain
+          send={async () => {
             const { error } = await supabase.auth.resend({ type: 'signup', email: sentTo, options: { emailRedirectTo: `${SITE_URL}/auth/callback` } });
-            setError(error ? authMessage(error) : '');
-            if (!error) setError('Sent again — check your inbox.');
+            return error ? authMessage(error) : '';
           }}
-        >
-          Resend the link
-        </button>
-        <div className="mt-3">
-          <FormError message={error} />
-        </div>
+        />
       </AuthLayout>
     );
   }
@@ -50,6 +43,7 @@ export default function SignUp() {
   return (
     <AuthLayout
       title="Create your free account"
+      pageTitle="Sign up"
       subtitle="Capture everything, plan your day, build habits — synced across your devices."
       footer={
         <>

@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, ArrowRightLeft, ListTodo, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Sparkles, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRightLeft, Lightbulb, ListTodo, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '../../lib/dates';
 import type { Note } from '../../lib/types';
@@ -6,10 +6,10 @@ import { cn } from '../../lib/utils';
 import type { ConvertKind } from './ConvertDialog';
 import { checklistProgress, Markdown, toggleCheckLine } from './Markdown';
 import { Menu, MenuItem } from '../ui/Menu';
+import { CONVERSIONS, STATE_LABEL } from './outcomes';
 
 export type NoteAiAction = 'extract' | 'summarize' | 'plan';
 
-const STATE_LABEL: Record<Note['state'], string> = { inbox: 'Inbox', idea: 'Idea', note: 'Note', archived: 'Archived' };
 const STATE_STYLE: Record<Note['state'], string> = {
   inbox: 'bg-ink text-canvas',
   idea: 'border border-line-strong text-ink',
@@ -29,10 +29,11 @@ interface Props {
   onAi?: (action: NoteAiAction) => void;
   aiBusy?: NoteAiAction | null;
   aiDisabled?: boolean;
+  className?: string;
 }
 
 /** A Brain Dump note with its actions. Presentational: all changes go through callbacks. */
-export function NoteCard({ note, links, showState, highlight, onChange, onDelete, onConvert, onAi, aiBusy, aiDisabled }: Props) {
+export function NoteCard({ note, links, showState, highlight, onChange, onDelete, onConvert, onAi, aiBusy, aiDisabled, className }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
   const progress = checklistProgress(note.body);
@@ -49,7 +50,7 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
     <article
       id={`note-${note.id}`}
       data-note-id={note.id}
-      className={cn('card group p-4 transition-colors duration-fast', highlight && 'ring-2 ring-ink/40', note.pinned && 'border-ink/40')}
+      className={cn('card group p-4 transition-colors duration-fast', highlight && 'ring-2 ring-ink/40', note.pinned && 'border-ink/40', className)}
       aria-label={`Note from ${timeAgo(note.created_at)}`}
     >
       <div className="mb-2 flex items-center gap-2 text-xs">
@@ -108,11 +109,11 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
               {(close) => (
                 <>
                   <p className="faint px-2.5 pb-1 pt-1.5 text-xs">Select text first to use just that part.</p>
-                  <MenuItem onClick={() => (close(), onConvert('task'))}>✅ Make task</MenuItem>
-                  <MenuItem onClick={() => (close(), onConvert('block'))}>🗓️ Schedule in Planner</MenuItem>
-                  <MenuItem onClick={() => (close(), onConvert('goal-task'))}>🎯 Add to a goal</MenuItem>
-                  <MenuItem onClick={() => (close(), onConvert('habit'))}>🔁 Make habit</MenuItem>
-                  <MenuItem onClick={() => (close(), onConvert('goal'))}>🏁 Make goal</MenuItem>
+                  {CONVERSIONS.map(({ id, label, icon: Icon, convert }) => (
+                    <MenuItem key={id} onClick={() => (close(), onConvert(convert!))}>
+                      <Icon size={15} className="text-muted" aria-hidden /> {label}
+                    </MenuItem>
+                  ))}
                 </>
               )}
             </Menu>
@@ -136,8 +137,8 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
             </Menu>
           )}
           {onChange && note.state === 'inbox' && (
-            <button className="chip-off ml-1" onClick={() => onChange({ state: 'idea' })}>
-              💡 Keep as idea
+            <button className="chip-off ml-1 inline-flex items-center gap-1.5" onClick={() => onChange({ state: 'idea' })}>
+              <Lightbulb size={13} aria-hidden /> Keep as idea
             </button>
           )}
           <div className="ml-auto flex items-center gap-0.5">

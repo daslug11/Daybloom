@@ -8,6 +8,8 @@ import { clip, firstLine } from '../../lib/text';
 import type { Note, Priority } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { Modal } from '../ui/Modal';
+import { TaskChips } from '../tasks/TaskChips';
+import { outcome } from './outcomes';
 
 // ---------------------------------------------------------------------------
 // ✨ Organize inbox
@@ -21,14 +23,17 @@ export interface Suggestion {
   reason: string;
 }
 
-const KIND_LABEL: Record<SuggestionKind, string> = { task: '✅ Task', reminder: '⏰ Reminder', idea: '💡 Idea', journal: '📓 Journal', reference: '📄 Reference' };
+/** ✨ Organize speaks the same words as Process inbox: a reminder is a task, a journal entry is reference. */
+type Choice = 'task' | 'idea' | 'reference';
+const toChoice = (k: SuggestionKind): Choice => (k === 'task' || k === 'reminder' ? 'task' : k === 'idea' ? 'idea' : 'reference');
+const CHOICES: Choice[] = ['task', 'idea', 'reference'];
 
-export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestion[]; onClose: () => void }) {
+export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestion[]; onClose: (committed?: boolean) => void }) {
   const { data: notes = [] } = useNotes();
   const addTasks = useAddTasks();
   const updateNote = useUpdateNote();
   const toast = useToast();
-  const [items, setItems] = useState(suggestions.map((s) => ({ ...s, status: 'open' as 'open' | 'done' | 'dismissed' })));
+  const [items, setItems] = useState(suggestions.map((s) => ({ ...s, kind: toChoice(s.kind) as SuggestionKind, status: 'open' as 'open' | 'done' | 'dismissed' })));
   const byId = new Map(notes.map((n) => [n.id, n]));
 
   const accept = (i: number) => {
@@ -45,11 +50,11 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
   const open = items.map((s, i) => ({ s, i })).filter(({ s }) => s.status === 'open' && byId.get(s.note_id)?.state === 'inbox');
 
   return (
-    <Modal open onClose={onClose} title="✨ Suggested organization" description="Edit anything that’s off, then accept. Tasks keep a link to their note; the note is archived." className="max-w-2xl">
+    <Modal open onClose={() => onClose()} title="✨ Suggested organization" description="Edit anything that’s off, then accept. Tasks keep a link to their note; the note is archived." className="max-w-2xl">
       {open.length === 0 ? (
         <div className="py-6 text-center">
           <p className="font-semibold">All sorted.</p>
-          <button className="btn-primary mt-4" onClick={onClose}>
+          <button className="btn-primary mt-4" onClick={() => onClose(true)}>
             Done
           </button>
         </div>
@@ -63,7 +68,7 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
                   <p className="muted text-xs">“{clip(note.body.replace(/\s+/g, ' '), 140)}”</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="sr-only" htmlFor={`kind-${i}`}>
-                      Type
+                      What is it?
                     </label>
                     <select
                       id={`kind-${i}`}
@@ -71,9 +76,9 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
                       value={s.kind}
                       onChange={(e) => setItems((list) => list.map((x, j) => (j === i ? { ...x, kind: e.target.value as SuggestionKind } : x)))}
                     >
-                      {Object.entries(KIND_LABEL).map(([k, label]) => (
+                      {CHOICES.map((k) => (
                         <option key={k} value={k}>
-                          {label}
+                          {outcome(k).label}
                         </option>
                       ))}
                     </select>
@@ -112,7 +117,7 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
             })}
           </ul>
           <div className="mt-4 flex justify-end gap-2">
-            <button className="btn-ghost" onClick={onClose}>
+            <button className="btn-ghost" onClick={() => onClose()}>
               Close
             </button>
             <button
@@ -134,28 +139,41 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
 // ---------------------------------------------------------------------------
 // ✨ Extract actions
 // ---------------------------------------------------------------------------
-export function ExtractPanel({ note, actions, onClose }: { note: Note; actions: { title: string; due_date: string | null; priority: Priority | null }[]; onClose: () => void }) {
+export function ExtractPanel({ note, actions, onClose }: { note: Note; actions: { title: string; due_date: string | null; priority: Priority | null }[]; onClose: (committed?: boolean) => void }) {
   const [items, setItems] = useState(actions.map((a) => ({ ...a, keep: true })));
   const addTasks = useAddTasks();
   const toast = useToast();
   const keep = items.filter((a) => a.keep && a.title.trim());
   return (
-    <Modal open onClose={onClose} title="✨ Actions found in this note" description="Untick anything you don’t want. Each becomes a task linked to the note.">
+    <Modal open onClose={() => onClose()} title="✨ Actions found in this note" description="Untick anything you don’t want. Each becomes a task linked to the note.">
       {items.length === 0 ? (
         <p className="text-sm">No clear to-dos in this note.</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-3">
           {items.map((a, i) => (
-            <li key={i} className="flex items-center gap-2">
-              <input type="checkbox" className="accent-ink" checked={a.keep} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} aria-label={`Keep “${a.title}”`} />
-              <input className="input !py-1.5 flex-1" value={a.title} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} aria-label="Task title" />
-              {a.due_date && <span className="faint text-xs">{a.due_date}</span>}
+            <li key={i} className={cn('flex items-start gap-2', !a.keep && 'opacity-60')}>
+              <input type="checkbox" className="mt-3 accent-ink" checked={a.keep} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} aria-label={`Keep “${a.title}”`} />
+              <div className="min-w-0 flex-1">
+                <input className="input !py-1.5" value={a.title} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} aria-label="Task title" />
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <span className="faint">Due</span>
+                    <input
+                      type="date"
+                      className="input !w-auto !py-1 !text-xs"
+                      value={a.due_date ?? ''}
+                      onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, due_date: e.target.value || null } : x)))}
+                    />
+                  </label>
+                  {a.priority && <TaskChips priority={a.priority} />}
+                </div>
+              </div>
             </li>
           ))}
         </ul>
       )}
       <div className="mt-5 flex justify-end gap-2">
-        <button className="btn-ghost" onClick={onClose}>
+        <button className="btn-ghost" onClick={() => onClose()}>
           Cancel
         </button>
         <button
@@ -164,7 +182,7 @@ export function ExtractPanel({ note, actions, onClose }: { note: Note; actions: 
           onClick={() => {
             addTasks.mutate(keep.map((a, i) => ({ title: a.title.trim(), due_date: a.due_date, priority: a.priority, source_note_id: note.id, sort: Date.now() / 1000 + i })));
             toast(`Added ${keep.length} task${keep.length === 1 ? '' : 's'}`);
-            onClose();
+            onClose(true);
           }}
         >
           Add {keep.length} task{keep.length === 1 ? '' : 's'}
@@ -177,11 +195,11 @@ export function ExtractPanel({ note, actions, onClose }: { note: Note; actions: 
 // ---------------------------------------------------------------------------
 // ✨ Summarize (a note or the week)
 // ---------------------------------------------------------------------------
-export function SummaryPanel({ title, summary, keyPoints, onClose }: { title: string; summary: string; keyPoints: string[]; onClose: () => void }) {
+export function SummaryPanel({ title, summary, keyPoints, onClose }: { title: string; summary: string; keyPoints: string[]; onClose: (committed?: boolean) => void }) {
   const addNote = useAddNote();
   const toast = useToast();
   return (
-    <Modal open onClose={onClose} title={`✨ ${title}`}>
+    <Modal open onClose={() => onClose()} title={`✨ ${title}`}>
       <p className="text-sm leading-relaxed">{summary}</p>
       {keyPoints.length > 0 && (
         <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
@@ -191,18 +209,18 @@ export function SummaryPanel({ title, summary, keyPoints, onClose }: { title: st
         </ul>
       )}
       <div className="mt-5 flex justify-end gap-2">
+        <button className="btn-ghost" onClick={() => onClose()}>
+          Close
+        </button>
         <button
-          className="btn-ghost"
+          className="btn-primary"
           onClick={() => {
             addNote.mutate({ body: `## ${title}\n\n${summary}\n\n${keyPoints.map((k) => `- ${k}`).join('\n')}`, state: 'note' });
-            toast('Saved as a note');
-            onClose();
+            toast('Saved as a reference note in All notes');
+            onClose(true);
           }}
         >
           Save as note
-        </button>
-        <button className="btn-primary" onClick={onClose}>
-          Close
         </button>
       </div>
     </Modal>
@@ -212,9 +230,9 @@ export function SummaryPanel({ title, summary, keyPoints, onClose }: { title: st
 // ---------------------------------------------------------------------------
 // ✨ Find patterns
 // ---------------------------------------------------------------------------
-export function PatternsPanel({ themes, onClose }: { themes: { theme: string; evidence: string; suggestion: string }[]; onClose: () => void }) {
+export function PatternsPanel({ themes, onClose }: { themes: { theme: string; evidence: string; suggestion: string }[]; onClose: (committed?: boolean) => void }) {
   return (
-    <Modal open onClose={onClose} title="✨ Patterns in your recent notes" description="Themes that came up more than once in the last 30 days.">
+    <Modal open onClose={() => onClose()} title="✨ Patterns in your recent notes" description="Themes that came up more than once in the last 30 days.">
       {themes.length === 0 ? (
         <p className="text-sm">No recurring themes yet — keep capturing and try again later.</p>
       ) : (
@@ -229,7 +247,7 @@ export function PatternsPanel({ themes, onClose }: { themes: { theme: string; ev
         </ul>
       )}
       <div className="mt-5 flex justify-end">
-        <button className="btn-primary" onClick={onClose}>
+        <button className="btn-primary" onClick={() => onClose()}>
           Close
         </button>
       </div>
@@ -240,7 +258,7 @@ export function PatternsPanel({ themes, onClose }: { themes: { theme: string; ev
 // ---------------------------------------------------------------------------
 // ✨ Turn into a plan
 // ---------------------------------------------------------------------------
-export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: string; steps: { title: string; estimate_min: number | null }[] }; onClose: () => void }) {
+export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: string; steps: { title: string; estimate_min: number | null }[] }; onClose: (committed?: boolean) => void }) {
   const [title, setTitle] = useState(plan.title || firstLine(note.body));
   const [steps, setSteps] = useState(plan.steps.map((s) => ({ ...s, keep: true })));
   const [as, setAs] = useState<'tasks' | 'goal'>('tasks');
@@ -261,11 +279,11 @@ export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: 
       toast(`New goal “${title.trim()}” with ${keep.length} milestones`);
     }
     if (note.state === 'inbox') updateNote.mutate({ id: note.id, patch: { state: 'idea' } });
-    onClose();
+    onClose(true);
   };
 
   return (
-    <Modal open onClose={onClose} title="✨ A plan for this idea" className="max-w-xl">
+    <Modal open onClose={() => onClose()} title="✨ A plan for this idea" className="max-w-xl">
       <label className="block">
         <span className="label">Plan</span>
         <input className="input font-medium" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -294,7 +312,7 @@ export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: 
         ))}
       </fieldset>
       <div className="mt-5 flex justify-end gap-2">
-        <button className="btn-ghost" onClick={onClose}>
+        <button className="btn-ghost" onClick={() => onClose()}>
           Cancel
         </button>
         <button className="btn-primary" disabled={!keep.length || !title.trim()} onClick={create}>

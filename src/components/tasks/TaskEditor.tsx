@@ -1,5 +1,5 @@
 import { Check, ChevronDown, FileText, Plus, Timer, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGoals } from '../../hooks/data/goals';
 import { useNotes } from '../../hooks/data/notes';
@@ -21,7 +21,28 @@ interface Props {
   onClose: () => void;
 }
 
-/** Edit everything about a task: when, priority, time block, goal, steps. */
+const FIELDS = ['title', 'details', 'due_date', 'due_time', 'priority', 'tags', 'estimate_min', 'goal_id', 'sched_date', 'sched_start', 'sched_duration', 'top_date'] as const;
+const parseTags = (value: string) => [...new Set(value.split(',').map((t) => t.trim().replace(/^#/, '').toLowerCase()).filter(Boolean))].slice(0, 20);
+
+/** What changed between the saved task and the draft. An empty title is never saved: the last one is kept. */
+function changes(task: Task, draft: Task) {
+  const patch: Partial<Task> = {};
+  for (const k of FIELDS) {
+    if (JSON.stringify(draft[k]) !== JSON.stringify(task[k])) (patch as Record<string, unknown>)[k] = draft[k];
+  }
+  if ('title' in patch) {
+    if (draft.title.trim()) patch.title = draft.title.trim();
+    else delete patch.title;
+  }
+  if (patch.title === task.title) delete patch.title;
+  return patch;
+}
+
+/**
+ * Edit everything about a task: when, priority, time block, goal, steps.
+ * Changes save automatically (shortly after typing stops, and on every way of closing), so
+ * Escape, × and a tap outside never lose an edit — there's nothing to cancel.
+ */
 export function TaskEditor({ task, onClose }: Props) {
   const { today } = useToday();
   const { data: tasks = [] } = useTasks();
@@ -35,6 +56,7 @@ export function TaskEditor({ task, onClose }: Props) {
   const navigate = useNavigate();
   const toast = useToast();
   const [draft, setDraft] = useState<Task | null>(task);
+  const [tagsText, setTagsText] = useState(task?.tags.join(', ') ?? '');
   const [newStep, setNewStep] = useState('');
   const [proposed, setProposed] = useState<{ title: string; estimate_min: number | null; keep: boolean }[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -42,13 +64,32 @@ export function TaskEditor({ task, onClose }: Props) {
   const filledExtras = (t: Task | null) => (t ? [t.estimate_min, t.tags.length, t.goal_id, t.sched_date, t.details.trim()].filter(Boolean).length : 0);
   const [more, setMore] = useState(() => filledExtras(task) > 0);
 
+  // Start a fresh draft only when a different task opens — not when this one's saved copy
+  // updates (each autosave does that), or the field being typed in would be reset.
   useEffect(() => {
     setDraft(task);
+    setTagsText(task?.tags.join(', ') ?? '');
     setProposed(null);
     setConfirmDelete(false);
     setMore(filledExtras(task) > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task]);
+  }, [task?.id]);
+
+  // Autosave: the latest saved task and draft live in refs so a pending save and close always see them.
+  const latest = useRef({ task, draft });
+  latest.current = { task, draft };
+  const flush = () => {
+    const { task: t, draft: d } = latest.current;
+    if (!t || !d || d.id !== t.id) return;
+    const patch = changes(t, d);
+    if (Object.keys(patch).length) update.mutate({ id: t.id, patch });
+  };
+  useEffect(() => {
+    if (!draft || draft.id !== task?.id) return;
+    const handle = window.setTimeout(flush, 600);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
 
   if (!task || !draft) return null;
   const steps = tasks.filter((t) => t.parent_id === task.id).sort((a, b) => a.sort - b.sort);
@@ -56,13 +97,10 @@ export function TaskEditor({ task, onClose }: Props) {
   const extras = filledExtras(draft);
   const set = (patch: Partial<Task>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
-  const save = () => {
-    const patch: Partial<Task> = {};
-    for (const k of ['title', 'details', 'due_date', 'due_time', 'priority', 'tags', 'estimate_min', 'goal_id', 'sched_date', 'sched_start', 'sched_duration', 'top_date'] as const) {
-      if (JSON.stringify(draft[k]) !== JSON.stringify(task[k])) (patch as Record<string, unknown>)[k] = draft[k];
-    }
-    if (!draft.title.trim()) return toast('A task needs a title.');
-    if (Object.keys(patch).length) update.mutate({ id: task.id, patch: { ...patch, title: draft.title.trim() } });
+  /** Every way out (Close, Escape, ×, backdrop, Focus) saves first. */
+  const close = () => {
+    flush();
+    if (!draft.title.trim()) toast(`A task needs a title, so it’s still “${task.title}”.`);
     onClose();
   };
 
@@ -71,13 +109,26 @@ export function TaskEditor({ task, onClose }: Props) {
     on ? set({ sched_date: draft.due_date && draft.due_date >= today ? draft.due_date : today, sched_start: 9 * 60, sched_duration: Math.max(15, Math.round((draft.estimate_min ?? 60) / 15) * 15) }) : set({ sched_date: null, sched_start: null, sched_duration: null });
 
   return (
-    <Modal open onClose={save} title="Task" className="max-w-xl">
+    <Modal open onClose={close} title="Task" description="Changes save automatically." className="max-w-xl">
       <div className="space-y-4">
         <div>
           <label className="label" htmlFor="task-title">
             Title
           </label>
-          <input id="task-title" className="input text-base font-medium" value={draft.title} maxLength={300} onChange={(e) => set({ title: e.target.value })} />
+          <input
+            id="task-title"
+            className="input text-base font-medium"
+            value={draft.title}
+            maxLength={300}
+            onChange={(e) => set({ title: e.target.value })}
+            aria-invalid={!draft.title.trim()}
+            aria-describedby={draft.title.trim() ? undefined : 'task-title-error'}
+          />
+          {!draft.title.trim() && (
+            <p id="task-title-error" className="mt-1 text-xs text-danger">
+              A task needs a title. Until it has one, “{task.title}” is kept.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -195,8 +246,11 @@ export function TaskEditor({ task, onClose }: Props) {
                 <input
                   className="input"
                   placeholder="work, errands"
-                  defaultValue={draft.tags.join(', ')}
-                  onBlur={(e) => set({ tags: [...new Set(e.target.value.split(',').map((t) => t.trim().replace(/^#/, '').toLowerCase()).filter(Boolean))].slice(0, 20) })}
+                  value={tagsText}
+                  onChange={(e) => {
+                    setTagsText(e.target.value);
+                    set({ tags: parseTags(e.target.value) });
+                  }}
                 />
               </label>
               <label>
@@ -299,14 +353,14 @@ export function TaskEditor({ task, onClose }: Props) {
                 className="btn-ghost !px-3"
                 onClick={() => {
                   timer.setTaskId(task.id);
-                  onClose();
+                  close();
                   navigate('/app/focus');
                 }}
               >
                 <Timer size={15} /> Focus on this
               </button>
-              <button className="btn-primary ml-auto" onClick={save}>
-                Done
+              <button className="btn-primary ml-auto" onClick={close}>
+                Close
               </button>
             </>
           )}

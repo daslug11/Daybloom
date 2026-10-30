@@ -1,24 +1,49 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Keyboard, Mic, MicOff, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Keyboard, Mic, MicOff, Square, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { atlasKey } from '../../hooks/data/atlas';
+import { usePlans } from '../../hooks/data/plans';
 import { useTasks } from '../../hooks/data/tasks';
 import { useAiStatus, useAiStatusUpdater } from '../../hooks/useAi';
 import { useUserId } from '../../hooks/useAuth';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useInvalidateUserData } from '../../hooks/useInvalidateAll';
+import { useOverlay } from '../../hooks/useOverlay';
 import { useProfile, useToday } from '../../hooks/useProfile';
 import { ApiError, atlasStream } from '../../lib/api';
-import { greeting } from '../../lib/dates';
-import { useOverlay } from '../../hooks/useOverlay';
-import { PlanCard } from '../plans/PlanCard';
+import { addDays, dayIn, daysBetween, greeting } from '../../lib/dates';
 import { createRecognizer, speak, speechInputSupported, speechOutputSupported, stopSpeaking, type Recognizer } from '../../lib/speech';
 import { cn } from '../../lib/utils';
-
-type Phase = 'booting' | 'idle' | 'listening' | 'thinking' | 'speaking';
+import { PlanCard } from '../plans/PlanCard';
+import { AllowanceMeter, BootLine, CountUp, delay, Elapsed, HUD_CSS, HudClock, HudRings, Readout } from './HudParts';
+import { useWaveform, type HudPhase } from './useWaveform';
 
 const WAKE = /\bhey,?\s+atlas\b[,.!?]?\s*/i;
+const MS_PER_CHAR = 28;
+const NO_AI = "You've used today's AI allowance. It resets at midnight UTC.";
+
+/** The full boot plays once per page load; reopening voice mode boots quickly. */
+let bootedOnce = false;
+
+const PHASE_LABEL: Record<HudPhase, string> = { booting: 'Booting', idle: 'Standing by', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' };
+
+/** "14:30", "Tomorrow 09:00", "Thu 09:00" or "12 Nov 09:00", in the user's time zone. */
+function whenLabel(at: number, today: string, tz?: string) {
+  const d = new Date(at);
+  const key = dayIn(tz, d);
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: tz });
+  if (key === today) return time;
+  if (key === addDays(today, 1)) return `Tomorrow ${time}`;
+  if (daysBetween(today, key) < 7) return `${d.toLocaleDateString(undefined, { weekday: 'short', timeZone: tz })} ${time}`;
+  return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: tz })} ${time}`;
+}
+
+/** "T−42 MIN" / "T−3 H" for things later today. */
+function countdown(at: number, now: number) {
+  const mins = Math.max(0, Math.round((at - now) / 60_000));
+  return mins < 60 ? `T−${mins} min` : `T−${Math.floor(mins / 60)} h ${mins % 60 ? `${mins % 60} min` : ''}`.trim();
+}
 
 /**
  * Voice mode: a full-screen holographic HUD. Speak to Atlas (Web Speech API),
@@ -28,34 +53,68 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
   const uid = useUserId();
   const qc = useQueryClient();
   const { data: profile } = useProfile();
-  const { today, minutes, now } = useToday(1000);
+  // Minute resolution is enough here; the seconds clock is its own component.
+  const { today, minutes, now, tz } = useToday(60_000);
   const { data: tasks = [] } = useTasks();
   const { events } = useCalendarSync();
+  const { data: plans } = usePlans();
   const ai = useAiStatus();
   const updateStatus = useAiStatusUpdater();
   const invalidate = useInvalidateUserData();
   const voice = profile?.voice ?? {};
   const name = profile?.name || 'there';
 
-  const [phase, setPhase] = useState<Phase>('booting');
-  const [bootText, setBootText] = useState('');
+  const reduced = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, []);
+  const touch = useMemo(() => typeof window !== 'undefined' && !window.matchMedia?.('(hover: hover) and (pointer: fine)').matches, []);
+  const [fastBoot] = useState(() => bootedOnce || reduced);
+  const bootLine = useMemo(() => `Systems online. ${greeting(minutes)}, ${name}.`, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const bootMs = fastBoot ? 450 : bootLine.length * MS_PER_CHAR + 350;
+
+  const [phase, setPhase] = useState<HudPhase>('booting');
   const [heard, setHeard] = useState('');
   const [reply, setReply] = useState('');
   const [notice, setNotice] = useState('');
   const [typed, setTyped] = useState('');
+  /** Seconds from sending to Atlas's first word, for the last reply. */
+  const [latency, setLatency] = useState<number | null>(null);
   /** A plan Atlas drafted during this voice session, shown as a card on screen. */
   const [planId, setPlanId] = useState<string | null>(null);
-  const root = useRef<HTMLDivElement>(null);
   const [showKeyboard, setShowKeyboard] = useState(!speechInputSupported());
-  const recognizer = useRef<Recognizer | null>(null);
-  const level = useRef(0); // 0–1 drives the waveform ring
-  const boundaryPulse = useRef(0);
-  const audio = useRef<{ ctx: AudioContext; analyser: AnalyserNode; stream: MediaStream } | null>(null);
+
+  const root = useRef<HTMLDivElement>(null);
+  const transcript = useRef<HTMLDivElement>(null);
+  const typedInput = useRef<HTMLInputElement>(null);
+  const keyboardToggled = useRef(false);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const phaseRef = useRef<Phase>('booting');
-  phaseRef.current = phase;
+  const recognizer = useRef<Recognizer | null>(null);
+  /** Identifies the live recognizer; callbacks from an older one are ignored. */
+  const recToken = useRef<object | null>(null);
+  const meter = useRef<{ ctx: AudioContext; analyser: AnalyserNode; stream: MediaStream } | null>(null);
+  const boundaryPulse = useRef(0);
+  const phaseRef = useRef<HudPhase>('booting');
+  /** Bumped by every new request, interruption or close; work from an older run stops touching the HUD. */
+  const runId = useRef(0);
   const abort = useRef<AbortController | null>(null);
-  const reduced = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, []);
+
+  const aiOff = !!ai.data && (!ai.data.enabled || ai.data.remaining <= 0);
+  const aiMessage = ai.data?.message ?? NO_AI;
+  const aiOffRef = useRef(aiOff);
+  aiOffRef.current = aiOff;
+
+  const go = useCallback((p: HudPhase) => {
+    phaseRef.current = p;
+    setPhase(p);
+  }, []);
+
+  const kick = useWaveform({
+    canvas,
+    phase: phaseRef,
+    meter,
+    pulse: boundaryPulse,
+    reduced,
+    bootMs,
+  });
+  useEffect(kick, [phase, kick]);
 
   // ---- real readouts -------------------------------------------------------
   const tasksLeft = tasks.filter((t) => !t.done && !t.parent_id && (t.top_date === today || (t.due_date && t.due_date <= today) || t.sched_date === today)).length;
@@ -73,58 +132,73 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
     return items[0] ?? null;
   }, [events, tasks, now]);
 
-  // ---- boot sequence ---------------------------------------------------------
-  useEffect(() => {
-    const line = `Systems online. ${greeting(minutes)}, ${name}.`;
-    let i = 0;
-    const id = window.setInterval(() => {
-      i++;
-      setBootText(line.slice(0, i));
-      if (i >= line.length) {
-        window.clearInterval(id);
-        window.setTimeout(() => setPhase('idle'), reduced ? 0 : 500);
-      }
-    }, reduced ? 0 : 38);
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const finishBoot = useCallback(() => {
+    window.setTimeout(() => {
+      bootedOnce = true;
+      if (phaseRef.current === 'booting') go('idle');
+    }, fastBoot ? 450 : 350);
+  }, [fastBoot, go]);
 
   // ---- microphone level (for the waveform) -----------------------------------
-  const startMeter = useCallback(async () => {
-    if (audio.current || !navigator.mediaDevices?.getUserMedia) return;
+  const stopMeter = useCallback(() => {
+    meter.current?.stream.getTracks().forEach((t) => t.stop());
+    meter.current?.ctx.close().catch(() => {});
+    meter.current = null;
+  }, []);
+
+  const startMeter = useCallback(async (token: object) => {
+    if (meter.current || !navigator.mediaDevices?.getUserMedia) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Listening may have ended while the browser asked for the mic.
+      if (recToken.current !== token || meter.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       ctx.createMediaStreamSource(stream).connect(analyser);
-      audio.current = { ctx, analyser, stream };
+      meter.current = { ctx, analyser, stream };
     } catch {
       /* the recognizer will report mic problems */
     }
   }, []);
 
-  const stopMeter = useCallback(() => {
-    audio.current?.stream.getTracks().forEach((t) => t.stop());
-    audio.current?.ctx.close().catch(() => {});
-    audio.current = null;
-  }, []);
+  const endRecognizer = useCallback(() => {
+    recToken.current = null;
+    recognizer.current?.abort();
+    recognizer.current = null;
+    stopMeter();
+  }, [stopMeter]);
 
   // ---- talking to Atlas ------------------------------------------------------
   const ask = useCallback(
     async (message: string) => {
       const text = message.trim();
       if (!text) return;
-      recognizer.current?.abort();
+      if (aiOffRef.current) {
+        setNotice(aiMessage);
+        return;
+      }
+      const run = ++runId.current;
+      endRecognizer();
+      stopSpeaking();
+      abort.current?.abort();
+      const ctrl = new AbortController();
+      abort.current = ctrl;
       setHeard(text);
       setReply('');
       setNotice('');
-      setPhase('thinking');
-      abort.current = new AbortController();
+      setLatency(null);
+      go('thinking');
+      const sent = performance.now();
       let full = '';
       try {
-        for await (const ev of atlasStream(text, 'voice', abort.current.signal)) {
+        for await (const ev of atlasStream(text, 'voice', ctrl.signal)) {
+          if (run !== runId.current) return;
           if (ev.t === 'text') {
+            if (!full) setLatency((performance.now() - sent) / 1000);
             full += ev.v;
             setReply(full);
           } else if (ev.t === 'action' && ev.plan_id) {
@@ -135,38 +209,49 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
           else if (ev.t === 'done') updateStatus(ev.remaining);
         }
       } catch (err) {
-        const msg = err instanceof ApiError ? err.message : 'Atlas is unavailable right now.';
-        setNotice(msg);
+        if (run !== runId.current || ctrl.signal.aborted) return;
+        setNotice(err instanceof ApiError ? err.message : 'Atlas is unavailable right now.');
         if (err instanceof ApiError && err.data.reason === 'daily_limit') updateStatus(0);
-        setPhase('idle');
+        if (err instanceof ApiError && String(err.data.reason ?? '').startsWith('paused')) updateStatus(null, { enabled: false, paused: true, message: err.message });
+        go('idle');
         return;
       }
       qc.invalidateQueries({ queryKey: atlasKey(uid) });
       invalidate();
+      if (run !== runId.current) return;
       if (full && voice.speak !== false && speechOutputSupported()) {
-        setPhase('speaking');
+        go('speaking');
         await speak(full, voice, { onBoundary: () => (boundaryPulse.current = 1) });
       }
-      if (phaseRef.current !== 'booting') setPhase('idle');
+      // Only fall back to idle if nothing (a barge-in, a new request) took over meanwhile.
+      if (run === runId.current && (phaseRef.current === 'speaking' || phaseRef.current === 'thinking')) go('idle');
     },
-    [qc, uid, invalidate, updateStatus, voice],
+    [qc, uid, invalidate, updateStatus, voice, go, endRecognizer, aiMessage],
   );
 
   const listen = useCallback(() => {
+    if (aiOffRef.current) {
+      setNotice(aiMessage);
+      return;
+    }
     if (!speechInputSupported()) {
       setShowKeyboard(true);
       setNotice("Speech input isn't supported in this browser — type instead, or try Chrome, Edge or Safari.");
       return;
     }
+    runId.current++; // a reply that is still being spoken no longer owns the HUD
     stopSpeaking();
+    endRecognizer();
     setNotice('');
     setHeard('');
     let finalText = '';
     const wake = !!voice.wakeWord;
-    recognizer.current?.abort();
-    recognizer.current = createRecognizer({
+    const token = {};
+    recToken.current = token;
+    const rec = createRecognizer({
       continuous: wake,
       onText: (t, isFinal) => {
+        if (recToken.current !== token) return;
         if (wake) {
           if (!WAKE.test(t)) return;
           const command = t.replace(WAKE, '');
@@ -177,38 +262,63 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
         setHeard(isFinal ? (finalText = t) : t);
       },
       onEnd: () => {
-        stopMeter();
-        if (!wake && finalText) ask(finalText);
-        else if (phaseRef.current === 'listening') {
-          if (wake) recognizer.current?.start(); // keep listening for the wake phrase
-          else setPhase('idle');
+        if (recToken.current !== token) return;
+        if (!wake && finalText) {
+          ask(finalText);
+          return;
         }
+        if (phaseRef.current === 'listening' && wake) {
+          rec?.start(); // keep waiting for the wake phrase
+          return;
+        }
+        endRecognizer();
+        if (phaseRef.current === 'listening') go('idle');
       },
-      onError: (msg) => {
-        setNotice(msg);
-        setPhase('idle');
+      onError: (msg, code) => {
+        if (recToken.current !== token) return;
+        // Silence is normal while waiting for "Hey Atlas"; onEnd restarts recognition.
+        if (wake && code === 'no-speech') return;
+        endRecognizer();
+        setNotice(wake ? `${msg} Wake phrase paused — tap the orb to resume.` : msg);
+        go('idle');
       },
     });
-    setPhase('listening');
-    startMeter();
-    recognizer.current?.start();
-  }, [ask, startMeter, stopMeter, voice.wakeWord]);
+    recognizer.current = rec;
+    go('listening');
+    startMeter(token);
+    rec?.start();
+  }, [ask, startMeter, endRecognizer, voice.wakeWord, go, aiMessage]);
 
-  const stopListening = () => {
+  const stopListening = useCallback(() => {
     recognizer.current?.stop();
-  };
+  }, []);
+
+  const cancel = useCallback(() => {
+    runId.current++;
+    abort.current?.abort();
+    stopSpeaking();
+    go('idle');
+  }, [go]);
 
   const close = useCallback(() => {
+    runId.current++;
     abort.current?.abort();
-    recognizer.current?.abort();
+    endRecognizer();
     stopSpeaking();
-    stopMeter();
     onClose();
-  }, [onClose, stopMeter]);
+  }, [onClose, endRecognizer]);
+
+  const orbAction = () => {
+    const p = phaseRef.current;
+    if (p === 'booting') return;
+    if (p === 'listening') stopListening();
+    else if (p === 'thinking') cancel();
+    else listen();
+  };
 
   // Wake-phrase mode starts listening as soon as the HUD is ready.
   useEffect(() => {
-    if (phase === 'idle' && voice.wakeWord && speechInputSupported() && !notice) listen();
+    if (phase === 'idle' && voice.wakeWord && speechInputSupported() && !notice && !aiOff) listen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase === 'idle']);
 
@@ -219,248 +329,254 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || !isTopLayer()) return;
       // Space on a focused control (Exit, the keyboard toggle, a plan card button) activates that control.
-      if ((e.target as HTMLElement | null)?.closest('button, a, input, textarea, select, [role="button"]')) return;
+      if ((e.target as HTMLElement | null)?.closest('button, a, input, textarea, select, [role="button"], [contenteditable]')) return;
       e.preventDefault();
       if (phaseRef.current === 'listening') stopListening();
       else if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') listen();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [listen, isTopLayer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [listen, stopListening, isTopLayer]);
 
-  useEffect(() => () => {
-    abort.current?.abort();
-    recognizer.current?.abort();
-    stopSpeaking();
-    stopMeter();
-  }, [stopMeter]);
+  useEffect(
+    () => () => {
+      runId.current++;
+      abort.current?.abort();
+      endRecognizer();
+      stopSpeaking();
+    },
+    [endRecognizer],
+  );
 
-  // ---- waveform ring (canvas) --------------------------------------------------
+  // Keep the latest line of a long reply in view.
   useEffect(() => {
-    const el = canvas.current;
-    if (!el) return;
-    const ctx = el.getContext('2d')!;
-    const data = new Uint8Array(128);
-    let raf = 0;
-    let t = 0;
-    const draw = () => {
-      const size = el.clientWidth;
-      const dpr = window.devicePixelRatio || 1;
-      if (el.width !== size * dpr) {
-        el.width = size * dpr;
-        el.height = size * dpr;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, size, size);
-      const p = phaseRef.current;
-      // Target loudness: mic while listening, word pulses while speaking, a slow breath otherwise.
-      let target = 0.05;
-      if (p === 'listening' && audio.current) {
-        audio.current.analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (const v of data) sum += Math.abs(v - 128);
-        target = Math.min(1, (sum / data.length) / 18);
-      } else if (p === 'speaking') {
-        boundaryPulse.current *= 0.9;
-        target = 0.25 + boundaryPulse.current * 0.75;
-      } else if (p === 'thinking') target = 0.15 + 0.1 * Math.sin(t / 6);
-      level.current += (target - level.current) * 0.25;
-      const cx = size / 2;
-      const r = size * 0.3;
-      const bars = 96;
-      for (let i = 0; i < bars; i++) {
-        const a = (i / bars) * Math.PI * 2;
-        const wobble = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(a * 6 + t / 8) * Math.cos(a * 3 - t / 11);
-        const len = 4 + level.current * size * 0.09 * (0.35 + wobble);
-        ctx.strokeStyle = `rgba(103, 232, 249, ${0.25 + level.current * 0.6})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a) * r, cx + Math.sin(a) * r);
-        ctx.lineTo(cx + Math.cos(a) * (r + len), cx + Math.sin(a) * (r + len));
-        ctx.stroke();
-      }
-      t++;
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [reduced]);
+    const el = transcript.current;
+    if (el && el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+  }, [heard, reply, notice]);
 
-  const remaining = ai.data?.enabled ? ai.data.remaining : 0;
-  const status =
-    phase === 'booting' ? 'BOOTING' : phase === 'listening' ? (voice.wakeWord ? 'SAY “HEY ATLAS”' : 'LISTENING') : phase === 'thinking' ? 'THINKING' : phase === 'speaking' ? 'SPEAKING' : 'STANDING BY';
-  const timeStr = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  useEffect(() => {
+    if (showKeyboard && keyboardToggled.current) typedInput.current?.focus();
+  }, [showKeyboard]);
+
+  const status = phase === 'listening' && voice.wakeWord ? 'Say “Hey Atlas”' : phase === 'idle' && aiOff ? 'AI unavailable' : PHASE_LABEL[phase];
+  const hint = voice.wakeWord ? 'Say “Hey Atlas”, then your request.' : touch ? 'Tap the orb, then speak.' : 'Tap the orb or press Space, then speak.';
+  const orbLabel = phase === 'listening' ? 'Stop listening' : phase === 'thinking' ? 'Cancel request' : 'Talk to Atlas (Space)';
+  const orbInactive = phase === 'booting' || (aiOff && phase !== 'listening' && phase !== 'thinking');
+
+  const aiReadout = !ai.data ? (
+    '—'
+  ) : ai.data.paused ? (
+    <span className="text-amber-300">Paused</span>
+  ) : !ai.data.enabled ? (
+    <span className="text-amber-300">Off</span>
+  ) : (
+    <CountUp value={ai.data.remaining} reduced={reduced} />
+  );
+
+  const nextUpReadout = (className?: string, align: 'left' | 'right' = 'left') => (
+    <Readout label="Next up" align={align} className={className} enter={400}>
+      {nextUp ? (
+        <>
+          <div className="truncate text-sm">{nextUp.title}</div>
+          <div className="mt-0.5 truncate text-xs tabular-nums text-cyan-300/80">
+            {whenLabel(nextUp.at, today, tz)}
+            {dayIn(tz, new Date(nextUp.at)) === today && <span className="hidden sm:inline"> · {countdown(nextUp.at, now.getTime())}</span>}
+          </div>
+        </>
+      ) : (
+        <div className="text-sm text-cyan-300/80">Nothing scheduled</div>
+      )}
+    </Readout>
+  );
 
   return createPortal(
-    <div ref={root} tabIndex={-1} className="fixed inset-0 z-[90] overflow-hidden bg-[#020409] font-mono text-cyan-100 outline-none" role="dialog" aria-modal="true" aria-label="Atlas voice mode">
+    <div
+      ref={root}
+      tabIndex={-1}
+      data-phase={phase}
+      data-ai-off={aiOff}
+      className="hud-root fixed inset-0 z-[90] flex flex-col overflow-hidden bg-[#020409] font-mono text-cyan-100 outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Atlas voice mode"
+    >
       <style>{HUD_CSS}</style>
       <div className="hud-grid pointer-events-none absolute inset-0" aria-hidden />
       <div className="hud-scan pointer-events-none absolute inset-0" aria-hidden />
+      {phase === 'booting' && !fastBoot && <div className="hud-boot-sweep pointer-events-none absolute inset-x-0" aria-hidden />}
 
-      {/* Corner readouts — real data only */}
-      <div className="absolute left-4 top-4 space-y-1 text-[11px] uppercase tracking-[0.2em] text-cyan-300/80 sm:left-8 sm:top-8">
-        <div className="text-2xl font-light tracking-[0.15em] text-cyan-100 tabular-nums">{timeStr}</div>
-        <div>{dateStr}</div>
-      </div>
-      <div className="absolute right-4 top-4 text-right text-[11px] uppercase tracking-[0.2em] text-cyan-300/80 sm:right-8 sm:top-8">
-        <div className="text-cyan-500/70">Next up</div>
-        <div className="mt-1 max-w-[40vw] truncate text-cyan-100 normal-case tracking-normal">
-          {nextUp ? `${new Date(nextUp.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} · ${nextUp.title}` : 'Nothing scheduled'}
+      {/* Header: clock left, next up and Exit right */}
+      <header className="relative z-10 flex items-start justify-between gap-4">
+        <HudClock tz={tz} />
+        <div className="flex min-w-0 items-start gap-6">
+          {nextUpReadout('hidden max-w-[32vw] sm:block', 'right')}
+          <button
+            onClick={close}
+            className="hud-rise flex h-11 shrink-0 items-center gap-2 rounded-full border border-cyan-400/50 px-4 text-xs uppercase tracking-[0.2em] text-cyan-100 transition-colors duration-150 hover:bg-cyan-400/10"
+            style={delay(150)}
+            aria-label="Exit voice mode (Esc)"
+          >
+            <X size={15} aria-hidden /> Exit
+          </button>
         </div>
-      </div>
-      <div className="absolute bottom-24 left-4 text-[11px] uppercase tracking-[0.2em] text-cyan-300/80 sm:bottom-8 sm:left-8">
-        <div className="text-cyan-500/70">Tasks left today</div>
-        <div className="mt-1 text-xl text-cyan-100 tabular-nums">{tasksLeft}</div>
-      </div>
-      <div className="absolute bottom-24 right-4 text-right text-[11px] uppercase tracking-[0.2em] text-cyan-300/80 sm:bottom-8 sm:right-8">
-        <div className="text-cyan-500/70">AI uses left</div>
-        <div className="mt-1 text-xl text-cyan-100 tabular-nums">{ai.data ? remaining : '—'}</div>
-      </div>
+      </header>
 
-      <button onClick={close} className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded-full border border-cyan-400/30 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-400/10" aria-label="Exit voice mode (Esc)">
-        <X size={14} /> EXIT
-      </button>
-
-      {/* Central orb + rings */}
-      <div className="absolute left-1/2 top-[44%] h-[min(78vw,460px)] w-[min(78vw,460px)] -translate-x-1/2 -translate-y-1/2">
-        <canvas ref={canvas} className="absolute inset-0 h-full w-full" aria-hidden />
-        <svg viewBox="0 0 400 400" className={cn('absolute inset-0 h-full w-full', phase === 'booting' && 'hud-boot')} aria-hidden>
-          <defs>
-            <radialGradient id="hud-core" cx="50%" cy="45%" r="55%">
-              <stop offset="0%" stopColor="#ecfeff" />
-              <stop offset="35%" stopColor="#67e8f9" />
-              <stop offset="75%" stopColor="#0891b2" stopOpacity="0.55" />
-              <stop offset="100%" stopColor="#083344" stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          {/* outer ring with tick marks */}
-          <g className="hud-spin-slow" style={{ transformOrigin: '200px 200px' }}>
-            <circle cx="200" cy="200" r="188" fill="none" stroke="#22d3ee" strokeOpacity="0.35" strokeWidth="1" className="hud-draw" />
-            {Array.from({ length: 72 }, (_, i) => {
-              const a = (i / 72) * Math.PI * 2;
-              const long = i % 6 === 0;
-              const r1 = long ? 176 : 181;
-              return <line key={i} x1={200 + Math.cos(a) * r1} y1={200 + Math.sin(a) * r1} x2={200 + Math.cos(a) * 188} y2={200 + Math.sin(a) * 188} stroke="#67e8f9" strokeOpacity={long ? 0.7 : 0.3} strokeWidth={long ? 1.5 : 1} />;
-            })}
-          </g>
-          {/* middle segmented arcs, counter-rotating */}
-          <g className="hud-spin-rev" style={{ transformOrigin: '200px 200px' }}>
-            <circle cx="200" cy="200" r="160" fill="none" stroke="#22d3ee" strokeOpacity="0.55" strokeWidth="3" strokeDasharray="60 20 12 20" className="hud-draw" />
-          </g>
-          {/* inner thin ring, faster */}
-          <g className="hud-spin-fast" style={{ transformOrigin: '200px 200px' }}>
-            <circle cx="200" cy="200" r="138" fill="none" stroke="#a5f3fc" strokeOpacity="0.45" strokeWidth="1.5" strokeDasharray="4 8" className="hud-draw" />
-            <path d="M 200 62 A 138 138 0 0 1 338 200" fill="none" stroke="#67e8f9" strokeWidth="3" strokeOpacity="0.9" />
-          </g>
-          {/* core */}
-          <circle cx="200" cy="200" r="78" fill="url(#hud-core)" className={cn(phase === 'thinking' && 'hud-pulse')} />
-          <circle cx="200" cy="200" r="84" fill="none" stroke="#67e8f9" strokeOpacity="0.6" strokeWidth="1" />
-        </svg>
-        <button
-          onClick={() => (phase === 'listening' ? stopListening() : phase === 'idle' || phase === 'speaking' ? listen() : undefined)}
-          disabled={phase === 'booting' || phase === 'thinking'}
-          data-autofocus
-          className="absolute left-1/2 top-1/2 flex h-[34%] w-[34%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-cyan-300"
-          aria-label={phase === 'listening' ? 'Stop listening' : 'Talk to Atlas (Space)'}
-        >
-          {phase === 'listening' ? <MicOff size={26} className="text-cyan-950/80" /> : <Mic size={26} className="text-cyan-950/70" />}
-        </button>
-      </div>
-
-      {/* Status + transcript */}
-      <div className="absolute inset-x-0 top-[calc(44%+min(39vw,230px)+12px)] mx-auto max-w-2xl px-6 text-center">
-        <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-400" role="status">
-          {status}
+      {/* Orb, status and transcript */}
+      <main className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3 py-2">
+        <div className="hud-orb-box relative shrink-0">
+          <canvas ref={canvas} className="absolute inset-0 h-full w-full" aria-hidden />
+          <HudRings phase={phase} reduced={reduced} />
+          <button
+            onClick={orbAction}
+            aria-disabled={orbInactive || undefined}
+            data-autofocus
+            className={cn(
+              'absolute left-1/2 top-1/2 flex h-[34%] w-[34%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-opacity duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300',
+              orbInactive && phase !== 'booting' && 'cursor-not-allowed opacity-50',
+            )}
+            aria-label={orbLabel}
+            title={aiOff ? aiMessage : undefined}
+          >
+            {phase === 'listening' ? (
+              <MicOff size={26} className="text-cyan-950/80" aria-hidden />
+            ) : phase === 'thinking' ? (
+              <Square size={20} className="fill-cyan-950/70 text-cyan-950/70" aria-hidden />
+            ) : (
+              <Mic size={26} className="text-cyan-950/70" aria-hidden />
+            )}
+          </button>
         </div>
-        <div className="mt-3 min-h-[5.5rem] space-y-2 text-sm font-light leading-relaxed" aria-live="polite">
-          {phase === 'booting' ? (
-            <p className="text-cyan-100">
-              {bootText}
-              <span className="hud-caret">▍</span>
-            </p>
-          ) : (
-            <>
-              {heard && <p className="text-cyan-400/80">&gt; {heard}</p>}
-              {reply && <p className="text-cyan-50">{reply}</p>}
-              {!heard && !reply && !notice && (
-                <p className="text-cyan-500/70">{voice.wakeWord ? 'Say “Hey Atlas”, then your request.' : 'Tap the orb or press Space, then speak.'}</p>
-              )}
-              {notice && <p className="text-amber-300">{notice}</p>}
-            </>
+
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.35em] text-cyan-300" role="status">
+            <span className="hud-led h-1.5 w-1.5 rounded-full" aria-hidden />
+            <span>{status}</span>
+            {phase === 'thinking' && (
+              <span className="tracking-[0.2em] text-cyan-400/80">
+                · <Elapsed />
+              </span>
+            )}
+            {phase === 'idle' && latency != null && (
+              <span className="hidden tracking-[0.2em] text-cyan-400/80 sm:inline" title="Time to Atlas's first word">
+                · first word {latency.toFixed(1)} s
+              </span>
+            )}
+          </div>
+          {phase === 'booting' && (
+            <div className="h-px w-28 overflow-hidden bg-cyan-400/20" aria-hidden>
+              <div className="hud-progress h-full w-full bg-cyan-300" style={{ '--boot': `${bootMs}ms` } as CSSProperties} />
+            </div>
           )}
         </div>
-      </div>
 
-      {planId && (
-        <div className="absolute inset-x-3 bottom-20 max-h-[45vh] overflow-y-auto md:inset-x-auto md:bottom-auto md:right-6 md:top-28 md:max-h-[65vh] md:w-[380px]">
-          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-cyan-500/80">
+        <div
+          ref={transcript}
+          className="hud-transcript w-full max-w-2xl overflow-y-auto overscroll-contain px-2 text-center text-sm font-light leading-relaxed"
+          style={{ maxHeight: 'min(26vh, 14rem)', minHeight: '4.5rem' }}
+          aria-live="polite"
+          aria-busy={phase === 'thinking'}
+        >
+          {phase === 'booting' ? (
+            <BootLine line={bootLine} msPerChar={fastBoot ? 0 : MS_PER_CHAR} onDone={finishBoot} />
+          ) : (
+            <div className="space-y-2">
+              {heard && <p className="break-words text-cyan-300/90">&gt; {heard}</p>}
+              {reply && <p className="whitespace-pre-wrap break-words text-cyan-50">{reply}</p>}
+              {aiOff && !reply && !notice ? (
+                <p className="text-amber-300">{aiMessage}</p>
+              ) : (
+                !heard && !reply && !notice && (
+                  <>
+                    {/* The greeting stays until the first request. */}
+                    <p className="text-cyan-50" aria-hidden>
+                      {bootLine}
+                    </p>
+                    <p className="text-cyan-400/80">
+                      {hint} <span className="whitespace-nowrap">Each reply uses 1 ✨.</span>
+                    </p>
+                  </>
+                )
+              )}
+              {notice && <p className="text-amber-300">{notice}</p>}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Wait for the plans list to include the new draft, so the card never flashes "removed". */}
+      {planId && plans?.some((p) => p.id === planId) && (
+        <div className="absolute inset-x-3 bottom-36 z-20 mx-auto max-h-[50dvh] max-w-xl overflow-y-auto rounded-2xl bg-[#020409] lg:inset-x-auto lg:bottom-auto lg:right-8 lg:top-28 lg:max-h-[65vh] lg:w-[380px]">
+          <div className="flex items-center justify-between pl-1 text-[11px] uppercase tracking-[0.3em] text-cyan-400/80">
             <span>Plan</span>
-            <button onClick={() => setPlanId(null)} className="rounded px-1 text-cyan-300 hover:bg-cyan-400/10" aria-label="Hide plan card">
-              ✕
+            <button onClick={() => setPlanId(null)} className="flex h-11 w-11 items-center justify-center rounded-full text-cyan-200 hover:bg-cyan-400/10" aria-label="Hide plan card">
+              <X size={16} aria-hidden />
             </button>
           </div>
           <PlanCard planId={planId} variant="hud" />
         </div>
       )}
 
-      {/* Typing fallback */}
-      <div className="absolute inset-x-0 bottom-4 mx-auto flex max-w-xl items-center gap-2 px-4">
-        <button onClick={() => setShowKeyboard((v) => !v)} className="rounded-full border border-cyan-400/30 p-2 text-cyan-300 hover:bg-cyan-400/10" aria-label={showKeyboard ? 'Hide keyboard input' : 'Type instead'}>
-          <Keyboard size={16} />
-        </button>
-        {showKeyboard && (
-          <form
-            className="flex flex-1 gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              ask(typed);
-              setTyped('');
+      {/* Footer: readouts flank the typing fallback */}
+      <footer className="relative z-10 flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_minmax(0,34rem)_1fr] sm:items-end sm:gap-6">
+        <div className="grid grid-cols-2 gap-3 sm:contents">
+          {nextUpReadout('col-span-2 sm:hidden')}
+          <Readout label="Tasks left today" className="sm:col-start-1 sm:row-start-1" enter={480}>
+            <span className="text-xl sm:text-2xl">
+              <CountUp value={tasksLeft} reduced={reduced} />
+            </span>
+          </Readout>
+          <Readout label="AI uses left" align="right" className="sm:col-start-3 sm:row-start-1" enter={560}>
+            <span className="text-xl sm:text-2xl">{aiReadout}</span>
+            {ai.data?.enabled && ai.data.limit > 0 && <AllowanceMeter remaining={ai.data.remaining} limit={ai.data.limit} />}
+          </Readout>
+        </div>
+
+        <div className="hud-rise flex items-center justify-center gap-2 sm:col-start-2 sm:row-start-1" style={delay(620)}>
+          <button
+            onClick={() => {
+              keyboardToggled.current = true;
+              setShowKeyboard((v) => !v);
             }}
+            className={cn(
+              'flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-cyan-400/50 text-cyan-200 transition-colors duration-150 hover:bg-cyan-400/10',
+              showKeyboard ? 'w-11' : 'px-4 text-xs uppercase tracking-[0.2em]',
+            )}
+            aria-label={showKeyboard ? 'Hide keyboard input' : 'Type instead'}
           >
-            <label htmlFor="hud-input" className="sr-only">
-              Type to Atlas
-            </label>
-            <input
-              id="hud-input"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              maxLength={2000}
-              placeholder="Type to Atlas…"
-              className="flex-1 rounded-full border border-cyan-400/30 bg-transparent px-4 py-2 text-sm text-cyan-50 outline-none placeholder:text-cyan-700 focus:border-cyan-300"
-            />
-          </form>
-        )}
-      </div>
+            <Keyboard size={16} aria-hidden />
+            {!showKeyboard && <span aria-hidden>Type</span>}
+          </button>
+          {showKeyboard && (
+            <form
+              className="flex min-w-0 flex-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                // Typing during the boot line is fine: the request simply cuts the boot short.
+                if (!typed.trim()) return;
+                ask(typed);
+                setTyped('');
+              }}
+            >
+              <label htmlFor="hud-input" className="sr-only">
+                Type to Atlas
+              </label>
+              <input
+                id="hud-input"
+                ref={typedInput}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                maxLength={2000}
+                disabled={aiOff}
+                enterKeyHint="send"
+                autoComplete="off"
+                placeholder={aiOff ? 'AI is unavailable right now' : 'Type to Atlas…'}
+                className="h-11 min-w-0 flex-1 rounded-full border border-cyan-400/60 bg-transparent px-4 text-base text-cyan-50 outline-none transition-colors duration-150 placeholder:text-cyan-500 focus:border-cyan-200 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-50 sm:text-sm"
+              />
+            </form>
+          )}
+        </div>
+      </footer>
     </div>,
     document.body,
   );
 }
-
-const HUD_CSS = `
-.hud-grid {
-  background-image:
-    linear-gradient(rgba(34,211,238,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(34,211,238,0.06) 1px, transparent 1px);
-  background-size: 40px 40px;
-  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
-}
-.hud-scan {
-  background: repeating-linear-gradient(to bottom, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
-}
-@keyframes hud-spin { to { transform: rotate(360deg); } }
-@keyframes hud-spin-r { to { transform: rotate(-360deg); } }
-@keyframes hud-draw { from { stroke-dashoffset: 1200; } to { stroke-dashoffset: 0; } }
-@keyframes hud-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
-@keyframes hud-blink { 50% { opacity: 0; } }
-.hud-spin-slow { animation: hud-spin 60s linear infinite; }
-.hud-spin-rev { animation: hud-spin-r 38s linear infinite; }
-.hud-spin-fast { animation: hud-spin 14s linear infinite; }
-.hud-boot .hud-draw { stroke-dasharray: 1200; animation: hud-draw 1.6s ease-out both; }
-.hud-pulse { animation: hud-pulse 1.2s ease-in-out infinite; }
-.hud-caret { animation: hud-blink 1s steps(1) infinite; color: #67e8f9; }
-@media (prefers-reduced-motion: reduce) {
-  .hud-spin-slow, .hud-spin-rev, .hud-spin-fast, .hud-pulse, .hud-caret { animation: none; }
-  .hud-boot .hud-draw { animation: none; stroke-dasharray: none; }
-}
-`;

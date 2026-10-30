@@ -128,6 +128,7 @@ export function AppShell() {
             onClick={() => openCapture()}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-ink shadow-pop transition-colors duration-fast hover:bg-accent/90 focus-visible:ring-offset-2"
             aria-label="Capture (N)"
+            data-tour="capture"
             title="Capture a note or task (N)"
           >
             <Plus size={22} aria-hidden />

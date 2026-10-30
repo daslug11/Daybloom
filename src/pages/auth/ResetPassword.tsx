@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Spinner } from '../../components/ui/States';
 import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, FormError } from './AuthLayout';
+import { AuthLayout, authMessage, authMessageFromUrl, FormError } from './AuthLayout';
 
 /** Opened from the reset email: the link signs the user in for recovery, then they choose a new password. */
 export default function ResetPassword() {
@@ -14,6 +15,7 @@ export default function ResetPassword() {
   const [error, setError] = useState('');
   const [waited, setWaited] = useState(false);
   const navigate = useNavigate();
+  const toast = useToast();
 
   useEffect(() => {
     const id = window.setTimeout(() => setWaited(true), 2500);
@@ -31,6 +33,7 @@ export default function ResetPassword() {
     const { error } = await supabase.auth.updateUser({ password });
     setBusy(false);
     if (error) return setError(authMessage(error));
+    toast('Password updated. Use it next time you log in.');
     navigate('/app', { replace: true });
   };
 
@@ -43,8 +46,11 @@ export default function ResetPassword() {
   }
   if (!session) {
     return (
-      <AuthLayout title="That link didn’t work" footer={<Link to="/forgot-password" className="link">Request a new link</Link>}>
-        <p className="text-sm">{urlError ? authMessage({ message: urlError }) : 'Reset links expire after an hour and only work once, in the browser you requested them from.'}</p>
+      <AuthLayout title="That link didn’t work" footer={<Link to="/login" className="link">Go to log in</Link>}>
+        <p className="text-sm">{urlError ? authMessageFromUrl(urlError) : 'Reset links expire after an hour and only work once, in the browser you requested them from.'}</p>
+        <Link to="/forgot-password" className="btn-primary mt-5 w-full">
+          Send a new link
+        </Link>
       </AuthLayout>
     );
   }
@@ -59,7 +65,7 @@ export default function ResetPassword() {
         </div>
         <div>
           <label className="label" htmlFor="pw2">
-            Repeat it
+            Confirm new password
           </label>
           <input id="pw2" type="password" autoComplete="new-password" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </div>

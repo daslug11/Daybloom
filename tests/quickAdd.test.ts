@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { parseQuickAdd, taskFromParsed } from '../src/lib/quickAdd';
+import { blockRange, parseQuickAdd, plannerBlock, taskFromParsed } from '../src/lib/quickAdd';
+
+describe('plannerBlock', () => {
+  it('only blocks time when there is a date and a time', () => {
+    expect(plannerBlock({ due: '2026-10-30' })).toBeNull();
+    expect(plannerBlock({ time: '15:00' })).toBeNull();
+    expect(plannerBlock({ due: '2026-10-30', time: '15:00' })).toEqual({ date: '2026-10-30', start: 900, duration: 60 });
+  });
+
+  it('snaps to 15 minutes, keeps a given length and stops at midnight', () => {
+    expect(plannerBlock({ due: '2026-10-30', time: '09:10', duration: 40 })).toEqual({ date: '2026-10-30', start: 540, duration: 45 });
+    expect(plannerBlock({ due: '2026-10-30', time: '23:30', duration: 120 })).toMatchObject({ start: 1410, duration: 30 });
+  });
+
+  it('matches what taskFromParsed saves, and reads as a range', () => {
+    const p = { title: 'report', due: '2026-10-30', time: '14:00', tags: [], duration: 90 };
+    const block = plannerBlock(p)!;
+    const task = taskFromParsed(p, 'report');
+    expect([task.sched_date, task.sched_start, task.sched_duration]).toEqual([block.date, block.start, block.duration]);
+    expect(blockRange(block)).toBe('14:00–15:30');
+    expect(blockRange({ start: 1410, duration: 30 })).toBe('23:30–24:00');
+  });
+});
 
 // Wednesday, Oct 28 2026, 10:00 local time
 const NOW = new Date(2026, 9, 28, 10, 0);

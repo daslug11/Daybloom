@@ -1,9 +1,11 @@
-import { Mic, MicOff, Search, Send, X } from 'lucide-react';
+import { History, Mic, MicOff, Search, Send, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { draftKey, loadSession, saveSession } from '../../components/capture/sessionDraft';
 import { ExtractPanel, OrganizePanel, PatternsPanel, PlanPanel, SummaryPanel, type Suggestion } from '../../components/notes/AiNotePanels';
 import { ConvertDialog, type ConvertKind } from '../../components/notes/ConvertDialog';
 import { NoteCard, type NoteAiAction } from '../../components/notes/NoteCard';
+import { movedLabel } from '../../components/notes/outcomes';
 import { ProcessInbox } from '../../components/notes/ProcessInbox';
 import { AiAllowance, AiButton } from '../../components/ui/Ai';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -13,9 +15,10 @@ import { useHabits } from '../../hooks/data/habits';
 import { useAddNote, useDeleteNote, useNotes, useUpdateNote } from '../../hooks/data/notes';
 import { useTasks } from '../../hooks/data/tasks';
 import { useAi, useAiStatus } from '../../hooks/useAi';
+import { useUserId } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { createRecognizer, speechInputSupported, type Recognizer } from '../../lib/speech';
-import type { Note, NoteState } from '../../lib/types';
+import type { Note, NoteState, Priority } from '../../lib/types';
 import { cn } from '../../lib/utils';
 
 type View = 'inbox' | 'ideas' | 'all' | 'archive';
@@ -24,7 +27,7 @@ const VIEWS: { id: View; label: string; hint: string; empty: { emoji: string; ti
     id: 'inbox',
     label: 'Inbox',
     hint: 'New captures waiting to be sorted.',
-    empty: { emoji: '📥', title: 'Inbox zero', body: 'Everything you capture (N, the + button, voice, or the box above) lands here until you decide what it is.' },
+    empty: { emoji: '📥', title: 'Your inbox is empty', body: 'Everything you capture (N, the + button, voice, or the box above) lands here until you decide what it is.' },
   },
   {
     id: 'ideas',
@@ -35,6 +38,15 @@ const VIEWS: { id: View; label: string; hint: string; empty: { emoji: string; ti
   { id: 'all', label: 'All notes', hint: 'Everything except the archive.', empty: { emoji: '🗒️', title: 'No notes yet', body: 'Capture your first thought in the box above.' } },
   { id: 'archive', label: 'Archive', hint: 'Processed and archived notes.', empty: { emoji: '🗄️', title: 'Archive is empty', body: 'Notes you archive (or turn into tasks) end up here, still searchable and linked.' } },
 ];
+/** One ✨ result at a time; kept after closing so a paid answer can be reopened. */
+type Panel =
+  | { type: 'organize'; suggestions: Suggestion[] }
+  | { type: 'extract'; note: Note; actions: { title: string; due_date: string | null; priority: Priority | null }[] }
+  | { type: 'summary'; title: string; summary: string; keyPoints: string[] }
+  | { type: 'patterns'; themes: { theme: string; evidence: string; suggestion: string }[] }
+  | { type: 'plan'; note: Note; plan: { title: string; steps: { title: string; estimate_min: number | null }[] } };
+const PANEL_NAME: Record<Panel['type'], string> = { organize: 'suggested organization', extract: 'actions found', summary: 'summary', patterns: 'patterns', plan: 'plan' };
+
 const inView = (n: Note, v: View) => (v === 'inbox' ? n.state === 'inbox' : v === 'ideas' ? n.state === 'idea' : v === 'archive' ? n.state === 'archived' : n.state !== 'archived');
 
 export default function BrainDump() {
@@ -52,26 +64,38 @@ export default function BrainDump() {
   const ai = useAiStatus();
   const aiOff = !!ai.data && (!ai.data.enabled || ai.data.remaining <= 0);
 
-  const [text, setText] = useState('');
+  const uid = useUserId();
+  const draftId = draftKey('dump-draft', uid);
+  const lastKey = draftKey('last-ai-result', uid);
+  // The inline draft survives leaving the page (this tab only) until it's saved.
+  const [text, setText] = useState(() => loadSession<string>(draftId) ?? '');
+  useEffect(() => saveSession(draftId, text.trim() ? text : null), [draftId, text]);
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
   const [processing, setProcessing] = useState(params.get('process') === '1');
   const [convert, setConvert] = useState<{ note: Note; kind: ConvertKind; selection: string } | null>(null);
   const [busy, setBusy] = useState<{ id: string; action: NoteAiAction } | null>(null);
-  const [panel, setPanel] = useState<
-    | { type: 'organize'; suggestions: Suggestion[] }
-    | { type: 'extract'; note: Note; actions: { title: string; due_date: string | null; priority: 'high' | 'medium' | 'low' | null }[] }
-    | { type: 'summary'; title: string; summary: string; keyPoints: string[] }
-    | { type: 'patterns'; themes: { theme: string; evidence: string; suggestion: string }[] }
-    | { type: 'plan'; note: Note; plan: { title: string; steps: { title: string; estimate_min: number | null }[] } }
-    | null
-  >(null);
+  const [panel, setPanelState] = useState<Panel | null>(null);
+  // The last ✨ result stays reopenable after closing, until its suggestion is acted on.
+  const [lastPanel, setLastPanel] = useState<Panel | null>(() => loadSession<Panel>(lastKey));
+  const setPanel = (p: Panel) => {
+    setPanelState(p);
+    setLastPanel(p);
+    saveSession(lastKey, p);
+  };
+  const closePanel = (committed?: boolean) => {
+    setPanelState(null);
+    if (committed) {
+      setLastPanel(null);
+      saveSession(lastKey, null);
+    }
+  };
   const [listening, setListening] = useState(false);
   const recognizer = useRef<Recognizer | null>(null);
   const selection = useRef<{ noteId: string; text: string } | null>(null);
 
   const organize = useAi<{ suggestions: Suggestion[] }>('organize_inbox');
-  const extract = useAi<{ actions: { title: string; due_date: string | null; priority: 'high' | 'medium' | 'low' | null }[] }>('extract_actions');
+  const extract = useAi<{ actions: { title: string; due_date: string | null; priority: Priority | null }[] }>('extract_actions');
   const summarize = useAi<{ summary: string; key_points: string[] }>('summarize');
   const patterns = useAi<{ themes: { theme: string; evidence: string; suggestion: string }[] }>('find_patterns');
   const plan = useAi<{ title: string; steps: { title: string; estimate_min: number | null }[] }>('plan_from_idea');
@@ -92,12 +116,19 @@ export default function BrainDump() {
     if (focusNote) document.getElementById(`note-${focusNote}`)?.scrollIntoView({ block: 'center' });
   }, [focusNote, notes.data]);
 
-  const all = notes.data ?? [];
+  const all = useMemo(() => notes.data ?? [], [notes.data]);
+  // A capture that just landed gets a quick fade-in. Only this tab's new notes carry a temporary
+  // id (until the save returns), so this never replays for notes already on the page.
+  const landed = (id: string) => id.startsWith('temp-');
   const counts = useMemo(() => Object.fromEntries(VIEWS.map((v) => [v.id, all.filter((n) => inView(n, v.id)).length])) as Record<View, number>, [all]);
   const q = query.trim().toLowerCase();
   // Search looks across every note (all views); otherwise show the current view.
   const shown = all.filter((n) => (q ? n.body.toLowerCase().includes(q) : inView(n, view)) && (!tag || n.tags.includes(tag)));
-  const tags = [...new Set(all.filter((n) => (q ? true : inView(n, view))).flatMap((n) => n.tags))].sort();
+  const viewTags = new Set(all.filter((n) => (q ? true : inView(n, view))).flatMap((n) => n.tags));
+  // The active tag always stays visible (with a way to clear it), even if this view has none of it.
+  if (tag) viewTags.add(tag);
+  const tags = [...viewTags].sort();
+  const clearFilters = () => (setQuery(''), setTag(null));
 
   const linkText = (id: string) => {
     const t = tasks.filter((x) => x.source_note_id === id).length;
@@ -106,7 +137,10 @@ export default function BrainDump() {
     return [t && `${t} task${t > 1 ? 's' : ''}`, h && `${h} habit${h > 1 ? 's' : ''}`, g && `${g} goal${g > 1 ? 's' : ''}`].filter(Boolean).join(' · ') || undefined;
   };
 
-  const setView = (v: View) => setParams((p) => (p.set('view', v), p.delete('note'), p));
+  const setView = (v: View) => {
+    setTag(null);
+    setParams((p) => (p.set('view', v), p.delete('note'), p));
+  };
 
   const capture = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -139,8 +173,7 @@ export default function BrainDump() {
     update.mutate({ id: n.id, patch });
     if (patch.state && patch.state !== n.state) {
       const prev: NoteState = n.state;
-      const label = patch.state === 'archived' ? 'Archived' : patch.state === 'idea' ? 'Kept as an idea' : patch.state === 'note' ? 'Restored' : 'Moved';
-      toast(label, { label: 'Undo', onClick: () => update.mutate({ id: n.id, patch: { state: prev } }) });
+      toast(movedLabel(patch.state, prev), { label: 'Undo', onClick: () => update.mutate({ id: n.id, patch: { state: prev } }) });
     }
   };
 
@@ -181,9 +214,13 @@ export default function BrainDump() {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) capture();
           }}
-          placeholder="What’s on your mind? Ideas, worries, things to buy, notes from a call… (Markdown and - [ ] checklists work)"
+          placeholder="What’s on your mind? Ideas, worries, things to buy, notes from a call…"
+          aria-describedby="dump-help"
           className="w-full resize-y bg-transparent text-sm outline-none placeholder:text-faint"
         />
+        <p id="dump-help" className="faint text-xs">
+          Markdown, - [ ] checklists and #tags work.
+        </p>
         <div className="mt-2 flex items-center gap-2">
           <button
             type="button"
@@ -253,6 +290,11 @@ export default function BrainDump() {
           <AiButton loading={patterns.isPending} onClick={() => patterns.mutate({}, { onSuccess: (r) => setPanel({ type: 'patterns', themes: r.result.themes }) })} hint="Spot recurring themes in the last 30 days">
             Find patterns
           </AiButton>
+          {lastPanel && !panel && (
+            <button className="btn-ghost" onClick={() => setPanelState(lastPanel)} title="Reopen without using another ✨ action">
+              <History size={15} aria-hidden /> Last ✨ {PANEL_NAME[lastPanel.type]}
+            </button>
+          )}
         </div>
       )}
 
@@ -261,19 +303,42 @@ export default function BrainDump() {
           {tags.map((t) => (
             <button key={t} className={tag === t ? 'chip-on' : 'chip-off'} onClick={() => setTag(tag === t ? null : t)} aria-pressed={tag === t}>
               #{t}
+              {tag === t && <X size={12} className="ml-1 inline" aria-label="clear filter" />}
             </button>
           ))}
         </div>
       )}
 
       <QueryState isLoading={notes.isLoading} error={notes.error} onRetry={() => notes.refetch()} />
-      {notes.data && shown.length === 0 && (q || tag ? <EmptyState emoji="🔍" title="No notes match" /> : <EmptyState emoji={viewMeta.empty.emoji} title={viewMeta.empty.title}>{viewMeta.empty.body}</EmptyState>)}
+      {notes.data && shown.length === 0 &&
+        (q || tag ? (
+          <EmptyState
+            emoji="🔍"
+            title="No notes match"
+            action={
+              <button className="btn-ghost" onClick={clearFilters}>
+                Clear search and filters
+              </button>
+            }
+          >
+            {q && tag ? `Nothing matches “${query.trim()}” with #${tag}.` : q ? `Nothing matches “${query.trim()}”.` : `No notes in ${viewMeta.label} have #${tag}.`}
+          </EmptyState>
+        ) : view === 'inbox' && all.length > 0 ? (
+          <EmptyState emoji="🌸" title="Inbox zero" className="motion-safe:animate-fade-in">
+            Everything you’ve captured has a place. New thoughts land here — press <kbd className="kbd">N</kbd> any time.
+          </EmptyState>
+        ) : (
+          <EmptyState emoji={viewMeta.empty.emoji} title={viewMeta.empty.title}>
+            {viewMeta.empty.body}
+          </EmptyState>
+        ))}
       {q && shown.length > 0 && <p className="muted mb-3 text-sm">{shown.length} result{shown.length === 1 ? '' : 's'} across all notes</p>}
 
       <div className="grid gap-3 md:grid-cols-2">
         {shown.map((n) => (
           <NoteCard
             key={n.id}
+            className={landed(n.id) ? 'motion-safe:animate-fade-in' : undefined}
             note={n}
             showState={!!q || view === 'all'}
             highlight={n.id === focusNote}
@@ -290,6 +355,8 @@ export default function BrainDump() {
 
       {processing && (
         <ProcessInbox
+          onChange={changeNote}
+          onDelete={remove}
           onClose={() => {
             setProcessing(false);
             setParams((p) => (p.delete('process'), p));
@@ -297,11 +364,11 @@ export default function BrainDump() {
         />
       )}
       {convert && <ConvertDialog note={convert.note} kind={convert.kind} selection={convert.selection} onClose={() => setConvert(null)} />}
-      {panel?.type === 'organize' && <OrganizePanel suggestions={panel.suggestions} onClose={() => setPanel(null)} />}
-      {panel?.type === 'extract' && <ExtractPanel note={panel.note} actions={panel.actions} onClose={() => setPanel(null)} />}
-      {panel?.type === 'summary' && <SummaryPanel title={panel.title} summary={panel.summary} keyPoints={panel.keyPoints} onClose={() => setPanel(null)} />}
-      {panel?.type === 'patterns' && <PatternsPanel themes={panel.themes} onClose={() => setPanel(null)} />}
-      {panel?.type === 'plan' && <PlanPanel note={panel.note} plan={panel.plan} onClose={() => setPanel(null)} />}
+      {panel?.type === 'organize' && <OrganizePanel suggestions={panel.suggestions} onClose={closePanel} />}
+      {panel?.type === 'extract' && <ExtractPanel note={panel.note} actions={panel.actions} onClose={closePanel} />}
+      {panel?.type === 'summary' && <SummaryPanel title={panel.title} summary={panel.summary} keyPoints={panel.keyPoints} onClose={closePanel} />}
+      {panel?.type === 'patterns' && <PatternsPanel themes={panel.themes} onClose={closePanel} />}
+      {panel?.type === 'plan' && <PlanPanel note={panel.note} plan={panel.plan} onClose={closePanel} />}
     </div>
   );
 }

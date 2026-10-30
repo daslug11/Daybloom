@@ -25,7 +25,8 @@ export function createRecognizer(opts: {
   lang?: string;
   onText: (text: string, isFinal: boolean) => void;
   onEnd?: () => void;
-  onError?: (message: string) => void;
+  /** `code` is the SpeechRecognition error ('no-speech', 'not-allowed', …); `message` is empty for a plain abort. */
+  onError?: (message: string, code: string) => void;
 }): Recognizer | null {
   const Ctor = recognitionCtor();
   if (!Ctor) return null;
@@ -54,7 +55,7 @@ export function createRecognizer(opts: {
       aborted: '',
     };
     const msg = messages[e.error] ?? 'Voice input stopped unexpectedly.';
-    if (msg) opts.onError?.(msg);
+    if (msg) opts.onError?.(msg, String(e.error));
   };
   rec.onend = () => opts.onEnd?.();
   return {

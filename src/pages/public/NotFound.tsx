@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { PublicLayout } from './PublicLayout';
+import { useDocumentTitle } from './useDocumentTitle';
 
 export default function NotFound() {
   const { user } = useAuth();
+  useDocumentTitle('Page not found · Daybloom');
   return (
     <PublicLayout>
       <div className="mx-auto max-w-md px-4 py-24 text-center">

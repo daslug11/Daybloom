@@ -1,5 +1,5 @@
 import { ChevronDown, Search, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { QuickAddTask } from '../../components/tasks/QuickAddTask';
 import { TaskEditor } from '../../components/tasks/TaskEditor';
@@ -8,6 +8,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState, QueryState } from '../../components/ui/States';
 import { useGoals } from '../../hooks/data/goals';
 import { useTasks, useToggleTask, useUpdateTask } from '../../hooks/data/tasks';
+import { hasOpenLayer } from '../../hooks/useOverlay';
 import { useToday } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
 import { addDays } from '../../lib/dates';
@@ -36,6 +37,49 @@ export default function Tasks() {
   const all = tasks.data ?? [];
   const editing = all.find((t) => t.id === openId) ?? null;
   const goalName = useMemo(() => new Map(goals.map((g) => [g.id, `${g.emoji} ${g.title}`])), [goals]);
+  // The row of a task just added from the quick-add bar: scrolled into view and briefly outlined.
+  const [flash, setFlash] = useState<Task | null>(null);
+  // The last task completed here, so Ctrl/⌘ + Z can bring it back after the toast is gone.
+  const [lastDone, setLastDone] = useState<Task | null>(null);
+
+  const complete = (t: Task) => {
+    toggle(t);
+    setLastDone(t.done ? null : t);
+  };
+
+  const shownFlash = useRef<string | null>(null);
+  useEffect(() => {
+    if (!flash || shownFlash.current === flash.id) return;
+    const row = document.getElementById(`task-row-${flash.id}`);
+    if (row) {
+      shownFlash.current = flash.id;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      row.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+      window.setTimeout(() => setFlash((f) => (f?.id === flash.id ? null : f)), 1600);
+      return;
+    }
+    // Saved, but a search or tag filter hides it: say so rather than leave the add looking lost.
+    if (tasks.data?.some((t) => t.id === flash.id)) {
+      toast(`Added “${flash.title}”. Your search or tag filter is hiding it.`);
+      setFlash(null);
+    }
+  }, [flash, tasks.data, toast]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z' || !lastDone || hasOpenLayer()) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      const current = all.find((t) => t.id === lastDone.id);
+      setLastDone(null);
+      if (!current?.done) return;
+      e.preventDefault();
+      update.mutate({ id: current.id, patch: { done: false, completed_at: null } });
+      toast(`Undone: “${current.title}” is open again`);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lastDone, all, update, toast]);
 
   const open = (t: Task) => setParams((p) => (p.set('task', t.id), p));
   const close = () => setParams((p) => (p.delete('task'), p));
@@ -56,7 +100,7 @@ export default function Tasks() {
   const weekEnd = addDays(today, 7);
 
   const sections: { key: string; title: string; hint?: string; items: Task[]; hideDue?: boolean }[] = [
-    { key: 'top', title: '⭐ Top 3 today', hint: 'What would make today a win', items: open_.filter((t) => t.top_date === today) },
+    { key: 'top', title: 'Top 3 today', hint: 'What would make today a win', items: open_.filter((t) => t.top_date === today) },
     { key: 'overdue', title: 'Overdue', items: open_.filter((t) => t.top_date !== today && t.due_date && t.due_date < today) },
     { key: 'today', title: 'Today', items: open_.filter((t) => t.top_date !== today && t.due_date === today), hideDue: true },
     { key: 'week', title: 'Next 7 days', items: open_.filter((t) => t.top_date !== today && t.due_date && t.due_date > today && t.due_date <= weekEnd) },
@@ -69,11 +113,11 @@ export default function Tasks() {
     const steps = stepsOf(t.id);
     const isOpen = expanded.has(t.id);
     return (
-      <li key={t.id}>
+      <li key={t.id} id={`task-row-${t.id}`} className={cn('rounded-control transition-shadow duration-base', flash?.id === t.id && 'ring-2 ring-ink/40')}>
         <TaskItem
           task={t}
           today={today}
-          onToggle={toggle}
+          onToggle={complete}
           onStar={star}
           onOpen={open}
           hideDue={hideDue}
@@ -93,7 +137,7 @@ export default function Tasks() {
               <ul className="mt-1 space-y-1">
                 {steps.map((s) => (
                   <li key={s.id}>
-                    <TaskItem task={s} today={today} onToggle={toggle} onOpen={open} className="!py-1.5" />
+                    <TaskItem task={s} today={today} onToggle={complete} onOpen={open} className="!py-1.5" />
                   </li>
                 ))}
               </ul>
@@ -108,7 +152,7 @@ export default function Tasks() {
     <div>
       <PageHeader title="Tasks" description="Everything you need to do, sorted by when it’s due. Star up to three as today’s top 3 — they’re what your dashboard shows first." />
 
-      <QuickAddTask className="mb-5" />
+      <QuickAddTask className="mb-5" onAdded={setFlash} />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
@@ -143,10 +187,16 @@ export default function Tasks() {
               (s.items.length > 0 || (s.key === 'top' && !q && !tag)) && (
                 <section key={s.key} aria-labelledby={`sec-${s.key}`}>
                   <div className="mb-2 flex items-baseline gap-2">
-                    <h2 id={`sec-${s.key}`} className={cn('text-sm font-bold', s.key === 'overdue' && 'text-danger ')}>
+                    <h2 id={`sec-${s.key}`} className={cn('text-sm font-bold', s.key === 'overdue' && 'text-danger')}>
+                      {s.key === 'top' && <span aria-hidden>⭐ </span>}
                       {s.title}
                     </h2>
-                    <span className="faint text-xs">{s.key === 'top' ? `${s.items.length}/3` : s.items.length}</span>
+                    <span className="faint text-xs">
+                      <span aria-hidden>{s.key === 'top' ? `${s.items.length}/3` : s.items.length}</span>
+                      <span className="sr-only">
+                        {s.key === 'top' ? `${s.items.length} of 3 starred` : `${s.items.length} task${s.items.length === 1 ? '' : 's'}`}
+                      </span>
+                    </span>
                     {s.hint && <span className="faint hidden text-xs sm:inline">· {s.hint}</span>}
                   </div>
                   {s.items.length ? (
@@ -166,6 +216,11 @@ export default function Tasks() {
               <ChevronDown size={15} className={cn('transition-transform duration-fast ease-out', !showDone && '-rotate-90')} /> Done
               <span className="faint text-xs font-normal">{done.length} in the last 60 days</span>
             </button>
+            {lastDone && (
+              <p className="faint mt-1 hidden text-xs sm:block">
+                Completed one by mistake? <kbd className="kbd">Ctrl/⌘</kbd> + <kbd className="kbd">Z</kbd> brings “{lastDone.title}” back.
+              </p>
+            )}
             {showDone && <ul className="mt-2 space-y-1.5">{done.slice(0, 100).map((t) => renderTask(t))}</ul>}
           </section>
         </div>

@@ -1,11 +1,12 @@
-import { AlertTriangle, ChevronDown, ExternalLink, FolderPlus, HelpCircle, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronDown, Copy, ExternalLink, FolderPlus, HelpCircle, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarCard } from '../../components/calendars/CalendarCard';
 import { CalendarModal } from '../../components/calendars/CalendarModal';
 import { GroupModal } from '../../components/calendars/GroupModal';
 import { IcsHelp } from '../../components/calendars/IcsHelp';
+import { MoveToGroupDialog } from '../../components/calendars/MoveToGroupDialog';
 import { SyncStatusPill } from '../../components/calendars/SyncStatusPill';
 import { TypeBadge } from '../../components/calendars/TypeBadge';
 import { Card } from '../../components/ui/Card';
@@ -27,7 +28,7 @@ import {
 import { useUserId } from '../../hooks/useAuth';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useToast } from '../../hooks/useToast';
-import { CALENDAR_TYPES, calendarColor, calendarTile, detectCalendarType } from '../../lib/calendars';
+import { CALENDAR_TYPES, calendarColor, calendarTile, detectCalendarType, looksLikeFeed } from '../../lib/calendars';
 import { supabase } from '../../lib/supabase';
 import type { CalendarGroup, CalendarLink, CalendarType } from '../../lib/types';
 import { cn } from '../../lib/utils';
@@ -67,6 +68,8 @@ export default function Calendars() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ section: string; before: string | null } | null>(null);
+  const [movingCal, setMovingCal] = useState<CalendarLink | null>(null);
+  const [announcement, setAnnouncement] = useState('');
   const [collapsed, setCollapsed] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
@@ -105,14 +108,10 @@ export default function Calendars() {
       return next;
     });
 
+  // The confirmation toast waits for the save to succeed (a failure shows its own message).
   const saveCalendar = (draft: CalendarDraft) => {
-    if (calModal.editing) {
-      update.mutate({ id: calModal.editing.id, patch: draft });
-      toast(`${draft.emoji} Calendar updated`);
-    } else {
-      add.mutate(draft);
-      toast(`${draft.emoji} ${draft.name} added`);
-    }
+    if (calModal.editing) update.mutate({ id: calModal.editing.id, patch: draft }, { onSuccess: () => toast(`${draft.emoji} ${draft.name} updated`) });
+    else add.mutate(draft, { onSuccess: () => toast(`${draft.emoji} ${draft.name} added`) });
     setCalModal((m) => ({ ...m, open: false }));
   };
 
@@ -135,12 +134,10 @@ export default function Calendars() {
     });
   };
 
-  // Drag & drop: reorder within a group or move between groups (by the `sort` column).
-  const drop = (section: string, beforeId: string | null) => {
-    const id = dragId;
-    setDragId(null);
-    setDropTarget(null);
-    if (!id || id === beforeId) return;
+  // Reorder within a group or move between groups (by the `sort` column): put `id` before
+  // `beforeId`, or at the end of `section`. Drag, the card menu and Move to group all use this.
+  const place = (id: string, section: string, beforeId: string | null) => {
+    if (id === beforeId) return;
     const moving = list.find((c) => c.id === id);
     if (!moving) return;
     const rest = list.filter((c) => c.id !== id);
@@ -155,7 +152,29 @@ export default function Calendars() {
     }
     const group_id = section === UNGROUPED ? null : section;
     update.mutate({ id, patch: { sort, group_id } });
-    if ((moving.group_id ?? null) !== group_id) toast(`Moved to ${groups.find((g) => g.id === group_id)?.name ?? 'Ungrouped'}`);
+    if ((moving.group_id ?? null) !== group_id) toast(`Moved ${moving.emoji} ${moving.name} to ${groups.find((g) => g.id === group_id)?.name ?? 'Ungrouped'}`);
+  };
+  const drop = (section: string, beforeId: string | null) => {
+    const id = dragId;
+    setDragId(null);
+    setDropTarget(null);
+    if (id) place(id, section, beforeId);
+  };
+  /** Move up / Move down within the card's group, then keep focus on that card's menu button. */
+  const moveBy = (c: CalendarLink, dir: -1 | 1) => {
+    const section = sectionOf(c);
+    const items = list.filter((x) => sectionOf(x) === section);
+    const i = items.findIndex((x) => x.id === c.id);
+    const to = i + dir;
+    if (i < 0 || to < 0 || to >= items.length) return;
+    place(c.id, section, dir < 0 ? items[to].id : (items[to + 1]?.id ?? null));
+    setAnnouncement(`${c.name} moved to position ${to + 1} of ${items.length} in ${groups.find((g) => g.id === section)?.name ?? 'Ungrouped'}`);
+    window.setTimeout(() => document.querySelector<HTMLElement>(`[data-calendar-id="${c.id}"] button[aria-haspopup="menu"]`)?.focus(), 60);
+  };
+  const neighbours = (c: CalendarLink) => {
+    const items = list.filter((x) => sectionOf(x) === sectionOf(c));
+    const i = items.findIndex((x) => x.id === c.id);
+    return { first: i <= 0, last: i === items.length - 1 };
   };
 
   return (
@@ -165,7 +184,7 @@ export default function Calendars() {
         description="Keep the calendars you use in one place — open them in one click. Turn on Sync for an ICS feed and its events show up (locked) in your Planner and dashboard."
         actions={
           <>
-            <button className="btn-ghost" onClick={() => setGroupModal({ open: true, editing: null })}>
+            <button className="btn-ghost" onClick={() => setGroupModal({ open: true, editing: null })} aria-label="New group" title="New group">
               <FolderPlus size={16} /> <span className="hidden sm:inline">New group</span>
             </button>
             <button className="btn-primary" onClick={() => setCalModal({ open: true, editing: null, groupId: groupFilter && groupFilter !== UNGROUPED ? groupFilter : null })}>
@@ -282,18 +301,40 @@ export default function Calendars() {
                 <Star size={15} className="fill-warning text-warning" aria-hidden /> Pinned
               </h2>
               <div className="flex gap-3 overflow-x-auto pb-2">
-                {pinned.map((c) => (
-                  <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className="card card-hover flex min-w-[210px] items-center gap-3 p-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-lg" style={calendarTile(c.color)} aria-hidden>
-                      {c.emoji}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">{c.name}</span>
-                      <TypeBadge type={detectCalendarType(c.url)} className="mt-0.5" />
-                    </span>
-                    <ExternalLink size={14} className="faint ml-auto shrink-0" aria-label="opens in a new tab" />
-                  </a>
-                ))}
+                {pinned.map((c) => {
+                  const inner = (
+                    <>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-lg" style={calendarTile(c.color)} aria-hidden>
+                        {c.emoji}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{c.name}</span>
+                        <TypeBadge type={detectCalendarType(c.url)} className="mt-0.5" />
+                      </span>
+                    </>
+                  );
+                  const cls = 'card card-hover flex min-w-[210px] items-center gap-3 p-3';
+                  // A feed link would only download a file; synced feeds open in the Planner instead.
+                  if (looksLikeFeed(c.url)) {
+                    return c.sync ? (
+                      <Link key={c.id} to="/app/planner" className={cls}>
+                        {inner}
+                        <CalendarDays size={14} className="faint ml-auto shrink-0" aria-label="view in Planner" />
+                      </Link>
+                    ) : (
+                      <button key={c.id} className={cn(cls, 'text-left')} onClick={async () => toast((await copyText(c.url)) ? 'Link copied' : 'Could not copy — select the link instead.')}>
+                        {inner}
+                        <Copy size={14} className="faint ml-auto shrink-0" aria-label="copy link" />
+                      </button>
+                    );
+                  }
+                  return (
+                    <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className={cls}>
+                      {inner}
+                      <ExternalLink size={14} className="faint ml-auto shrink-0" aria-label="opens in a new tab" />
+                    </a>
+                  );
+                })}
               </div>
             </section>
           )}
@@ -345,7 +386,7 @@ export default function Calendars() {
                 {!isCollapsed &&
                   (items.length === 0 ? (
                     <div className="muted rounded-2xl border-2 border-dashed border-line p-5 text-center text-sm">
-                      {dragId ? 'Drop here to move it into this group' : 'Empty group — drag a calendar here or add one.'}
+                      {dragId ? 'Drop here to move it into this group' : 'Nothing here yet. Add a calendar with +, or move one here from its ⋯ menu.'}
                     </div>
                   ) : (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -364,6 +405,9 @@ export default function Calendars() {
                           onEdit={() => setCalModal({ open: true, editing: c, groupId: c.group_id })}
                           onTogglePin={() => update.mutate({ id: c.id, patch: { pinned: !c.pinned } })}
                           onDelete={() => deleteCalendar(c)}
+                          onMoveToGroup={groups.length ? () => setMovingCal(c) : undefined}
+                          onMoveUp={neighbours(c).first ? undefined : () => moveBy(c, -1)}
+                          onMoveDown={neighbours(c).last ? undefined : () => moveBy(c, 1)}
                           onDragStart={() => setDragId(c.id)}
                           onDragEnd={() => {
                             setDragId(null);
@@ -381,6 +425,21 @@ export default function Calendars() {
         </div>
       )}
 
+      <div className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </div>
+      {movingCal && (
+        <MoveToGroupDialog
+          calendar={movingCal}
+          groups={groups}
+          current={sectionOf(movingCal) === UNGROUPED ? null : sectionOf(movingCal)}
+          onClose={() => setMovingCal(null)}
+          onMove={(groupId) => {
+            place(movingCal.id, groupId ?? UNGROUPED, null);
+            setMovingCal(null);
+          }}
+        />
+      )}
       <CalendarModal open={calModal.open} initial={calModal.editing} groups={groups} defaultGroupId={calModal.groupId} onClose={() => setCalModal((m) => ({ ...m, open: false }))} onSave={saveCalendar} />
       <GroupModal
         open={groupModal.open}

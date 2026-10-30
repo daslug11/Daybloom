@@ -15,6 +15,15 @@ export interface FeedStatus {
   fetchedAt?: string;
 }
 
+/** How long the sync server keeps a fetched feed before fetching it again (server/calendar/sync.ts CACHE_TTL_MS). */
+export const FEED_REFRESH_MS = 10 * 60_000;
+
+/** The oldest successful fetch time: the honest "checked" time for the set as a whole. */
+export function oldestFetch(results: Pick<FeedResult, 'ok' | 'fetchedAt'>[]) {
+  const times = results.filter((r) => r.ok && r.fetchedAt).map((r) => Date.parse(r.fetchedAt)).filter(Number.isFinite);
+  return times.length ? new Date(Math.min(...times)).toISOString() : undefined;
+}
+
 /**
  * Synced ICS events for calendars with "Sync" on. The server fetches the feeds
  * (and caches them for 10 minutes); we refetch every 10 minutes too.
@@ -55,14 +64,24 @@ export function useCalendarSync() {
           ? { state: 'error', error: (query.error as Error).message }
           : { state: 'loading' };
   }
+  const ours = results.filter((r) => syncedIds.has(r.id));
   return {
     events,
     statuses,
     syncedCalendars: synced,
     syncing: query.isFetching,
-    lastSync: query.dataUpdatedAt ? new Date(query.dataUpdatedAt).toISOString() : undefined,
+    /**
+     * When the feeds were last actually fetched (the oldest of them), not when the browser last
+     * asked: a request inside the server's 10-minute cache window returns the cached copy.
+     */
+    lastSync: oldestFetch(ours) ?? (query.dataUpdatedAt ? new Date(query.dataUpdatedAt).toISOString() : undefined),
     requestError: query.isError ? (query.error as Error).message : null,
     errorCount: Object.values(statuses).filter((s) => s.state === 'error').length,
-    sync: () => query.refetch(),
+    /** Asks the server again. `fresh` is false when every feed came back from its cache. */
+    sync: async () => {
+      const r = await query.refetch();
+      const list = (r.data?.results ?? []).filter((x) => syncedIds.has(x.id));
+      return { fresh: list.some((x) => !x.cached), lastSync: oldestFetch(list), ok: !r.isError };
+    },
   };
 }

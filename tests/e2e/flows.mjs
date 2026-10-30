@@ -237,6 +237,29 @@ await flow('brain-dump', browser, {}, async (page) => {
   await page.goto(`${BASE}/app/tasks`);
   await page.getByText('Buy candles for the party').first().waitFor();
   assert(first, 'noop');
+  // Capture drafts survive a backdrop tap and Escape until saved (brain-dump-2).
+  await page.goto(`${BASE}/app/brain-dump`);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  await page.keyboard.press('n');
+  const cap = page.getByRole('dialog', { name: 'Capture' });
+  await page.locator('#capture-text').fill('Half a thought');
+  await page.mouse.click(5, 5);
+  await sleep(200);
+  assert(await cap.isVisible(), 'a backdrop tap closed a capture with unsaved text');
+  await page.keyboard.press('Escape');
+  await cap.waitFor({ state: 'detached' });
+  await page.keyboard.press('n');
+  await cap.waitFor();
+  assert((await page.locator('#capture-text').inputValue()) === 'Half a thought', 'capture draft was lost');
+  await page.keyboard.press('Control+Enter');
+  await cap.waitFor({ state: 'detached' });
+  // Process inbox by keyboard: 4 keeps it as an idea, with an Undo toast, and ends at Inbox zero (brain-dump-3).
+  await page.goto(`${BASE}/app/brain-dump?process=1`);
+  const proc2 = page.getByRole('dialog', { name: 'Process inbox' });
+  await proc2.getByText('Half a thought').waitFor();
+  await page.keyboard.press('4');
+  await page.locator('[role="status"][aria-live="polite"]').getByText('Kept as an idea').waitFor();
+  await proc2.getByText('Inbox zero').waitFor();
 });
 
 await flow('atlas', browser, {}, async (page) => {
@@ -254,9 +277,9 @@ await flow('atlas', browser, {}, async (page) => {
   assert(before !== after, `allowance did not change (${before} → ${after})`);
   await panel.getByPlaceholder('Ask Atlas…').fill('delete Water the plants');
   await panel.getByRole('button', { name: 'Send' }).click();
-  await panel.getByText(/Confirm: /).waitFor({ timeout: 15000 });
+  await panel.getByText(/^Delete task “Water the plants”\?$/).waitFor({ timeout: 15000 });
   await shot(page, 'atlas-confirm');
-  await panel.getByRole('button', { name: 'Confirm' }).click();
+  await panel.getByRole('button', { name: 'Delete', exact: true }).click();
   await sleep(800);
   await page.getByRole('button', { name: 'Close Atlas' }).click();
   await page.goto(`${BASE}/app/tasks`);
@@ -614,7 +637,7 @@ await flow('plans', browser, {}, async (page) => {
   await firstBlock.click();
   const occDialog = page.getByRole('dialog').filter({ hasText: 'repeats weekly' });
   await occDialog.getByLabel('Title').fill('Intervals (outdoors)');
-  await occDialog.getByRole('button', { name: 'This one only' }).first().click();
+  await occDialog.getByRole('button', { name: 'Save for this session' }).click();
   await page.getByText('Changed this session only').waitFor();
   const { data: edited } = await admin.from('series_occurrences').select('title').eq('user_id', user.id).not('title', 'is', null);
   assert(edited.length === 1 && edited[0].title === 'Intervals (outdoors)', 'this-one-only edit not saved');
@@ -705,6 +728,13 @@ await flow('overlays', browser, {}, async (page) => {
   await page.keyboard.press('Escape');
   await editor.waitFor({ state: 'detached' });
   await page.getByText('Draft the history essay').first().waitFor();
+  // The editor saves automatically: tags typed and then Escape are kept (tasks-2).
+  await page.getByRole('button', { name: 'Open task Draft the history essay' }).click();
+  await editor.waitFor();
+  await editor.locator('input[placeholder="work, errands"]').fill('essay, history');
+  await page.keyboard.press('Escape');
+  await editor.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '#essay' }).waitFor();
   await page.keyboard.press('Control+j');
   const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
   await panel.waitFor();
@@ -716,6 +746,188 @@ await flow('overlays', browser, {}, async (page) => {
   assert(await panel.isVisible(), 'Escape in the palette also closed Atlas');
   await page.keyboard.press('Escape');
   await panel.waitFor({ state: 'detached' });
+});
+
+await flow('onboarding-back-no-duplicates', browser, {}, async (page) => {
+  const user = await makeUser('Kit', { onboarded_at: null, tour_completed_at: null });
+  await page.goto(`${BASE}/login`);
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.waitForURL(/\/app\/welcome/);
+  await page.getByLabel('What should we call you?').fill('Kit');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first brain dump').fill('first draft of my note');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first task').fill('Finish the lab report');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  // Go back twice, edit both, continue again: edits apply, nothing is duplicated.
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByLabel('Your first task').fill('Finish the lab report tomorrow');
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByLabel('Your first brain dump').fill('second draft of my note');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first habit').waitFor();
+  assert(await page.getByRole('group', { name: 'Habit icon' }).getByRole('button', { pressed: true }).count() === 1, 'emoji selection not exposed');
+  await page.getByRole('button', { name: /Finish/ }).click();
+  await page.waitForURL(/\/app(\?tour=1)?$/);
+  const { data: notes } = await admin.from('notes').select('body').eq('user_id', user.id);
+  const { data: tasks } = await admin.from('tasks').select('title, due_date').eq('user_id', user.id);
+  assert(notes.length === 1 && notes[0].body === 'second draft of my note', `notes: ${JSON.stringify(notes)}`);
+  assert(tasks.length === 1 && tasks[0].title === 'Finish the lab report' && tasks[0].due_date, `tasks: ${JSON.stringify(tasks)}`);
+});
+
+await flow('planner-keyboard', browser, {}, async (page) => {
+  const user = await makeUser('Kay');
+  await admin.from('tasks').insert({ user_id: user.id, title: 'Read chapter 4', estimate_min: 60 });
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('heading', { name: 'Planner' }).waitFor();
+  await page.getByRole('tab', { name: 'day' }).click();
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '');
+  // Schedule with the keyboard: from the quick-add field, Tab to the task, then to its clock button.
+  await page.getByPlaceholder(/Add…/).focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert((await focused()).includes('Pick a time for “Read chapter 4”'), `expected the clock button, focus is on ${await focused()}`);
+  await page.keyboard.press('Enter');
+  const dlg = page.getByRole('dialog', { name: 'Schedule task' });
+  await dlg.waitFor();
+  // Start has focus (the day defaults to the one on screen).
+  await page.keyboard.type('1000A');
+  await page.keyboard.press('Enter');
+  await dlg.waitFor({ state: 'detached' });
+  await page.getByText(/Scheduled for .*10:00/).waitFor();
+  const row = async () => (await admin.from('tasks').select('sched_date, sched_start, sched_duration').eq('user_id', user.id).single()).data;
+  await eventually(async () => (await row()).sched_start === 600, 'keyboard scheduling did not save 10:00');
+  assert((await row()).sched_duration === 60, `duration ${(await row()).sched_duration}`);
+  // Focus lands on the new block: ↓ moves it 15 minutes, Shift+↓ makes it 15 minutes longer.
+  await eventually(async () => (await focused()).startsWith('Task block: Read chapter 4'), 'focus did not move to the new block');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.locator('[role="status"]').filter({ hasText: /Length 1h 15m/ }).waitFor();
+  await eventually(async () => {
+    const r = await row();
+    return r.sched_start === 615 && r.sched_duration === 75;
+  }, 'keyboard nudge was not saved');
+  // Escape undoes a nudge that hasn't been saved yet.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Escape');
+  await sleep(1000);
+  assert((await row()).sched_start === 615, 'Escape did not undo the nudge');
+  // Enter opens the block's time; Escape closes it and focus returns to the block.
+  await page.keyboard.press('Enter');
+  await page.getByRole('dialog', { name: 'Change time' }).waitFor();
+  await shot(page, 'planner-keyboard');
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: 'Change time' }).waitFor({ state: 'detached' });
+  assert((await focused()).startsWith('Task block: Read chapter 4'), `focus after closing: ${await focused()}`);
+});
+
+await flow('honest-numbers', browser, {}, async (page) => {
+  const user = await makeUser('Noor');
+  await logIn(page, user);
+  // Goals: milestones can be added by hand, staged until Save; delete has Undo.
+  await page.goto(`${BASE}/app/goals`);
+  await page.getByRole('button', { name: 'Set your first goal' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New goal' });
+  await dialog.getByRole('textbox', { name: 'Goal' }).fill('Read 3 books');
+  await dialog.getByLabel('Target').fill('3');
+  await dialog.getByRole('button', { name: 'Add a milestone' }).click();
+  await dialog.getByRole('textbox', { name: 'Milestone 1' }).fill('Finish book one');
+  await dialog.getByRole('button', { name: 'Add goal' }).click();
+  const card = page.getByRole('article', { name: 'Read 3 books' });
+  await card.getByText('Finish book one').waitFor();
+  // 2 of 3 is 66%, never rounded up.
+  await card.getByRole('button', { name: 'Increase by 1' }).click();
+  await card.getByRole('button', { name: 'Increase by 1' }).click();
+  await card.getByText('66%').waitFor();
+  await card.getByRole('button', { name: 'Edit goal Read 3 books' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit goal' });
+  await edit.getByRole('button', { name: 'Remove milestone Finish book one' }).click();
+  await page.keyboard.press('Escape');
+  await edit.waitFor({ state: 'detached' });
+  assert(await card.getByText('Finish book one').isVisible(), 'milestone removed without Save');
+  await card.getByRole('button', { name: 'Edit goal Read 3 books' }).click();
+  await edit.getByRole('button', { name: 'Delete' }).click();
+  await card.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByRole('article', { name: 'Read 3 books' }).waitFor();
+  // Habits: the history grid is one Tab stop with arrow keys; past-day edits can be undone.
+  await page.goto(`${BASE}/app/habits`);
+  await page.getByRole('button', { name: 'Add your first habit' }).click();
+  await page.getByRole('textbox', { name: 'Habit' }).fill('Stretch');
+  await page.getByRole('button', { name: 'Add habit' }).click();
+  const grid = page.getByRole('grid', { name: /Stretch/ });
+  await grid.waitFor();
+  assert((await grid.locator('button[tabindex="0"]').count()) === 1, 'grid should have exactly one tab stop');
+  assert((await grid.getByRole('gridcell', { name: /before you started/ }).count()) > 0, 'days before the habit started should be marked');
+  await grid.locator('button[tabindex="0"]').focus();
+  await page.keyboard.press('ArrowUp'); // yesterday is before the habit started: focus stays on today
+  await page.keyboard.press('Space');
+  await page.getByRole('button', { name: /^1 day streak/ }).waitFor();
+  await page.getByRole('button', { name: 'Undo Stretch for today' }).waitFor();
+  // Focus: lengths can be cleared and retyped.
+  await page.goto(`${BASE}/app/focus`);
+  const len = page.getByRole('textbox', { name: 'Focus (min)' });
+  await len.fill('');
+  await len.pressSequentially('45');
+  await len.press('Enter');
+  assert((await len.inputValue()) === '45', `focus length is ${await len.inputValue()}`);
+  await len.fill('500');
+  await len.press('Enter');
+  await page.getByText('Max is 180 min.').waitFor();
+  await len.fill('25');
+  await len.press('Enter');
+  // Full screen: focus moves in, Space starts, Escape leaves and focus returns.
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  const overlay = page.getByRole('dialog', { name: 'Full-screen focus' });
+  await overlay.waitFor();
+  await eventually(() => overlay.evaluate((el) => el.contains(document.activeElement)), 'focus did not move into the overlay');
+  await page.keyboard.press('Escape');
+  await overlay.waitFor({ state: 'detached' });
+  await eventually(async () => (await page.evaluate(() => document.activeElement?.textContent ?? '')).includes('Full screen'), 'focus did not return to the Full screen button');
+  // Review: every number shows once all its data has loaded; the AI button is enabled.
+  await page.goto(`${BASE}/app/review`);
+  await page.getByText('Habit consistency').waitFor();
+  await eventually(() => page.getByRole('button', { name: 'AI summary' }).isEnabled(), 'AI summary stayed disabled');
+  // Stopping a focus block early asks before throwing minutes away, and Discard can be undone.
+  await page.clock.install();
+  await page.goto(`${BASE}/app/focus`);
+  await page.getByRole('button', { name: 'Start timer' }).click();
+  await page.clock.runFor(3 * 60_000);
+  await page.getByRole('button', { name: 'Reset timer' }).click();
+  await page.getByRole('button', { name: 'Log 3 min' }).waitFor();
+  assert(await page.getByRole('button', { name: 'Break', exact: true }).isDisabled(), 'mode switch should be locked mid-block');
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByText('Discarded 3 min of focus.').waitFor();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByText('Paused', { exact: true }).first().waitFor();
+});
+
+await flow('voice-hud-states', browser, { reducedMotion: 'reduce' }, async (page) => {
+  const user = await makeUser('Rae');
+  await admin.from('ai_overrides').upsert({ user_id: user.id, daily_limit: 0 });
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  await hud.getByRole('status').getByText('AI unavailable').waitFor({ timeout: 10000 });
+  // Focus starts on the orb; with no AI left it is marked unavailable and says why.
+  const orb = hud.getByRole('button', { name: /Talk to Atlas/ });
+  assert(await orb.evaluate((el) => el === document.activeElement), 'orb not focused on open');
+  assert((await orb.getAttribute('aria-disabled')) === 'true', 'orb not marked unavailable at 0 AI uses');
+  await hud.getByText(/used today's AI allowance/).first().waitFor();
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  assert(await hud.getByLabel('Type to Atlas').isDisabled(), 'typed input enabled at 0 AI uses');
+  // Reduced motion: nothing rotates or pulses (entrance fades are fine).
+  const looping = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).length);
+  assert(looping === 0, `${looping} looping animations under reduced motion`);
+  // Space on Exit activates Exit instead of turning the mic on.
+  await hud.getByRole('button', { name: /Exit voice mode/ }).focus();
+  await page.keyboard.press('Space');
+  await hud.waitFor({ state: 'detached' });
 });
 
 await browser.close();

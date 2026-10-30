@@ -7,11 +7,12 @@ import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState, QueryState } from '../../components/ui/States';
 import { useGoals } from '../../hooks/data/goals';
-import { useAddHabits, useDeleteHabit, useHabitLogs, useHabits, useToggleHabitLog, useUpdateHabit } from '../../hooks/data/habits';
+import { streakIsCapped, useAddHabits, useDeleteHabit, useHabitLogs, useHabits, useToggleHabitLog, useUpdateHabit } from '../../hooks/data/habits';
 import { useAi } from '../../hooks/useAi';
 import { useToday } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
-import { streak } from '../../lib/dates';
+import { dayIn, formatDay, streak } from '../../lib/dates';
+import { STREAK_RULE, habitStartDay } from '../../lib/stats';
 import type { Habit } from '../../lib/types';
 
 const EMOJIS = ['✅', '💧', '🏃', '📖', '🧘', '🥗', '😴', '✍️', '🎸', '🧹', '💊', '🌱', '📵', '🧠', '🙏', '💪', '🚶', '☀️'];
@@ -24,7 +25,7 @@ interface Suggested {
 }
 
 export default function Habits() {
-  const { today } = useToday();
+  const { today, tz } = useToday();
   const habits = useHabits();
   const logs = useHabitLogs(today);
   const { data: goals = [] } = useGoals();
@@ -35,7 +36,8 @@ export default function Habits() {
   const toast = useToast();
   const suggest = useAi<{ habits: Suggested[] }>('suggest_habits');
   const [editor, setEditor] = useState<Partial<Habit> | null>(null);
-  const [suggestions, setSuggestions] = useState<Suggested[] | null>(null);
+  // AI suggestions still to decide on, plus the names already added (so an emptied list says "Added N", not "No suggestions").
+  const [suggestions, setSuggestions] = useState<{ items: Suggested[]; added: string[] } | null>(null);
 
   const byHabit = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -49,6 +51,22 @@ export default function Habits() {
   const list = habits.data ?? [];
   const doneToday = list.filter((h) => byHabit.get(h.id)?.has(today)).length;
 
+  const toggleDay = (h: Habit, day: string, days: Set<string>) => {
+    const done = !days.has(day);
+    toggle.mutate({ habit_id: h.id, day, done });
+    // Fixing history is easy to do by accident on a phone, so past days get an Undo.
+    if (day !== today) {
+      toast(`${h.name}: ${formatDay(day, today)} marked ${done ? 'done' : 'not done'}`, { label: 'Undo', onClick: () => toggle.mutate({ habit_id: h.id, day, done: !done }) });
+    }
+  };
+
+  const addSuggested = (items: Suggested[]) => {
+    if (!suggestions || !items.length) return;
+    add.mutate(items.map((s) => ({ name: s.name, emoji: s.emoji, goal_id: s.goal_id })));
+    const names = new Set(items.map((s) => s.name));
+    setSuggestions({ items: suggestions.items.filter((s) => !names.has(s.name)), added: [...suggestions.added, ...items.map((s) => s.name)] });
+  };
+
   const save = () => {
     if (!editor?.name?.trim()) return;
     if (editor.id) update.mutate({ id: editor.id, patch: { name: editor.name.trim(), emoji: editor.emoji ?? '✅', goal_id: editor.goal_id ?? null } });
@@ -60,12 +78,12 @@ export default function Habits() {
     <div>
       <PageHeader
         title="Habits"
-        description="Small things you want to do every day. Tick today’s, watch the streak grow, and click any past square to fix your history."
+        description="Small things you want to do every day. Tick today’s, watch the streak grow, and tap any past square to fix your history."
         actions={
           <>
             <AiButton
               loading={suggest.isPending}
-              onClick={() => suggest.mutate({}, { onSuccess: (r) => setSuggestions(r.result.habits) })}
+              onClick={() => suggest.mutate({}, { onSuccess: (r) => setSuggestions({ items: r.result.habits, added: [] }) })}
               hint="Ideas for small daily habits based on your goals"
             >
               Suggest from goals
@@ -91,6 +109,7 @@ export default function Habits() {
             <strong className="text-ink ">{doneToday}</strong> of {list.length} done today.
           </p>
           <h2 className="sr-only">Your habits</h2>
+          <GridLegend />
           <div className="grid gap-3 lg:grid-cols-2">
             {list.map((h) => {
               const days = byHabit.get(h.id) ?? new Set<string>();
@@ -99,16 +118,17 @@ export default function Habits() {
                   key={h.id}
                   habit={h}
                   today={today}
+                  start={habitStartDay(dayIn(tz, new Date(h.created_at)), days)}
                   days={days}
                   streak={streak(days, today)}
+                  streakCapped={streakIsCapped(days, today)}
                   goalLabel={h.goal_id ? goalLabel.get(h.goal_id) : undefined}
-                  onToggle={(day) => toggle.mutate({ habit_id: h.id, day, done: !days.has(day) })}
+                  onToggle={(day) => toggleDay(h, day, days)}
                   onEdit={() => setEditor(h)}
                 />
               );
             })}
           </div>
-          <p className="faint mt-4 text-xs">Streak = days in a row ending today, or ending yesterday if you haven’t logged today yet. Darker squares are days you did it.</p>
         </>
       )}
 
@@ -179,38 +199,70 @@ export default function Habits() {
 
       {suggestions && (
         <Modal open onClose={() => setSuggestions(null)} title="✨ Habits that support your goals" description="Add the ones you like; you can edit them later.">
-          {suggestions.length === 0 ? (
-            <p className="text-sm">No new suggestions — you may already have habits covering your goals.</p>
-          ) : (
-            <ul className="space-y-2">
-              {suggestions.map((s, i) => (
-                <li key={i} className="flex items-start gap-3 rounded-2xl border border-line p-3">
-                  <span className="text-xl" aria-hidden>
-                    {s.emoji}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{s.name}</p>
-                    <p className="muted text-xs">
-                      {s.why}
-                      {s.goal_id && goalLabel.get(s.goal_id) ? ` · for ${goalLabel.get(s.goal_id)}` : ''}
-                    </p>
-                  </div>
-                  <button
-                    className="btn-primary !px-3 !py-1.5"
-                    onClick={() => {
-                      add.mutate([{ name: s.name, emoji: s.emoji, goal_id: s.goal_id }]);
-                      setSuggestions(suggestions.filter((_, j) => j !== i));
-                      toast(`Added ${s.emoji} ${s.name}`);
-                    }}
-                  >
-                    Add
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="rounded-card border border-atlas/30 bg-atlas/[0.04] p-3" aria-live="polite">
+            {suggestions.items.length === 0 ? (
+              <p className="text-sm">
+                {suggestions.added.length
+                  ? `Added ${suggestions.added.length} habit${suggestions.added.length === 1 ? '' : 's'} ✓ They’re on your list now.`
+                  : 'No new suggestions — you may already have habits covering your goals.'}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {suggestions.items.map((s) => (
+                  <li key={s.name} className="flex items-start gap-3 rounded-control border border-line bg-surface p-3">
+                    <span className="text-xl" aria-hidden>
+                      {s.emoji}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{s.name}</p>
+                      <p className="muted text-xs">
+                        {s.why}
+                        {s.goal_id && goalLabel.get(s.goal_id) ? ` · for ${goalLabel.get(s.goal_id)}` : ''}
+                      </p>
+                    </div>
+                    <button className="btn-ghost !px-3 !py-1.5" onClick={() => addSuggested([s])} aria-label={`Add ${s.name}`}>
+                      Add
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {suggestions.added.length > 0 && suggestions.items.length > 0 && <span className="muted mr-auto text-xs">Added {suggestions.added.length}</span>}
+            {suggestions.items.length > 1 && (
+              <button className="btn-ghost" onClick={() => addSuggested(suggestions.items)}>
+                Add all {suggestions.items.length}
+              </button>
+            )}
+            <button className="btn-primary" onClick={() => setSuggestions(null)}>
+              Done
+            </button>
+          </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/** What the squares mean, shown once above the cards. */
+function GridLegend() {
+  const sw = 'inline-block h-3 w-3 shrink-0 rounded-[3px]';
+  return (
+    <div className="muted mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <span className="flex items-center gap-1.5">
+        <span className={`${sw} bg-ink/70`} aria-hidden /> Filled = done
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className={`${sw} bg-raised ring-1 ring-inset ring-line`} aria-hidden /> Empty = not done
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className={`${sw} bg-raised outline outline-1 outline-offset-1 outline-ink/60`} aria-hidden /> Today
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className={`${sw} border border-dashed border-line-strong`} aria-hidden /> Before you started
+      </span>
+      <span>Streak: {STREAK_RULE.charAt(0).toLowerCase() + STREAK_RULE.slice(1)}</span>
     </div>
   );
 }

@@ -126,7 +126,7 @@ const descriptions: Record<ToolName, string> = {
   list_goals: 'List goals with refs (G1…) and progress.',
   update_goal: 'Change goal progress: add to it, or set it.',
   get_calendar: 'Synced calendar events, task blocks and recurring blocks between two dates (max 14 days).',
-  delete_item: 'Ask the user to confirm deleting a task, note, habit or goal. Nothing is deleted until they press Confirm.',
+  delete_item: 'Ask the user to confirm deleting a task, note, habit or goal. Nothing is deleted until they press Delete.',
   check_availability: 'Busy times (task blocks, recurring blocks, calendar events) by weekday for a period. Call before create_plan. start_date defaults to tomorrow.',
   create_plan:
     'Draft a weekly plan (workouts, study, meal prep, reading, project…) as a card the user can edit and add to their Planner. Each session repeats weekly on its day for `weeks` weeks. Nothing is scheduled until the user adds it.',
@@ -417,7 +417,7 @@ const executors: { [N in ToolName]: Exec<N> } = {
       .single();
     if (error) return fail('Could not prepare the deletion.');
     return {
-      content: `Waiting for the user to press Confirm on: ${summary}. Nothing is deleted yet — tell them you've asked for confirmation.`,
+      content: `Waiting for the user to press Delete on: ${summary}. Nothing is deleted yet — tell them you've asked for confirmation.`,
       events: [{ confirm: { id: pending.id, summary } }],
     };
   },

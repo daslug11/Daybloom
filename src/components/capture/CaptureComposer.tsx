@@ -3,15 +3,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAddNote } from '../../hooks/data/notes';
 import { useAddTasks } from '../../hooks/data/tasks';
+import { useUserId } from '../../hooks/useAuth';
 import { useAi } from '../../hooks/useAi';
 import type { CaptureMode } from '../../hooks/useAppActions';
 import { useToast } from '../../hooks/useToast';
-import { parseQuickAdd, taskFromParsed, type ParsedTask } from '../../lib/quickAdd';
+import { blockRange, parseQuickAdd, plannerBlock, taskFromParsed, type ParsedTask } from '../../lib/quickAdd';
 import { createRecognizer, speechInputSupported, type Recognizer } from '../../lib/speech';
 import { cn } from '../../lib/utils';
 import { AiButton } from '../ui/Ai';
 import { Modal } from '../ui/Modal';
 import { TaskChips } from '../tasks/TaskChips';
+import { draftKey, loadSession, saveSession, useBackdropGuard } from './sessionDraft';
 
 interface AiParsed {
   title: string;
@@ -45,11 +47,18 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
   const toast = useToast();
   const navigate = useNavigate();
   const parsed = useMemo(() => parseQuickAdd(text), [text]);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const fromBackdrop = useBackdropGuard(open, field);
+  // The draft survives closing the dialog (on purpose or not) until it's saved.
+  const key = draftKey('capture', useUserId());
+  const justOpened = useRef(false);
 
   useEffect(() => {
     if (!open) return;
-    setMode(initialMode);
-    setText(initialText);
+    const draft = initialText ? null : loadSession<{ mode: CaptureMode; text: string }>(key);
+    setMode(draft?.mode ?? initialMode);
+    setText(draft?.text ?? initialText);
+    justOpened.current = true;
     setAiParsed(null);
     setVoiceError('');
     if (startVoice) setTimeout(toggleVoice, 150);
@@ -58,6 +67,12 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
   }, [open]);
 
   useEffect(() => setAiParsed(null), [text]);
+
+  useEffect(() => {
+    // Skip the render that opened the dialog: its state is still the previous session's.
+    if (!open || justOpened.current) return void (justOpened.current = false);
+    saveSession(key, text.trim() ? { mode, text } : null);
+  }, [open, key, mode, text]);
 
   function toggleVoice() {
     if (listening) {
@@ -84,6 +99,8 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
   }
 
   const close = () => {
+    // A stray tap outside the sheet shouldn't throw away a thought mid-sentence.
+    if (text.trim() && fromBackdrop()) return;
     recognizer.current?.abort();
     setListening(false);
     onClose();
@@ -93,6 +110,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
     const value = text.trim();
     if (!value) return;
     recognizer.current?.stop();
+    saveSession(key, null);
     if (mode === 'note') {
       addNote.mutate({ body: value }, { onSuccess: () => toast('Saved to your Brain Dump inbox 📥', { label: 'View', onClick: () => navigate('/app/brain-dump') }) });
     } else {
@@ -109,13 +127,16 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
       const task = taskFromParsed(p, value);
       addTasks.mutate([task], {
         onSuccess: () =>
-          toast(task.sched_date ? `Added “${task.title}” and blocked time in the Planner` : `Added “${task.title}”`, {
+          toast(task.sched_date ? `Added “${task.title}” and blocked ${blockRange(plannerBlock(p)!)} in the Planner` : `Added “${task.title}”`, {
             label: 'View',
             onClick: () => navigate(task.sched_date ? '/app/planner' : '/app/tasks'),
           }),
       });
     }
-    close();
+    setText('');
+    recognizer.current?.abort();
+    setListening(false);
+    onClose();
   };
 
   const shown = aiParsed
@@ -149,6 +170,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
         </label>
         <textarea
           id="capture-text"
+          ref={field}
           autoFocus
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -187,7 +209,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
               </div>
               <p className="mt-1 font-semibold">{shown.title || <span className="faint italic">untitled</span>}</p>
               <TaskChips className="mt-1.5" due={shown.due} time={shown.time} tags={shown.tags} priority={shown.priority} duration={shown.duration} />
-              {shown.due && shown.time && <p className="muted mt-1.5 text-xs">Has a date and time, so it'll also be time-blocked on the Planner.</p>}
+              {plannerBlock(shown) && <p className="muted mt-1.5 text-xs">Has a date and time, so it'll also block {blockRange(plannerBlock(shown)!)} on the Planner.</p>}
               {!aiParsed && (
                 <div className="mt-2 flex items-center gap-2">
                   <AiButton size="sm" loading={parseAi.isPending} onClick={() => parseAi.mutate({ text }, { onSuccess: (r) => setAiParsed(r.result) })} hint="Let AI read a tricky sentence">
@@ -205,9 +227,17 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
         <p className="faint mt-2 text-xs">Markdown, - [ ] checklists and #tags work. Press Ctrl/⌘ + Enter to save.</p>
       )}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+        {text.trim() && (
+          <p className="faint w-full text-xs sm:mr-auto sm:w-auto">
+            Kept as a draft until you save.{' '}
+            <button type="button" className="link font-normal" onClick={() => (setText(''), field.current?.focus())}>
+              Clear
+            </button>
+          </p>
+        )}
         <button className="btn-ghost" onClick={close}>
-          Cancel
+          Close
         </button>
         <button className="btn-primary" onClick={save} disabled={!text.trim()}>
           {mode === 'note' ? 'Save to inbox' : 'Add task'}

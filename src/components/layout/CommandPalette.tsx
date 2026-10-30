@@ -68,7 +68,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       },
       { id: 'add-calendar', group: 'Calendars', label: 'Add calendar', icon: <CalendarPlus size={16} />, keywords: 'new link', run: () => navigate('/app/calendars?add=1') },
       ...(sync.syncedCalendars.length
-        ? [{ id: 'sync', group: 'Calendars', label: 'Sync calendars now', icon: <RefreshCw size={16} />, keywords: 'refresh ics feed', run: () => sync.sync() }]
+        ? [{ id: 'sync', group: 'Calendars', label: 'Check calendars again', icon: <RefreshCw size={16} />, keywords: 'refresh ics feed', run: () => sync.sync() }]
         : []),
       ...calendars.map((c) => ({
         id: `cal-${c.id}`,
