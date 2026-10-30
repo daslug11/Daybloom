@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Check } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MoodChart } from '../../components/mood/MoodChart';
 import { MoodPicker } from '../../components/mood/MoodPicker';
 import { AiButton } from '../../components/ui/Ai';
@@ -13,12 +14,99 @@ import { addDays, parseKey } from '../../lib/dates';
 import { MOODS } from '../../lib/moods';
 import { useSavedResult } from '../../lib/savedResult';
 import { meanScore } from '../../lib/stats';
+import type { Mood as MoodRow } from '../../lib/types';
 
 const moodFor = (score: number) => MOODS.find((m) => m.value === score) ?? { value: score, emoji: '❔', label: `Score ${score}` };
 
 /** Reflect reads the last 14 days and needs at least 3 check-ins in them (the server checks the same). */
 const REFLECT_DAYS = 14;
 const REFLECT_MIN = 3;
+
+/** How long typing has to pause before the note saves. */
+const NOTE_SAVE_MS = 800;
+
+/**
+ * Today's note. Saves after a short pause in typing, on blur, when you leave the page
+ * (pagehide) and when the page unmounts, and says so: "Saving…" then "Saved".
+ */
+function MoodNote({
+  todayMood,
+  note,
+  setNote,
+  save,
+}: {
+  todayMood?: MoodRow;
+  note: string | null;
+  setNote: (n: string) => void;
+  save: (m: MoodRow, done: (ok: boolean) => void) => void;
+}) {
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const timer = useRef(0);
+  // Read by the timer and the pagehide/unmount flush, which run outside a render.
+  const live = useRef({ note, todayMood, save });
+  live.current = { note, todayMood, save };
+  const lastSaved = useRef<string | null>(null);
+
+  const flush = useCallback(() => {
+    window.clearTimeout(timer.current);
+    const { note: n, todayMood: m, save: doSave } = live.current;
+    if (!m || n === null || n === m.note || n === lastSaved.current) return;
+    lastSaved.current = n;
+    setStatus('saving');
+    doSave({ ...m, note: n }, (ok) => {
+      if (!ok) lastSaved.current = null;
+      // A newer edit may already be waiting; only report on the latest text.
+      if (live.current.note === n) setStatus(ok ? 'saved' : 'error');
+    });
+  }, []);
+
+  useEffect(() => {
+    const onHide = () => flush();
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      flush();
+    };
+  }, [flush]);
+
+  const value = note ?? todayMood?.note ?? '';
+  const statusText = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : status === 'error' ? 'Couldn’t save your note. Keep typing to try again.' : '';
+
+  return (
+    <>
+      <label className="mt-4 block">
+        <span className="label">A word about today (optional)</span>
+        <textarea
+          rows={2}
+          maxLength={1000}
+          className="input resize-none"
+          placeholder={todayMood ? 'What made today feel this way?' : 'Pick a mood first'}
+          disabled={!todayMood}
+          value={value}
+          aria-describedby="mood-note-hint"
+          onChange={(e) => {
+            setNote(e.target.value);
+            lastSaved.current = null;
+            setStatus('idle');
+            window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(flush, NOTE_SAVE_MS);
+          }}
+          onBlur={flush}
+        />
+      </label>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+        <p id="mood-note-hint" className="faint">
+          One check-in per day — tap again to change it.{todayMood ? ' Your note saves as you type.' : ''}
+        </p>
+        {/* Always in the DOM so the change is announced; empty while idle. */}
+        <span role="status" className={`inline-flex items-center gap-1 font-medium ${status === 'error' ? 'text-danger' : status === 'saved' ? 'text-success' : 'faint'}`}>
+          {status === 'saved' && <Check size={12} strokeWidth={3} aria-hidden />}
+          {statusText}
+        </span>
+      </div>
+    </>
+  );
+}
 
 interface Reflection {
   reflection: string;
@@ -51,24 +139,14 @@ export default function Mood() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardTitle>{todayMood ? `Today: ${moodFor(todayMood.score).emoji} ${moodFor(todayMood.score).label}` : 'How are you feeling today?'}</CardTitle>
-            <MoodPicker value={todayMood?.score} onPick={(score) => setMood.mutate({ day: today, score, note: todayMood?.note ?? '' })} />
-            <label className="mt-4 block">
-              <span className="label">A word about today (optional)</span>
-              <textarea
-                rows={2}
-                maxLength={1000}
-                className="input resize-none"
-                placeholder={todayMood ? 'What made today feel this way?' : 'Pick a mood first'}
-                disabled={!todayMood}
-                value={note ?? todayMood?.note ?? ''}
-                onChange={(e) => setNote(e.target.value)}
-                onBlur={() => {
-                  if (todayMood && note !== null && note !== todayMood.note) setMood.mutate({ ...todayMood, note });
-                  setNote(null);
-                }}
-              />
-            </label>
-            <p className="faint mt-2 text-xs">One check-in per day — tap again to change it.</p>
+            <MoodPicker
+              value={todayMood?.score}
+              onPick={(score) => {
+                // Keep whatever note is on screen (it may not have saved yet).
+                setMood.mutate({ day: today, score, note: note ?? todayMood?.note ?? '' });
+              }}
+            />
+            <MoodNote key={today} todayMood={todayMood} note={note} setNote={setNote} save={(m, done) => setMood.mutate(m, { onSuccess: () => done(true), onError: () => done(false) })} />
           </Card>
           <Card>
             <CardTitle>Last 7 days</CardTitle>
