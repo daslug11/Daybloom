@@ -97,4 +97,166 @@ Decision points with more than 4 options: the timer card (7). The Length card ha
 
 ## Audit
 
-_(written after opening the detector file; see below)_
+Opened the detector JSON only after the critique above was written. Extra live probes for this section: a 320×640 viewport, and the full-screen overlay at 844×390 (phone landscape).
+
+### Audit Health Score
+
+| # | Dimension | Score | Key Finding |
+|---|-----------|-------|-------------|
+| 1 | Accessibility | 2 | The full-screen "dialog" doesn't move or trap focus, and focus returns to `<body>` on close. The `faint` text is 3.9:1 on dark cards, with 10px day labels. The Focus/Break control misuses `role="tablist"`. |
+| 2 | Performance | 3 | Wall-clock timer. The 250ms interval sets state that only changes once a second (React bails out on equal values), but every `useTimer()` consumer re-renders each second because `value` is a new object every render (`useTimer.tsx:106`). Cards use `backdrop-blur-xl`. Fine in practice. |
+| 3 | Theming | 2 | Hard-coded hex in the ring gradient (`ProgressRing.tsx:19-21`) and the overlay `bg-[#06050b]` (`FocusOverlay.tsx:21`). Raw `violet-*` utilities stand in for an emphasis token (`TimerDisplay.tsx:32,52`, `Focus.tsx:111`). Both themes render correctly. |
+| 4 | Responsive Design | 2 | In phone landscape (844×390), the overlay content runs from y=-59 to 379 and the exit button sits at y=411–449, off-screen and impossible to scroll to. At 320px the fixed 260px ring pushes the card to the right edge (card 16→318px, 2px right gutter). Targets are good (44/56px). |
+| 5 | Implementation Integrity | 2 | Logged minutes don't match minutes worked (the length change carries over `startedAt` and logs `work`; skip/reset discard). Leftover violet/gradient/glow brand on the calmest surface. |
+| **Total** | | **11/20** | **Acceptable** |
+
+**Implementation Integrity verdict: fail (narrowly).** The timer engine is sound (absolute `endAt`), but the logging layer doesn't record what happened. The visual layer still uses the old violet brand the owner has retired.
+
+### Detector findings
+
+38 findings across 4 scans (dark-desktop 12, dark-phone 11, light-desktop 8, light-phone 7).
+
+| Rule | Count (dd/dp/ld/lp) | Element | Verdict |
+|------|------|---------|---------|
+| ai-color-palette, "Purple/violet gradient" | 2/2/2/2 = 8 | Logo tile `span.flex.h-9` (`Logo.tsx:6`) and avatar `span.flex.h-8` (`TopBar.tsx:70`) | Real, but **shell**, not Focus. Already slated for removal per DESIGN.md. |
+| ai-color-palette, "Purple/violet accent colors" (body) | 1/1/1/1 = 4 | Page-wide: Start button, mode tab, chips, bars | **Real on this surface.** Covered by issue focus-7. |
+| ai-color-palette, "Cyan gradient background" | 1/1/1/1 = 4 | Atlas orb core `span.absolute.inset-[18%]` (`AtlasOrb.tsx:8`) | **False positive.** Cyan is reserved for Atlas. |
+| gradient-text | 2/1/2/1 = 6 | `h1.gradient-text` page title (`PageHeader.tsx:40` → `index.css:59-62`) ×4, sidebar wordmark ×2 | Real; shared component, already slated by the No-Ornament Type Rule. |
+| low-contrast, `#64748b` on `#14131b` 3.9:1 | 1/1/0/0 = 2 | `p.faint.mt-3` "Only finished focus blocks are logged." (`Focus.tsx:126`) | **Real, dark only** (light passes). The same `faint` class is on the 10px day labels (`Focus.tsx:112`), the per-task minutes (`:121`) and the running hint (`:99`). The detector reported only one instance. |
+| low-contrast, white on `#cc4fb7` 3.9:1 | 1/1/1/1 = 4 | Avatar initial (`TopBar.tsx:70`) | Real, shell. |
+| dark-glow `#4c1d95` | 2/2/0/0 = 4 | Start button `button.flex.h-14` (`TimerDisplay.tsx:52`) ×2 **(this surface)**; capture FAB `button.flex.h-12` (`AppShell.tsx:129`) ×2 (shell) | Real. The same `shadow-violet-900/30` also renders in light mode but isn't flagged there. |
+| dark-glow `#164e63` | 1/1/0/0 = 2 | Atlas orb button | **False positive.** Atlas's cyan glow belongs to the Atlas signature. Whether the orb keeps a glow under "no glows" is an owner call for the Atlas surface, not this one. |
+| overused-font (Inter 100%) | 1/1/1/1 = 4 | body | **False positive for Operate.** One sans family is the documented system and operate.md endorses it. |
+
+**Detector missed:**
+- The ring's violet→blue→pink gradient. It isn't drawn at 0 progress, which is the scanned state.
+- The solid `bg-violet-500` bars, which aren't a gradient.
+- The overlay, which wasn't open during the scan.
+- Every behavioural defect: logging, inputs, focus handling, landscape clipping.
+
+### Findings by severity
+
+**[P1] Logged focus minutes don't match time worked**
+- **Location:** `src/hooks/useTimer.tsx:61-63, 69, 121-138`; `src/pages/app/Focus.tsx:57, 80-96`; `src/components/focus/TimerDisplay.tsx:26-36`
+- **Category:** Implementation Integrity
+- **Impact:** A length change while paused resets the block and logs the new length with the old `startedAt`. Skip, Reset and mode switch discard elapsed work with no confirmation. A mid-block task change credits the whole block to the new task. "Focus time" and per-task totals are wrong in both directions. This breaks the honest-numbers commitment.
+- **Recommendation:** Accumulate real running time and log that. Lock length, presets, mode and task while a block is in progress, not only while running. Offer "Log N min / Discard" with Undo.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Number inputs snap to 1 and concatenate**
+- **Location:** `src/pages/app/Focus.tsx:92, 96`
+- **Category:** Implementation Integrity / Accessibility (forms)
+- **Impact:** Clearing gives "1" and typing 45 gives "145". Values are silently clamped to 180 or 60.
+- **WCAG:** 3.3.1 Error Identification (silent clamp)
+- **Recommendation:** Keep a local string draft and commit on blur/Enter. Show an inline range message. Add `inputMode="numeric"`.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Full-screen overlay doesn't manage focus**
+- **Location:** `src/components/layout/FocusOverlay.tsx:12-26`
+- **Category:** Accessibility
+- **Impact:** Focus stays on the hidden trigger. 7 Tab presses moved through background controls before focus entered the overlay. Esc returns focus to `<body>`. `aria-modal="true"` is untrue.
+- **WCAG:** 2.4.3 Focus Order, 2.4.7 Focus Visible (focus off-screen), 4.1.2
+- **Recommendation:** Use `<dialog>.showModal()` or the `Modal.tsx` focus trap, set `inert` on the app root, focus Start/Pause on open, and restore focus to the "Full screen" button.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Overlay clips in phone landscape and the exit can't be reached**
+- **Location:** `src/components/layout/FocusOverlay.tsx:21-25` (`fixed inset-0 flex … justify-center gap-8`, no overflow handling; `TimerDisplay size={300}`)
+- **Category:** Responsive
+- **Impact:** At 844×390 the mode tabs start at y=-59 and the "Exit full screen" button is at y=411–449, outside the viewport and not scrollable. A touch user has no Esc key, so the only way out is rotating the phone or reloading.
+- **WCAG:** 1.4.10 Reflow
+- **Recommendation:** Size the ring from the viewport (`min(300px, 60vh, 80vw)`), add `overflow-y-auto`, and pin a close button at top-right inside `env(safe-area-inset-*)`.
+- **Suggested command:** `/impeccable adapt`
+
+**[P1] Faint text fails contrast on dark; day labels are 10px**
+- **Location:** `src/index.css:66-68` (`.faint` = slate-500 in both themes); used at `src/pages/app/Focus.tsx:99, 112, 121, 126`
+- **Category:** Accessibility
+- **Impact:** 3.9:1 on the dark card (detector, confirmed). The weekday letters are 10px in the same colour, so the chart axis is barely readable.
+- **WCAG:** 1.4.3 Contrast (Minimum)
+- **Recommendation:** Use `dark:text-slate-400` (about 7:1) for `.faint` and a 12px minimum for labels, per DESIGN.md's "Don't use 10px text".
+- **Suggested command:** `/impeccable typeset`
+
+**[P2] Chart and per-task list don't state their numbers or scope**
+- **Location:** `src/pages/app/Focus.tsx:108-125`
+- **Category:** Implementation Integrity / Accessibility
+- **Impact:** Values are hover-only. The aria-label has no day names. 0-minute days get a 3px bar. The per-task list is unlabelled, limited to the top 5 and the last 7 days, and leaves out unlinked sessions.
+- **WCAG:** 1.1.1 (partial text alternative)
+- **Recommendation:** Value labels, a today marker, "Thu 50 min" aria text, a "By task · last 7 days (top 5)" heading and a "No task" row.
+- **Suggested command:** `/impeccable clarify`
+
+**[P2] Violet, gradients and glow on the focus surface (and hard-coded colours)**
+- **Location:** `src/components/focus/TimerDisplay.tsx:32, 52`; `src/components/ui/ProgressRing.tsx:18-22`; `src/pages/app/Focus.tsx:111`; `src/components/layout/FocusOverlay.tsx:21`; `src/index.css:140`; `src/components/ui/PageHeader.tsx:40`
+- **Category:** Theming
+- **Impact:** Goes against the confirmed direction (near-white emphasis, no gradients or glows, untinted near-black). Hex values bypass any token, so a theme change won't reach them.
+- **Recommendation:** Introduce an emphasis token (near-white on dark, near-black on light) and use it for Start, the active segment, the ring stroke and today's bar. Overlay background = the neutral page token.
+- **Suggested command:** `/impeccable quieter`
+
+**[P2] Timer state isn't visible off-page and isn't persisted**
+- **Location:** `src/hooks/useTimer.tsx:49-57, 91-100`; `src/components/layout/AppShell.tsx` (no indicator)
+- **Category:** Implementation Integrity
+- **Impact:** A reload or a discarded mobile tab loses the block. A finish in a background tab leaves no trace after the 3s toast.
+- **Recommendation:** Persist `{mode, endAt, startedAt, elapsed, taskId}` to localStorage, add a timer pill in the shell, and keep a "done" title until the user acknowledges it.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] Focus/Break is a fake tablist and stays live while running**
+- **Location:** `src/components/focus/TimerDisplay.tsx:25-36`
+- **Category:** Accessibility
+- **Impact:** `role="tab"` with no `tabpanel`, no roving tabindex and no arrow keys. Selecting a tab is a destructive reset, not a view switch. Screen readers announce "tab 2 of 2" for what is really a mode action.
+- **WCAG:** 4.1.2 Name, Role, Value
+- **Recommendation:** Use a segmented control with `aria-pressed` (or `radiogroup`), disabled during a block in progress.
+- **Suggested command:** `/impeccable harden`
+
+**[P3] Fixed 260px ring squeezes the 320px layout**
+- **Location:** `src/components/ui/ProgressRing.tsx:10,15`; `src/components/focus/TimerDisplay.tsx:21`
+- **Category:** Responsive
+- **Impact:** At 320px the card widens to the right edge (2px gutter instead of 16px). There's no scroll, but the layout is lopsided.
+- **Recommendation:** Make the size responsive (`width: min(260px, 100%)` with an SVG `viewBox`).
+- **Suggested command:** `/impeccable adapt`
+
+**[P3] State labels drift from reality**
+- **Location:** `src/components/focus/TimerDisplay.tsx:43`; `src/pages/app/Focus.tsx:24-25, 57`
+- **Category:** Implementation Integrity
+- **Impact:** A paused block reads "Ready". A task completed elsewhere makes the select show "Nothing specific" while the ring still says "On: <task>".
+- **Recommendation:** Add a "Paused" state, and keep the selected task in the options even if it's done.
+- **Suggested command:** `/impeccable polish`
+
+### Positive findings
+
+- The timer uses an absolute `endAt` (`useTimer.tsx:116`, `:84`), so it's immune to interval throttling and sleep. The tab title shows the countdown.
+- Icon buttons have accurate, state-aware `aria-label`s, and the clock has `aria-live="off"`.
+- The touch targets on the core controls are generous: 44×44 Reset/Skip, 56×56 Start, 26px-tall chips with ≥8px spacing (passes 2.5.8).
+- Label/`htmlFor` and wrapping `<label>`s on every form field. A native `<select>` gives the right picker on phones.
+- The write path reports failure in plain language (`focus.ts:32`). The data query is scoped by RLS and bounded to 35 days.
+- No horizontal page scroll at 320px or 390px.
+
+## Motion on this surface
+
+| Motion | Where | Trigger | Duration / easing | Earns its place? |
+|---|---|---|---|---|
+| Card fade + 4px rise | `Card.tsx:16` (`animate-fade-in`), `tailwind.config.js:12,15` | Mount of each of the 3 cards | 250ms ease-out | Marginal. All three cards play it at once on every visit to the page. It's harmless, but operate.md says product loads into the task. Candidate for `remove-animations` app-wide. |
+| Ring progress sweep | `ProgressRing.tsx:35` (`transition: stroke-dashoffset 0.5s linear`) | Every 1s tick; also reset/skip/mode change | 500ms linear | Yes for ticks: it smooths 1-second steps on a 260px ring (about 0.5px per second at 25 min). On reset it sweeps backwards over 500ms, which reads as "rewinding" and is acceptable. |
+| Mode segment colour | `TimerDisplay.tsx:32` (`transition`, Tailwind default 150ms) | Focus/Break change | 150ms cubic-bezier(0.4,0,0.2,1) | Yes, state feedback. |
+| Start button hover | `TimerDisplay.tsx:52` (`transition hover:bg-violet-500`) | Hover | 150ms | Yes, but there's no press state. The other buttons get `active:scale-[0.97]` from `.btn` (`index.css:76`); the main action should feel the most tactile. |
+| Full screen button press | `.btn` `active:scale-[0.97]` (`index.css:76`) | Press | 150ms | Yes, tactile feedback in line with the direction. |
+| Chip / input / icon-button colour | `index.css:70, 90, 133` | Hover / focus | 150ms | Yes. |
+| Overlay open/close | `FocusOverlay.tsx:18-21` | Full screen / Esc | None (instant) | Fine. A 150–200ms opacity fade would make entering focus mode feel intentional without slowing it down. |
+
+All of the above are covered by the global reduced-motion rule (`index.css:32-37`). The ring then jumps each second, which is acceptable because it still shows the state.
+
+## Machine-readable summary
+
+```json
+{"surface":"focus","critique_total":22,"critique_max":40,"na_heuristics":[],"audit_total":11,
+ "issues":[
+  {"id":"focus-1","severity":"P1","title":"Logged focus minutes don't match time worked (length change while paused, skip/reset/mode discard, mid-block task change)","fix":"Accumulate real running time and log it; lock length/presets/mode/task while a block is in progress; offer 'Log N min / Discard' with Undo","command":"/impeccable harden","files":["src/hooks/useTimer.tsx:61","src/hooks/useTimer.tsx:69","src/hooks/useTimer.tsx:121","src/pages/app/Focus.tsx:80","src/components/focus/TimerDisplay.tsx:26"],"source":"critique"},
+  {"id":"focus-2","severity":"P1","title":"Length number inputs snap to 1 and concatenate (clear → 1, type 45 → 145)","fix":"Local string draft committed on blur/Enter with clamp message; inputMode=numeric","command":"/impeccable harden","files":["src/pages/app/Focus.tsx:92","src/pages/app/Focus.tsx:96"],"source":"both"},
+  {"id":"focus-3","severity":"P1","title":"Full-screen overlay is aria-modal but doesn't move, trap or restore focus","fix":"Use dialog.showModal() or Modal focus trap, inert app root, focus Start on open, restore to trigger on close, Space toggles","command":"/impeccable harden","files":["src/components/layout/FocusOverlay.tsx:12","src/components/layout/FocusOverlay.tsx:21"],"source":"both"},
+  {"id":"focus-4","severity":"P1","title":"Overlay clips in phone landscape; Exit button off-screen and unreachable by touch","fix":"Ring size min(300px,60vh,80vw), overflow-y-auto, pinned top-right close inside safe area","command":"/impeccable adapt","files":["src/components/layout/FocusOverlay.tsx:21","src/components/layout/FocusOverlay.tsx:22"],"source":"audit"},
+  {"id":"focus-5","severity":"P1","title":"Faint text 3.9:1 on dark cards; chart day labels 10px","fix":".faint → dark:text-slate-400; 12px minimum for labels","command":"/impeccable typeset","files":["src/index.css:66","src/pages/app/Focus.tsx:112","src/pages/app/Focus.tsx:126"],"source":"both"},
+  {"id":"focus-6","severity":"P2","title":"Focus time chart and per-task list don't show values or scope","fix":"Minute labels on bars, today marker, 3-letter 12px days, 'Thu 50 min' aria text, 'By task · last 7 days (top 5)' heading plus 'No task' row, hairline for zero days","command":"/impeccable clarify","files":["src/pages/app/Focus.tsx:108","src/pages/app/Focus.tsx:116"],"source":"critique"},
+  {"id":"focus-7","severity":"P2","title":"Violet start button with glow, violet mode tab/chips/bars, gradient ring and title, tinted hard-coded overlay background","fix":"Neutral near-white emphasis token for Start, active segment, ring stroke and today's bar; no glow; overlay uses neutral page token","command":"/impeccable quieter","files":["src/components/focus/TimerDisplay.tsx:32","src/components/focus/TimerDisplay.tsx:52","src/components/ui/ProgressRing.tsx:18","src/pages/app/Focus.tsx:111","src/components/layout/FocusOverlay.tsx:21","src/components/ui/PageHeader.tsx:40"],"source":"both"},
+  {"id":"focus-8","severity":"P2","title":"Timer invisible outside /focus and lost on reload or tab discard","fix":"Persist timer state to localStorage and restore; shell timer pill; keep 'done' title until acknowledged","command":"/impeccable harden","files":["src/hooks/useTimer.tsx:49","src/hooks/useTimer.tsx:93","src/components/layout/AppShell.tsx:146"],"source":"critique"},
+  {"id":"focus-9","severity":"P2","title":"Focus/Break uses role=tablist for a destructive mode action and stays enabled while running","fix":"Segmented control with aria-pressed or radiogroup; disabled during a block in progress","command":"/impeccable harden","files":["src/components/focus/TimerDisplay.tsx:25"],"source":"audit"},
+  {"id":"focus-10","severity":"P3","title":"Fixed 260px ring squeezes the card at 320px width","fix":"Responsive ring size with SVG viewBox (width min(260px,100%))","command":"/impeccable adapt","files":["src/components/ui/ProgressRing.tsx:10","src/components/focus/TimerDisplay.tsx:21"],"source":"audit"},
+  {"id":"focus-11","severity":"P3","title":"State labels drift: paused shows 'Ready'; completed selected task shows 'Nothing specific' in select","fix":"Add Paused state label; keep selected task in options even when done","command":"/impeccable polish","files":["src/components/focus/TimerDisplay.tsx:43","src/pages/app/Focus.tsx:24"],"source":"critique"}
+ ]}
+```

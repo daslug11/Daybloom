@@ -114,4 +114,165 @@ Decision points with more than 4 options:
 
 ## Audit
 
-_(written after the critique; see below)_
+The detector JSON (`.scratch/review-input/goals-detector.json`) was opened only after the critique above was written.
+
+### Audit Health Score
+
+| # | Dimension | Score | Key Finding |
+|---|-----------|-------|-------------|
+| 1 | Accessibility | 1 | The goal dialog moves keyboard focus to the title after every keystroke in any other field (verified live). The 12px "to go / open tasks" line is 3.9:1 in dark mode, and white "+ 1" text on the gradient is 4.0:1 in both themes. The emoji picker buttons have no name or pressed state. Toasts, including "Goal reached", are not in a live region. |
+| 2 | Performance | 3 | The route is lazy-loaded (`App.tsx:26`), so `canvas-confetti` only ships with Goals. Per-card `filter`s over milestones/tasks/habits are O(goals × items) per render, which is fine at student scale. The progress fill animates `width` for 500ms, and every card is a `backdrop-blur-xl` glass layer over a fixed gradient background. |
+| 3 | Theming | 2 | Everything goes through Tailwind's `dark:` variant and both themes are complete, but the colour is hard-coded palette classes (`bg-violet-500/15`, `text-violet-700 dark:text-violet-300`, `border-violet-600 bg-violet-600`, `from-violet-500 via-blue-500 to-pink-500`) rather than semantic tokens. The dark modal surface is a literal `#13111f` (`Modal.tsx:63`), and the confetti palette is a hex list (`confetti.ts:4`). |
+| 4 | Responsive Design | 2 | The one-to-two-column grid and the bottom-sheet dialog work at 390px with no horizontal scroll. But milestone checkboxes are 16×16, the edit pencil is 32×32, the bump buttons are 36×32 and 48×32, and the global + FAB overlaps the second card's "+1" button while scrolling on phone. |
+| 5 | Implementation Integrity | 2 | Several verified integrity problems: the focus bug corrupts entered numbers. Milestones can only be created by AI, against the "everything works without AI" commitment. The percentage rounds up to 100% before the goal is reached. The dialog describes a "Title target unit" display that doesn't exist. The plan-accept toast claims tasks were added before the insert resolves. |
+| **Total** | | **10/20** | **Acceptable** |
+
+**Implementation Integrity verdict: fail.** The structure is product-specific and the stored numbers are honest, but what is displayed and what is typed are not reliably the same as what is stored (P0 focus bug, P1 rounding), and one feature (milestones) quietly requires AI.
+
+### Detector findings
+
+68 findings across the four scans (dark-desktop 20, dark-phone 20, light-desktop 14, light-phone 14), plus 12 source-scan findings for the whole repo, of which 1 is in this surface's files (`GoalCard.tsx:52`).
+
+| Rule | Count (dd / dp / ld / lp) | Where | Verdict |
+|------|------|------|---------|
+| `ai-color-palette` | 6 / 6 / 6 / 6 | Progress fills of both cards (`GoalCard.tsx:52`), "Purple/violet accent colors" on body, sidebar/mobile logo tile, avatar, Atlas orb cyan gradient | **Real** for the two progress bars and the violet accents (slated for removal per DESIGN.md). **Real but out of scope** for the logo and avatar (shell). **False positive** for `span.absolute.inset-[18%]`, the Atlas orb, whose cyan is intentionally reserved for Atlas. |
+| `low-contrast` | 5 / 5 / 4 / 4 | White on gradient: "+ 1" bump buttons on both cards (4.0:1) and "New goal" (3.9:1); avatar initial (3.9:1, shell); `span.faint.text-xs` "5 books to go · 1 habit" at 3.9:1 (dark only) | **Real.** All are 12–14px text below 4.5:1. I measured the same `#64748b` on `#14131b` = 3.88:1. In light mode the faint line passes (4.59:1), which matches the scan not flagging it. |
+| `dark-glow` | 5 / 5 / 0 / 0 | Violet box-shadow on "New goal" and both "+1" buttons; FAB glow (`#4c1d95`); Atlas orb glow (`#164e63`) | **Real** for the three `btn-primary` glows (direction: no glows). The orb glow is Atlas cyan (acceptable to keep, but DESIGN.md says no glows outside the HUD, so it's a shell decision). FAB is shell. |
+| `gradient-text` | 2 / 1 / 2 / 1 | `h1.gradient-text` "Goals" (`PageHeader.tsx:8`), sidebar wordmark | **Real**, shared component, already slated for removal. |
+| `skipped-heading` | 1 / 1 / 1 / 1 | `<h1>` "Goals" → `<h3>` goal titles | **Real.** Active cards have no `<h2>`; only the Completed section has one (`Goals.tsx:126`). |
+| `unbalanced-heading` | 0 / 1 / 0 / 1 | Card title wraps to a line holding only "– 58%" on phone | **Real**, and it's the same wrap that makes the percentage read as negative (critique P1). |
+| `overused-font` | 1 / 1 / 1 / 1 | Inter for 100% of text | **False positive** for an Operate surface: one well-tuned sans is what operate.md recommends, and Inter is the documented system font. |
+
+Things the detector missed that I verified: the dialog focus-jump (P0), 16px milestone targets, the light-mode unchecked milestone border at 2.47:1 (`border-slate-400` on the card), unlabelled emoji buttons, toasts with no live region, the FAB overlap, and all the honest-numbers logic issues (rounding, title/target mismatch, premature "Added" toast).
+
+### Findings by severity
+
+**[P0] Dialog focus is reset on every state change**
+- **Location:** `src/components/ui/Modal.tsx:21-50` (effect deps `[open, onClose]`), triggered by the inline `onClose` arrows at `src/pages/app/Goals.tsx:132` and `src/pages/app/Goals.tsx:206`
+- **Category:** Accessibility / Implementation Integrity
+- **Impact:** Typing in Now at, Target, Unit or Deadline, or picking an emoji, sends focus back to the Goal title; subsequent characters land in the title. Verified live: Unit "km" → Unit "k", title "m"; Target "250" → Target "2", title "…50". Breaks keyboard use and silently corrupts the goal's numbers. The same pattern affects the ✨ plan dialog's milestone inputs.
+- **WCAG:** 2.4.3 Focus Order, 3.2.2 On Input
+- **Recommendation:** Store `onClose` in a ref inside `Modal` and depend only on `open`; add a regression test that types into the third field of a dialog.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Body text and button labels below 4.5:1**
+- **Location:** `src/components/goals/GoalCard.tsx:55` (`.faint text-xs`, dark 3.88:1); `src/components/goals/GoalCard.tsx:65` and `src/pages/app/Goals.tsx:112` (white on `btn-primary` gradient, 3.9–4.0:1 at the blue end, `src/index.css:78-81`)
+- **Category:** Accessibility
+- **Impact:** The "5 books to go · 1 habit" line, which carries the remaining amount and linked counts, is hard to read in the default dark theme; the "+ 1" label fails in both themes.
+- **WCAG:** 1.4.3 Contrast (Minimum)
+- **Recommendation:** Use `.muted` (7.2:1 on the dark card) for the progress line, and move the counter off `btn-primary` to a neutral secondary button. The direction's near-white primary with dark text resolves "New goal" too.
+- **Suggested command:** `/impeccable colorize`
+
+**[P1] Milestones require AI to exist**
+- **Location:** `src/pages/app/Goals.tsx:166-182` (edit dialog: remove only); creation only at `src/pages/app/Goals.tsx:71` and `src/components/notes/AiNotePanels.tsx:260`
+- **Category:** Implementation Integrity
+- **Impact:** Breaks PRODUCT.md "every feature still works without AI".
+- **Recommendation:** Add and rename milestones in the edit dialog, staged until Save.
+- **Suggested command:** `/impeccable clarify`
+
+**[P1] Displayed percentage and title can contradict the stored numbers**
+- **Location:** `src/components/goals/GoalCard.tsx:7` (`Math.round`), `src/components/goals/GoalCard.tsx:38` ("– {pct}%" in the h3), `src/pages/app/Goals.tsx:132` (description "Shown as 'Title target unit'")
+- **Category:** Implementation Integrity
+- **Impact:** "100%" with a full bar before the target is reached; "– 58%" reads as negative on phone; the dialog promises a format the card doesn't use.
+- **Recommendation:** `Math.floor`, percentage in the progress row without a dash, accurate dialog copy.
+- **Suggested command:** `/impeccable clarify`
+
+**[P1] Destructive actions without undo; milestone removal bypasses Save**
+- **Location:** `src/pages/app/Goals.tsx:189-191` (`window.confirm` + delete), `src/pages/app/Goals.tsx:175` (immediate milestone delete)
+- **Category:** Implementation Integrity
+- **Impact:** Inconsistent with the Undo-toast pattern in Brain Dump, Calendars and Habits; Escape/✕ doesn't cancel a milestone removal.
+- **Recommendation:** Optimistic delete + Undo toast; stage milestone edits in `editor` state.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] Decorative violet/gradient colour and glows on every card**
+- **Location:** `src/components/goals/GoalCard.tsx:33`, `:38`, `:52`, `:65`, `:78`; `src/components/ui/EmojiPicker.tsx:13`; `src/lib/confetti.ts:4`; `src/index.css:78-81`
+- **Category:** Theming
+- **Impact:** Contradicts the confirmed direction (neutral emphasis, no gradients or glows); colour carries no state, so "reached" and "behind" look identical. Detector: 24 `ai-color-palette`, 10 `dark-glow`.
+- **Recommendation:** Semantic tokens: neutral fill for progress, emerald for reached, neutral checkbox fill, near-white selection ring in the emoji picker, a neutral/emerald confetti palette.
+- **Suggested command:** `/impeccable quieter`
+
+**[P2] Small touch targets and a weak unchecked-box border**
+- **Location:** `src/components/goals/GoalCard.tsx:75-83` (16×16 milestone button, label not clickable), `:46` (32×32 edit), `:62-67` (36×32 / 48×32 bumps); unchecked border `border-slate-400` at 2.47:1 on the light card (`:78`)
+- **Category:** Responsive / Accessibility
+- **Impact:** Hard to hit one-handed. The 16px boxes sit exactly 24px apart, so they only just pass the 2.5.8 spacing exception; the light-mode box outline fails non-text contrast.
+- **WCAG:** 1.4.11 Non-text Contrast (light unchecked box); 2.5.8 borderline
+- **Recommendation:** Full-row milestone button ≥44px tall on touch; 40–44px bump and edit buttons on phone; `border-slate-500` or darker for the empty box.
+- **Suggested command:** `mobile-native`
+
+**[P2] Emoji picker and goal-reached toast are invisible to screen readers**
+- **Location:** `src/components/ui/EmojiPicker.tsx:5-17` (no `aria-label`, no `aria-pressed`, no group label; the "Emoji" `<span class="label">` at `Goals.tsx:163` isn't associated); `src/hooks/useToast.tsx` (no `aria-live`/`role="status"` on the toast region)
+- **Category:** Accessibility
+- **Impact:** Selected emoji is conveyed only by a violet ring; "🏆 Goal reached" and "Added 3 milestones and 7 tasks" are never announced.
+- **WCAG:** 4.1.2 Name, Role, Value; 4.1.3 Status Messages
+- **Recommendation:** `role="radiogroup" aria-labelledby` on the picker, `role="radio" aria-checked` + `aria-label` per option; `role="status" aria-live="polite"` on the toast container.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] The global + FAB covers the "+1" counter on phone**
+- **Location:** `src/components/layout/AppShell.tsx:126` (`fixed bottom-20 right-4`) against the right-aligned bump row at `src/components/goals/GoalCard.tsx:61`
+- **Category:** Responsive
+- **Impact:** In the phone screenshots the FAB sits on top of the second card's "+ 1". Scrolling clears it, but the page's most frequent action is the one being covered.
+- **Recommendation:** Put the bump pair on the left of the progress row on phone (thumb-side, away from the FAB column), or reserve a right gutter for the FAB on card action rows.
+- **Suggested command:** `/impeccable layout`
+
+**[P2] Plan acceptance reports success early and accepts blank milestones**
+- **Location:** `src/pages/app/Goals.tsx:73-74` (`addTasks.mutate` not awaited before the "Added N milestones and M tasks" toast); `src/pages/app/Goals.tsx:212-217` (milestone title can be emptied); `:71` (`mutateAsync` rejection unhandled)
+- **Category:** Implementation Integrity
+- **Impact:** If the task insert fails, the user sees "Added 7 tasks" followed by an error toast, and the counts are wrong. Blank milestone titles are saved.
+- **Recommendation:** `await addTasks.mutateAsync`, wrap in try/catch, trim and drop empty titles, and toast the counts actually returned.
+- **Suggested command:** `/impeccable harden`
+
+**[P3] Heading structure**
+- **Location:** `src/components/goals/GoalCard.tsx:37-39` (`h3` directly under the page `h1`; the heading includes the emoji and percentage)
+- **Category:** Accessibility
+- **Impact:** Skipped level (detector, all four scans); the accessible heading name is "Read 12 books this year 📚 – 58%".
+- **WCAG:** 1.3.1 Info and Relationships (best practice)
+- **Recommendation:** Add a visually hidden `<h2>Active goals</h2>` (or make card titles `h2`), and keep only the title text in the heading.
+- **Suggested command:** `/impeccable polish`
+
+**[P3] Progress fill animates width for 500ms**
+- **Location:** `src/components/goals/GoalCard.tsx:52` (`transition-[width] duration-500`)
+- **Category:** Performance
+- **Impact:** Layout-property animation, longer than the 150–250ms Operate budget; with rapid bumps the bar lags the number.
+- **Recommendation:** `transform: scaleX()` with `origin-left`, 200ms ease-out.
+- **Suggested command:** `animation-performance`
+
+### Positive findings
+
+- The page is lazy-loaded, and confetti respects reduced motion (`disableForReducedMotion: true`), on top of the global reduced-motion rule (`index.css:32-41`).
+- Every icon-only control on the card has a specific accessible name ("Edit goal Read 12 books this year", "Decrease by 1", "Complete milestone 'Run 8K'"), and the progress bar is a real `role="progressbar"` with values and a label.
+- Page tab order is logical and per card (verified live at both sizes), and `Modal` traps Tab, closes on Escape and restores focus.
+- Optimistic mutations with rollback (`hooks/data/cache.ts`) make the counter feel instant and recover cleanly on failure.
+- The number inputs use `type="number" min={0} step="any"`, so decimals like 6.5 km work and the phone shows a numeric keypad.
+
+## Motion on this surface
+
+| Motion | Where | Trigger | Duration / easing | Earns its place? |
+|--------|-------|---------|-------------------|------------------|
+| Progress fill width transition | `GoalCard.tsx:52` | Bump, edit, load | 500ms, default ease | Yes as feedback (the bar moving confirms the bump), but too slow and animates `width`. Use 200ms `scaleX`. |
+| Confetti burst (90 particles, violet/indigo/blue/pink) | `confetti.ts:3-5`, called at `Goals.tsx:51` | Reaching the target via + | canvas-confetti default (~2–3s) | Yes. It is a rare, earned peak moment, and reduced motion is respected. Retone away from violet/pink, and fire it on reaching the target from the edit dialog too (`Goals.tsx:63`) for consistency. |
+| Modal fade-in + 4px rise | `Modal.tsx:63`, `tailwind.config.js:12-15` | Opening New/Edit goal or the plan | 250ms ease-out | Yes, but it's at the top of the budget; 150–200ms would feel quicker. The `backdrop-blur-sm` overlay (`Modal.tsx:55`) adds cost for no meaning. |
+| Button press scale | `index.css` `.btn` (`active:scale-[0.97]`) | Pressing +, –, New goal, Save | Tailwind default 150ms | Yes. Tactile press feedback fits "tactile, confident". |
+| Emoji hover scale 110% | `EmojiPicker.tsx:12` (`transition hover:scale-110`) | Hover over an emoji | 150ms | Marginal: decorative, and sticky on touch. Replace with a background tint. |
+| AI loading spinner | `Ai.tsx:51` (`animate-spin`) | Make a plan in flight | 1s linear loop | Yes. It shows a real wait. |
+| Skeleton pulse | `States.tsx:43` (`animate-pulse`) | Goals loading | 2s loop | Yes. |
+| Colour/background transitions | `.icon-btn`, `.input`, `.btn-ghost` (`index.css`) | Hover/focus | 150ms | Yes, quiet state feedback. |
+
+## Machine-readable summary
+
+```json
+{"surface":"goals","critique_total":21,"critique_max":40,"na_heuristics":[],"audit_total":10,
+ "issues":[
+  {"id":"goals-1","severity":"P0","title":"Goal and plan dialogs move focus to the title after each keystroke, corrupting entered numbers","fix":"Keep onClose in a ref inside Modal and depend only on [open]; add a test that types into a non-first dialog field","command":"/impeccable harden","files":["src/components/ui/Modal.tsx:21","src/pages/app/Goals.tsx:132","src/pages/app/Goals.tsx:206"],"source":"both"},
+  {"id":"goals-2","severity":"P1","title":"Milestones can only be created by AI","fix":"Add 'Add a milestone' and inline rename in the edit dialog, staged until Save, shown for every goal","command":"/impeccable clarify","files":["src/pages/app/Goals.tsx:166"],"source":"both"},
+  {"id":"goals-3","severity":"P1","title":"Percentage rounds to 100% before the target, reads as negative, and the dialog misdescribes the title format","fix":"Use Math.floor (100% only when reached), move the percentage into the progress row without a dash, rewrite the dialog description","command":"/impeccable clarify","files":["src/components/goals/GoalCard.tsx:7","src/components/goals/GoalCard.tsx:38","src/pages/app/Goals.tsx:132"],"source":"both"},
+  {"id":"goals-4","severity":"P1","title":"Goal delete has no undo and milestone removal bypasses Save","fix":"Optimistic delete with an Undo toast; stage milestone removals in editor state and apply them in save()","command":"/impeccable harden","files":["src/pages/app/Goals.tsx:189","src/pages/app/Goals.tsx:175"],"source":"both"},
+  {"id":"goals-5","severity":"P1","title":"Progress line (3.9:1 dark) and white '+ 1' on gradient (4.0:1) fail contrast","fix":"Use .muted for the progress line; move the counter to a neutral secondary button; near-white primary per direction","command":"/impeccable colorize","files":["src/components/goals/GoalCard.tsx:55","src/components/goals/GoalCard.tsx:65","src/index.css:78"],"source":"audit"},
+  {"id":"goals-6","severity":"P2","title":"Decorative violet gradients, glows and a primary-weight counter on every card","fix":"Neutral progress fill with emerald when reached, ghost +/- pair, neutral selection in emoji picker, retoned confetti; drop the duplicate emoji","command":"/impeccable quieter","files":["src/components/goals/GoalCard.tsx:52","src/components/goals/GoalCard.tsx:33","src/components/goals/GoalCard.tsx:65","src/lib/confetti.ts:4","src/components/ui/EmojiPicker.tsx:13"],"source":"both"},
+  {"id":"goals-7","severity":"P2","title":"16px milestone checkboxes with unclickable labels; small edit/bump buttons; light unchecked border 2.47:1","fix":"Full-row milestone button min 44px on touch, 40-44px bump/edit buttons on phone, darker empty-box border","command":"mobile-native","files":["src/components/goals/GoalCard.tsx:75","src/components/goals/GoalCard.tsx:46","src/components/goals/GoalCard.tsx:62"],"source":"both"},
+  {"id":"goals-8","severity":"P2","title":"Emoji picker has no names or selected state; toasts (Goal reached) not announced","fix":"radiogroup/radio with aria-checked and aria-label; role=status aria-live=polite on the toast region","command":"/impeccable harden","files":["src/components/ui/EmojiPicker.tsx:5","src/hooks/useToast.tsx"],"source":"both"},
+  {"id":"goals-9","severity":"P2","title":"Global + FAB covers the '+1' counter on phone","fix":"Put the bump pair thumb-side on the left on phone, or reserve a right gutter for the FAB","command":"/impeccable layout","files":["src/components/layout/AppShell.tsx:126","src/components/goals/GoalCard.tsx:61"],"source":"critique"},
+  {"id":"goals-10","severity":"P2","title":"Plan accept toasts success before tasks are saved and allows blank milestones","fix":"Await addTasks.mutateAsync in try/catch, drop empty titles, report actual counts","command":"/impeccable harden","files":["src/pages/app/Goals.tsx:73","src/pages/app/Goals.tsx:212"],"source":"audit"},
+  {"id":"goals-11","severity":"P3","title":"h1 jumps to h3 and the heading contains emoji and percentage","fix":"Add an h2 for active goals and keep only the title in the card heading","command":"/impeccable polish","files":["src/components/goals/GoalCard.tsx:37"],"source":"audit"},
+  {"id":"goals-12","severity":"P3","title":"Progress fill animates width for 500ms","fix":"scaleX transform, origin-left, 200ms ease-out","command":"animation-performance","files":["src/components/goals/GoalCard.tsx:52"],"source":"audit"}
+ ]}
+```
