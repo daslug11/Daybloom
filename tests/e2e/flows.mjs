@@ -718,6 +718,36 @@ await flow('overlays', browser, {}, async (page) => {
   await panel.waitFor({ state: 'detached' });
 });
 
+await flow('onboarding-back-no-duplicates', browser, {}, async (page) => {
+  const user = await makeUser('Kit', { onboarded_at: null, tour_completed_at: null });
+  await page.goto(`${BASE}/login`);
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.waitForURL(/\/app\/welcome/);
+  await page.getByLabel('What should we call you?').fill('Kit');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first brain dump').fill('first draft of my note');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first task').fill('Finish the lab report');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  // Go back twice, edit both, continue again: edits apply, nothing is duplicated.
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByLabel('Your first task').fill('Finish the lab report tomorrow');
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByLabel('Your first brain dump').fill('second draft of my note');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Your first habit').waitFor();
+  assert(await page.getByRole('group', { name: 'Habit icon' }).getByRole('button', { pressed: true }).count() === 1, 'emoji selection not exposed');
+  await page.getByRole('button', { name: /Finish/ }).click();
+  await page.waitForURL(/\/app(\?tour=1)?$/);
+  const { data: notes } = await admin.from('notes').select('body').eq('user_id', user.id);
+  const { data: tasks } = await admin.from('tasks').select('title, due_date').eq('user_id', user.id);
+  assert(notes.length === 1 && notes[0].body === 'second draft of my note', `notes: ${JSON.stringify(notes)}`);
+  assert(tasks.length === 1 && tasks[0].title === 'Finish the lab report' && tasks[0].due_date, `tasks: ${JSON.stringify(tasks)}`);
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

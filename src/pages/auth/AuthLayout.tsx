@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/layout/Logo';
+import { useDocumentTitle } from '../public/useDocumentTitle';
 
-/** Branded frame for sign-up / log-in / reset screens. */
-export function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+/** Branded frame for sign-up / log-in / reset screens. `pageTitle` is the browser tab title (defaults to the heading). */
+export function AuthLayout({ title, pageTitle, subtitle, children, footer }: { title: string; pageTitle?: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+  useDocumentTitle(`${pageTitle ?? title} · Daybloom`);
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <Link to="/" className="mb-8" aria-label="Daybloom home">
@@ -34,6 +36,55 @@ export function FormError({ message }: { message: string }) {
     <p role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
       {message}
     </p>
+  );
+}
+
+/** A neutral confirmation (not an error), announced politely. */
+export function FormNotice({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <p role="status" className="rounded-xl border border-line bg-raised px-3 py-2 text-sm text-ink">
+      {message}
+    </p>
+  );
+}
+
+/**
+ * "Send it again" for every "check your email" screen. A link was just sent, so it starts
+ * with a short cooldown, and waits a minute between later sends.
+ * `send` resolves to an error message, or '' on success.
+ */
+export function SendAgain({ send, label = 'Send it again' }: { send: () => Promise<string>; label?: string }) {
+  const [wait, setWait] = useState(30);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (wait <= 0) return;
+    const id = window.setTimeout(() => setWait((w) => w - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [wait]);
+
+  const click = async () => {
+    setBusy(true);
+    setNotice('');
+    setError('');
+    const err = await send();
+    setBusy(false);
+    if (err) return setError(err);
+    setNotice('Sent again. Check your inbox, and your spam folder too.');
+    setWait(60);
+  };
+
+  return (
+    <div className="mt-4 space-y-3">
+      <button type="button" className="btn-ghost w-full" onClick={click} disabled={busy || wait > 0}>
+        {busy ? 'Sending…' : wait > 0 ? `${label} in ${wait}s` : label}
+      </button>
+      <FormNotice message={notice} />
+      <FormError message={error} />
+    </div>
   );
 }
 

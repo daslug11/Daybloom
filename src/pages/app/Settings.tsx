@@ -1,6 +1,7 @@
-import { Download, LogOut, Play, Shield } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Check, Download, ListChecks, LogOut, MailCheck, Play, Shield, Upload } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { importedFromThisDevice, openLocalImport, useLocalImportPending } from '../../components/onboarding/LocalImportPrompt';
 import { Card, CardTitle } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -12,23 +13,40 @@ import { applyTheme, useProfile, useUpdateProfile } from '../../hooks/useProfile
 import { useToast } from '../../hooks/useToast';
 import { apiFetch, ApiError } from '../../lib/api';
 import { SITE_URL } from '../../lib/env';
+import { localDataSummary } from '../../lib/localImport';
 import { loadVoices, pickVoice, speak, speechInputSupported, speechOutputSupported } from '../../lib/speech';
 import { supabase } from '../../lib/supabase';
-import type { VoiceSettings } from '../../lib/types';
+import type { Profile, VoiceSettings } from '../../lib/types';
 
 const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'habits', 'habit_logs', 'moods', 'focus_sessions', 'calendar_groups', 'calendars', 'atlas_messages', 'plans', 'block_series', 'series_occurrences'] as const;
 
-function Row({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
+function Row({ label, hint, children, htmlFor, status }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string; status?: ReactNode }) {
   return (
     <div className="flex flex-col gap-2 border-b border-line py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <label htmlFor={htmlFor} className="text-sm font-medium">
-          {label}
-        </label>
-        {hint && <p className="faint text-xs">{hint}</p>}
+        <div className="flex items-center gap-2">
+          <label htmlFor={htmlFor} className="text-sm font-medium">
+            {label}
+          </label>
+          {status}
+        </div>
+        {hint && <p className="faint text-xs [text-wrap:pretty]">{hint}</p>}
       </div>
       <div className="shrink-0 sm:max-w-[60%]">{children}</div>
     </div>
+  );
+}
+
+/** A small "Saved" confirmation next to a field. The live region always exists so the change is announced. */
+function Saved({ show }: { show: boolean }) {
+  return (
+    <span role="status" className="inline-flex items-center gap-1 text-xs font-medium text-success">
+      {show && (
+        <>
+          <Check size={13} strokeWidth={3} aria-hidden /> Saved
+        </>
+      )}
+    </span>
   );
 }
 
@@ -40,6 +58,8 @@ function timeZones(): string[] {
   }
 }
 
+type ProfilePatch = Partial<Omit<Profile, 'id' | 'created_at'>>;
+
 export default function Settings() {
   const { user, signOut } = useAuth();
   const { data: profile } = useProfile();
@@ -48,32 +68,65 @@ export default function Settings() {
   const { startTour } = useAppActions();
   const toast = useToast();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [name, setName] = useState('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [email, setEmail] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [emailUpdated, setEmailUpdated] = useState(false);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [exported, setExported] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  const [saved, setSaved] = useState<string | null>(null);
+  const savedTimer = useRef(0);
+  const importOpen = useLocalImportPending();
 
   useEffect(() => setName(profile?.name ?? ''), [profile?.name]);
   useEffect(() => {
     loadVoices().then((v) => setVoices(v.filter((x) => /^en/i.test(x.lang))));
   }, []);
+  // A requested email change waits for both confirmation links; Supabase keeps it on the user as new_email.
+  useEffect(() => setPendingEmail(user?.new_email ?? ''), [user?.new_email]);
+  // Arriving from the second confirmation link (AuthCallback → ?email=updated).
+  useEffect(() => {
+    if (params.get('email') !== 'updated') return;
+    setEmailUpdated(true);
+    setPendingEmail('');
+    params.delete('email');
+    setParams(params, { replace: true });
+  }, [params, setParams]);
+  useEffect(() => () => window.clearTimeout(savedTimer.current), []);
 
   if (!profile || !user) return null;
   const voice: VoiceSettings = profile.voice ?? {};
-  const setVoice = (patch: Partial<VoiceSettings>) => update.mutate({ voice: { ...voice, ...patch } });
   const autoVoice = pickVoice(voices);
   const zones = timeZones();
+  const localData = !importOpen && !importedFromThisDevice(user.id) && localDataSummary() !== null;
+
+  /** Saves a profile change; `field` gets an inline "Saved" tick, and a failure is never silent. */
+  const save = (patch: ProfilePatch, field?: string) =>
+    update.mutate(patch, {
+      onSuccess: () => {
+        if (!field) return;
+        setSaved(field);
+        window.clearTimeout(savedTimer.current);
+        savedTimer.current = window.setTimeout(() => setSaved(null), 2500);
+      },
+      onError: () => toast('Couldn’t save that change. Check your connection and try again.'),
+    });
+  const setVoice = (patch: Partial<VoiceSettings>) => save({ voice: { ...voice, ...patch } });
 
   const changeEmail = async () => {
+    const next = email.trim();
     setBusy('email');
-    const { error } = await supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: `${SITE_URL}/auth/callback?type=email_change` });
+    const { error } = await supabase.auth.updateUser({ email: next }, { emailRedirectTo: `${SITE_URL}/auth/callback?type=email_change` });
     setBusy(null);
     if (error) return toast(error.message);
     setEmail('');
-    toast(`We sent confirmation links to ${user.email} and ${email.trim()}. Your email changes once you’ve clicked both.`);
+    setEmailUpdated(false);
+    setPendingEmail(next);
   };
 
   const changePassword = async () => {
@@ -97,16 +150,25 @@ export default function Settings() {
       }
       const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
+      const file = `daybloom-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.href = URL.createObjectURL(blob);
-      a.download = `daybloom-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = file;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      setExported(file);
     } catch {
       toast('Export failed. Please try again.');
     } finally {
       setBusy(null);
     }
   };
+
+  const closeDelete = () => {
+    if (busy === 'delete') return;
+    setDeleting(false);
+    setConfirmText('');
+  };
+  const confirmed = confirmText.trim().toUpperCase() === 'DELETE';
 
   const deleteAccount = async () => {
     setBusy('delete');
@@ -126,18 +188,18 @@ export default function Settings() {
       <div className="space-y-4">
         <Card>
           <CardTitle>Profile</CardTitle>
-          <Row label="Name" hint="Used in greetings and by Atlas." htmlFor="s-name">
+          <Row label="Name" hint="Used in greetings and by Atlas." htmlFor="s-name" status={<Saved show={saved === 'name'} />}>
             <input
               id="s-name"
               className="input"
               maxLength={60}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onBlur={() => name.trim() && name.trim() !== profile.name && update.mutate({ name: name.trim() })}
+              onBlur={() => name.trim() && name.trim() !== profile.name && save({ name: name.trim() }, 'name')}
             />
           </Row>
-          <Row label="Time zone" hint="Decides when your day starts and ends." htmlFor="s-tz">
-            <select id="s-tz" className="input" value={profile.timezone} onChange={(e) => update.mutate({ timezone: e.target.value })}>
+          <Row label="Time zone" hint="Decides when your day starts and ends." htmlFor="s-tz" status={<Saved show={saved === 'timezone'} />}>
+            <select id="s-tz" className="input" value={profile.timezone} onChange={(e) => save({ timezone: e.target.value }, 'timezone')}>
               {!zones.includes(profile.timezone) && <option value={profile.timezone}>{profile.timezone}</option>}
               {zones.map((z) => (
                 <option key={z} value={z}>
@@ -146,7 +208,7 @@ export default function Settings() {
               ))}
             </select>
           </Row>
-          <Row label="Theme">
+          <Row label="Theme" status={<Saved show={saved === 'theme'} />}>
             <div className="flex gap-2" role="radiogroup" aria-label="Theme">
               {(['dark', 'light'] as const).map((t) => (
                 <button
@@ -156,7 +218,7 @@ export default function Settings() {
                   className={profile.theme === t ? 'chip-on' : 'chip-off'}
                   onClick={() => {
                     applyTheme(t);
-                    update.mutate({ theme: t });
+                    save({ theme: t }, 'theme');
                   }}
                 >
                   {t === 'dark' ? '🌙 Dark' : '☀️ Light'}
@@ -165,10 +227,17 @@ export default function Settings() {
             </div>
           </Row>
           <Row label="Product tour" hint="A 1-minute walk through the main parts of the app.">
-            <button className="btn-ghost" onClick={() => { navigate('/app'); setTimeout(startTour, 300); }}>
+            <button className="btn-ghost" onClick={startTour}>
               <Play size={14} /> Replay tour
             </button>
           </Row>
+          {profile.checklist_dismissed_at && (
+            <Row label="Getting started checklist" hint="The list of first steps on your dashboard. You hid it; bring it back any time.">
+              <button className="btn-ghost" onClick={() => save({ checklist_dismissed_at: null }, 'checklist')}>
+                <ListChecks size={14} /> Show it again
+              </button>
+            </Row>
+          )}
         </Card>
 
         <Card>
@@ -214,10 +283,25 @@ export default function Settings() {
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void changeEmail(); }}>
               <input id="s-email" type="email" required className="input" placeholder="new@email.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
               <button className="btn-ghost shrink-0" disabled={busy === 'email' || !email.trim()}>
-                Change
+                {busy === 'email' ? 'Sending…' : 'Change'}
               </button>
             </form>
           </Row>
+          {(pendingEmail || emailUpdated) && (
+            <div role="status" className="mb-3 flex items-start gap-2 rounded-control border border-line bg-raised p-3 text-sm">
+              <MailCheck size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
+              {emailUpdated ? (
+                <p>
+                  Email updated. You now log in with <strong>{user.email}</strong>.
+                </p>
+              ) : (
+                <p>
+                  Change to <strong className="break-all">{pendingEmail}</strong> is waiting for you. We sent confirmation links to {user.email} and {pendingEmail}. Your
+                  email changes once you’ve clicked both.
+                </p>
+              )}
+            </div>
+          )}
           <Row label="Password" hint="At least 8 characters." htmlFor="s-pass">
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void changePassword(); }}>
               <input id="s-pass" type="password" minLength={8} required className="input" placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
@@ -245,16 +329,32 @@ export default function Settings() {
 
         <Card>
           <CardTitle>Your data</CardTitle>
-          <Row label="Export everything" hint="Every note, task, habit, goal, plan, repeating block, mood, focus session, calendar and Atlas message, as one JSON file.">
+          <Row
+            label="Export everything"
+            hint={exported ? `Downloaded ${exported}.` : 'Every note, task, habit, goal, plan, repeating block, mood, focus session, calendar and Atlas message, as one JSON file.'}
+            status={exported ? <Check size={14} strokeWidth={3} className="text-success" aria-hidden /> : undefined}
+          >
             <button className="btn-ghost" onClick={exportData} disabled={busy === 'export'}>
               <Download size={14} /> {busy === 'export' ? 'Preparing…' : 'Download JSON'}
             </button>
           </Row>
-          <Row label="Delete account" hint="Permanently deletes your account and all of your data. This can’t be undone.">
-            <button className="btn-danger" onClick={() => setDeleting(true)}>
+          {localData && (
+            <Row label="Import from this device" hint="This browser still has data from the earlier, offline-only Daybloom. Skip this if you already imported it — importing twice makes copies.">
+              <button className="btn-ghost" onClick={openLocalImport}>
+                <Upload size={14} /> Review and import
+              </button>
+            </Row>
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle>Delete account</CardTitle>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="muted text-sm [text-wrap:pretty]">Permanently deletes your login and all of your data. This can’t be undone, so export first if you might want it later.</p>
+            <button className="btn-danger shrink-0" onClick={() => setDeleting(true)}>
               Delete account…
             </button>
-          </Row>
+          </div>
         </Card>
         <p className="faint text-xs">
           <Link to="/terms" className="link">Terms</Link> · <Link to="/privacy" className="link">Privacy</Link>
@@ -262,26 +362,36 @@ export default function Settings() {
       </div>
 
       {deleting && (
-        <Modal open onClose={() => setDeleting(false)} title="Delete your account?" description="This removes your login and every piece of data you’ve stored in Daybloom. There is no undo.">
+        <Modal open onClose={closeDelete} title="Delete your account?" description="This removes your login and every piece of data you’ve stored in Daybloom. There is no undo.">
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (confirmText === 'DELETE') void deleteAccount();
+              if (confirmed) void deleteAccount();
             }}
           >
-            <p className="text-sm">
-              Consider <button type="button" className="link" onClick={exportData}>exporting your data</button> first.
-            </p>
+            <div className="text-sm" role="status">
+              {busy === 'export' ? (
+                <p>Preparing your export…</p>
+              ) : exported ? (
+                <p className="flex items-center gap-1.5">
+                  <Check size={14} strokeWidth={3} className="text-success" aria-hidden /> Exported to {exported}.
+                </p>
+              ) : (
+                <p>
+                  Consider <button type="button" className="link" onClick={exportData}>exporting your data</button> first.
+                </p>
+              )}
+            </div>
             <label className="block">
               <span className="label">Type DELETE to confirm</span>
-              <input autoFocus className="input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" />
+              <input className="input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} />
             </label>
             <div className="flex justify-end gap-2">
-              <button type="button" className="btn-ghost" onClick={() => setDeleting(false)}>
+              <button type="button" className="btn-ghost" onClick={closeDelete} disabled={busy === 'delete'}>
                 Cancel
               </button>
-              <button className="btn-danger" disabled={confirmText !== 'DELETE' || busy === 'delete'}>
+              <button className="btn-danger" disabled={!confirmed || busy === 'delete'}>
                 {busy === 'delete' ? 'Deleting…' : 'Delete everything'}
               </button>
             </div>

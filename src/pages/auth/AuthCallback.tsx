@@ -1,3 +1,4 @@
+import { CheckCircle2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Spinner } from '../../components/ui/States';
@@ -47,11 +48,30 @@ export default function AuthCallback() {
             ? authMessageFromUrl(error)
             : 'Your email may already be confirmed — try logging in. Links only work once, and must be opened in the browser where you signed up.'}
         </p>
+        {emailChange ? (
+          <Link to="/app/settings" className="btn-primary mt-5 w-full">
+            Request a new link in Settings
+          </Link>
+        ) : (
+          <Link to="/login?method=link" className="btn-primary mt-5 w-full">
+            Send a new link
+          </Link>
+        )}
+      </AuthLayout>
+    );
+  }
+  if (emailChange && session) {
+    return (
+      <AuthLayout title="Email updated">
+        <p role="status" className="flex items-center gap-2 text-sm">
+          <CheckCircle2 size={18} className="shrink-0 text-success" aria-hidden />
+          Your new email is confirmed. Taking you to Settings…
+        </p>
       </AuthLayout>
     );
   }
   return (
-    <AuthLayout title={emailChange && session ? 'Email updated ✅' : 'Signing you in…'}>
+    <AuthLayout title="Signing you in…">
       <Spinner label="Signing you in" />
     </AuthLayout>
   );

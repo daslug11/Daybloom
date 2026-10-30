@@ -33,9 +33,10 @@ export function GettingStarted() {
     { done: habits.length > 0, label: 'Start a habit', action: <Link className="link" to="/app/habits">Habits</Link> },
     { done: notes.some((n) => n.processed_at), label: 'Process a note from your inbox', action: <Link className="link" to="/app/brain-dump?process=1">Process</Link> },
     { done: tasks.some((t) => t.sched_date), label: 'Block time for a task in the Planner', action: <Link className="link" to="/app/planner">Planner</Link> },
-    { done: (atlas.data ?? 0) > 0, label: 'Ask Atlas something', action: <button className="link" onClick={() => openAtlas()}>Ask</button> },
     { done: !!profile.tour_completed_at, label: 'Take the quick tour', action: <button className="link" onClick={startTour}>Start</button> },
   ];
+  // Optional, so finishing the checklist never requires spending AI.
+  const optional = { done: (atlas.data ?? 0) > 0, label: 'Optional: ask Atlas something (uses 1 ✨)', action: <button className="link" onClick={() => openAtlas()}>Ask</button> };
   const done = items.filter((i) => i.done).length;
   if (done === items.length) return null;
 
@@ -43,7 +44,12 @@ export function GettingStarted() {
     <Card data-tour="checklist" className="lg:col-span-2">
       <CardTitle
         action={
-          <button className="icon-btn h-8 w-8" onClick={() => update.mutate({ checklist_dismissed_at: new Date().toISOString() })} aria-label="Hide the getting started checklist" title="Hide">
+          <button
+            className="icon-btn h-8 w-8"
+            onClick={() => update.mutate({ checklist_dismissed_at: new Date().toISOString() })}
+            aria-label="Hide the getting started checklist (bring it back from Settings)"
+            title="Hide (bring it back from Settings)"
+          >
             <X size={15} />
           </button>
         }
@@ -54,7 +60,7 @@ export function GettingStarted() {
         <div className="h-full bg-accent transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
       </div>
       <ul className="grid gap-1.5 sm:grid-cols-2">
-        {items.map((i) => (
+        {[...items, optional].map((i) => (
           <li key={i.label} className="flex items-center gap-2 text-sm">
             <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', i.done ? 'border-transparent bg-success text-canvas' : 'border-control')} aria-hidden>
               {i.done && <Check size={12} strokeWidth={3} />}

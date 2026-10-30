@@ -1,4 +1,4 @@
-import { ArrowRight, Lock, Mic } from 'lucide-react';
+import { ArrowRight, CornerDownRight, Lock, Mic, Plus } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { OrbGlyph } from '../../components/atlas/AtlasOrb';
@@ -7,17 +7,30 @@ import { TaskItem } from '../../components/tasks/TaskItem';
 import { Card } from '../../components/ui/Card';
 import { addDays, dayIn } from '../../lib/dates';
 import type { Note, Task } from '../../lib/types';
+import { cn } from '../../lib/utils';
 import { PublicLayout } from './PublicLayout';
+import { useDocumentTitle } from './useDocumentTitle';
 
 // Sample data for the previews below. These are the same components the app uses, fed with example content.
 const today = dayIn(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', new Date());
 const iso = new Date(Date.now() - 3 * 60_000).toISOString();
-const note: Note = {
-  id: 'n',
-  body: 'Plan Sam’s birthday #family\n- [x] Ask Jo about Saturday\n- [ ] Book the restaurant\n- [ ] Order the cake',
+const HERO_THOUGHT = 'History essay draft due Friday, and ask Maya for Tuesday’s lecture notes';
+const heroNote: Note = {
+  id: 'hero',
+  body: HERO_THOUGHT,
   state: 'inbox',
   pinned: false,
-  tags: ['family'],
+  tags: [],
+  processed_at: null,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+const note: Note = {
+  id: 'n',
+  body: 'Moving flats #home\n- [x] Ask the landlord about the deposit\n- [ ] Book a van for Saturday\n- [ ] Return the library books',
+  state: 'inbox',
+  pinned: false,
+  tags: ['home'],
   processed_at: null,
   created_at: iso,
   updated_at: iso,
@@ -44,32 +57,102 @@ const task = (t: Partial<Task> & { id: string; title: string }): Task => ({
   ...t,
 });
 const tasks = [
-  task({ id: 't1', title: 'Send the quarterly report', priority: 'high', due_date: today, due_time: '15:00', top_date: today }),
-  task({ id: 't2', title: 'Book the restaurant', due_date: addDays(today, 1), tags: ['family'], source_note_id: 'n' }),
-  task({ id: 't3', title: 'Renew car insurance', done: true, completed_at: iso }),
+  task({ id: 't1', title: 'Finish the lab report', priority: 'high', due_date: today, due_time: '17:00', top_date: today }),
+  task({ id: 't2', title: 'Book a van for Saturday', due_date: addDays(today, 1), tags: ['home'], source_note_id: 'n' }),
+  task({ id: 't3', title: 'Swap Thursday’s café shift', done: true, completed_at: iso }),
 ];
 
-function Feature({ id, eyebrow, title, children, preview, flip }: { id: string; eyebrow: string; title: string; children: ReactNode; preview: ReactNode; flip?: boolean }) {
+// `inert` takes the sample controls out of the tab order and the accessibility tree (React 18 has no typed prop for it).
+const INERT = { inert: '' } as Record<string, string>;
+
+/** A picture of the app made from real components. Screen readers get one description; the parts inside are inert. */
+function Preview({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section id={id} className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-14 sm:px-6 md:grid-cols-2 md:gap-12">
-      <div className={flip ? 'md:order-2' : undefined}>
+    <figure className="min-w-0">
+      <div role="img" aria-label={label}>
+        <div className="pointer-events-none select-none" aria-hidden {...INERT}>
+          {children}
+        </div>
+      </div>
+      <figcaption className="faint mt-2 text-xs">Example with sample data</figcaption>
+    </figure>
+  );
+}
+
+function Feature({
+  id,
+  eyebrow,
+  title,
+  children,
+  preview,
+  previewLabel,
+  flip,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  children: ReactNode;
+  preview: ReactNode;
+  previewLabel: string;
+  flip?: boolean;
+}) {
+  return (
+    <section id={id} className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-8 px-4 py-14 sm:px-6 md:grid-cols-2 md:gap-12">
+      <div className={cn('min-w-0', flip && 'md:order-2')}>
         <h2 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">{eyebrow}</h2>
         <p className="mt-2 text-lg font-medium text-ink">{title}</p>
         <div className="muted mt-3 max-w-[60ch] space-y-3 text-base leading-relaxed">{children}</div>
       </div>
-      <div className={flip ? 'md:order-1' : undefined} aria-label={`${eyebrow} preview`} role="img">
-        <div className="pointer-events-none select-none" aria-hidden>
-          {preview}
-        </div>
+      <div className={cn('min-w-0', flip && 'md:order-1')}>
+        <Preview label={previewLabel}>{preview}</Preview>
       </div>
     </section>
+  );
+}
+
+const LATER = ['Make task', 'Schedule it', 'Add to a goal', 'Keep as idea', 'Archive'];
+
+/** The hero's proof: one thought typed into the capture bar, and the unsorted Inbox note it becomes. */
+function CaptureDemo() {
+  return (
+    <figure className="mx-auto mt-12 w-full max-w-2xl sm:mt-14">
+      <div
+        role="img"
+        aria-label={`Example: “${HERO_THOUGHT}” typed into the capture bar is saved as a note in the Inbox, unsorted. Later, Process inbox offers to make it a task, schedule it, add it to a goal, keep it as an idea or archive it.`}
+      >
+        <div className="pointer-events-none select-none text-left" aria-hidden {...INERT}>
+          <div className="flex items-start gap-3 rounded-card border border-line-strong bg-surface px-4 py-3.5 shadow-pop">
+            <Plus size={18} className="mt-0.5 shrink-0 text-ink" />
+            <p className="min-w-0 flex-1 text-base text-ink">
+              {HERO_THOUGHT}
+              <span className="ml-0.5 inline-block h-[1.15em] w-px translate-y-[3px] bg-ink" />
+            </p>
+            <kbd className="kbd mt-0.5 hidden sm:inline-flex">Enter</kbd>
+          </div>
+          <div className="ml-6 flex items-center gap-2 border-l border-line-strong py-3 pl-4 text-sm text-muted">
+            <CornerDownRight size={15} className="shrink-0" />
+            Saved to your Inbox. No need to decide what it is yet.
+          </div>
+          <NoteCard note={heroNote} showState />
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="muted mr-1">Later, Process inbox asks:</span>
+            {LATER.map((l) => (
+              <span key={l} className="rounded-full border border-line-strong px-2.5 py-0.5 text-muted">
+                {l}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <figcaption className="faint mt-4 text-center text-xs">Example. In the app, press N anywhere, tap +, or say it out loud.</figcaption>
+    </figure>
   );
 }
 
 const MORE: { id: string; name: string; title: string; body: string }[] = [
   { id: 'habits', name: 'Habits', title: 'Small things, every day', body: 'Tick off a habit once a day and see your streak and a 12-week history grid. ✨ Suggest habits proposes a few that fit your goals.' },
   { id: 'goals', name: 'Goals', title: 'Goals with a number you can move', body: 'A target like “Read 24 books” that you update as you go, with linked tasks and habits. ✨ Make a plan breaks it into milestones.' },
-  { id: 'calendars', name: 'Calendars', title: 'See your real schedule', body: 'Turn on sync for any iCal link (Google, Outlook, Apple and more) and its events appear in your Planner and dashboard. Read-only, refreshed every 10 minutes.' },
+  { id: 'calendars', name: 'Calendars', title: 'See your real schedule', body: 'Turn on sync for any iCal link (your uni timetable, Google, Outlook, Apple and more) and its events appear in your Planner and dashboard. Read-only, refreshed every 10 minutes.' },
   { id: 'focus', name: 'Focus timer', title: 'Work in focused blocks', body: '25 minutes of focus and 5 of rest, or your own lengths. Finished blocks are logged against the task you picked.' },
   { id: 'review', name: 'Mood & Weekly Review', title: 'Look back, then adjust', body: 'A one-tap mood check-in and plain numbers for the last 7 days, each with a note on how it’s calculated. ✨ AI summary suggests three changes for next week.' },
 ];
@@ -98,24 +181,28 @@ const FAQ: { q: string; a: ReactNode }[] = [
 ];
 
 export default function Landing() {
+  useDocumentTitle('Daybloom: capture first, organise later');
   return (
     <PublicLayout>
-      <section className="mx-auto max-w-6xl px-4 pb-10 pt-16 text-center sm:px-6 sm:pt-24">
-        <h1 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl">
-          Get it out of your head. <span className="text-muted">Get it done.</span>
-        </h1>
-        <p className="muted mx-auto mt-5 max-w-2xl text-lg">
-          Daybloom is a personal organiser built around a Brain Dump: capture every thought in one place, then turn it into tasks, time on your calendar, habits and goals. An assistant called Atlas can help — by chat or by voice.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link to="/signup" className="btn-primary !px-6 !py-3 text-base">
-            Sign up free <ArrowRight size={17} />
-          </Link>
-          <Link to="/login" className="btn-ghost !px-6 !py-3 text-base">
-            Log in
-          </Link>
+      <section className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:px-6 sm:pt-20">
+        <div className="text-center">
+          <h1 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl">
+            Get it out of your head. <span className="text-muted sm:block">Get it done.</span>
+          </h1>
+          <p className="muted mx-auto mt-5 max-w-[58ch] text-lg">
+            A free organiser for students and young adults juggling classes, deadlines, shifts and side projects. Write down every thought the moment you have it, then turn it into tasks, time in your week, habits and goals when you’re ready.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link to="/signup" className="btn-primary !px-6 !py-3 text-base">
+              Sign up free <ArrowRight size={17} aria-hidden />
+            </Link>
+            <Link to="/login" className="btn-ghost !px-6 !py-3 text-base">
+              Log in
+            </Link>
+          </div>
+          <p className="faint mt-4 text-sm">Free. No card needed. Export or delete your data any time.</p>
         </div>
-        <p className="faint mt-4 text-sm">Free. No card needed. Export or delete your data any time.</p>
+        <CaptureDemo />
       </section>
 
       <div id="features">
@@ -123,6 +210,7 @@ export default function Landing() {
           id="brain-dump"
           eyebrow="Brain Dump"
           title="One inbox for everything on your mind"
+          previewLabel="Example Inbox note “Moving flats” with a three-item checklist, one item ticked, linked to one task."
           preview={<NoteCard note={note} showState links="Linked: 1 task" />}
         >
           <p>Press N anywhere, tap +, or just talk. Notes support checklists, #tags, pinning and search.</p>
@@ -137,6 +225,7 @@ export default function Landing() {
           flip
           eyebrow="Tasks & Planner"
           title="Type it like you’d say it"
+          previewLabel="Example task list: “Finish the lab report”, high priority, due today at 5 PM and starred for today; “Book a van for Saturday”, due tomorrow; a finished café shift swap. Below, a Planner hour with a locked “Psych 101 lecture” from a synced calendar next to a one-hour block for the lab report."
           preview={
             <div className="space-y-2">
               {tasks.map((t) => (
@@ -145,19 +234,19 @@ export default function Landing() {
               <Card className="!p-3">
                 <div className="flex gap-3 text-xs">
                   <span className="faint w-12 pt-1 tabular-nums">2 PM</span>
-                  <div className="flex-1 space-y-1.5">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="striped flex items-center gap-1 rounded-lg border border-line-strong px-2 py-1.5">
-                      <Lock size={11} /> Team sync · from your calendar
+                      <Lock size={11} /> Psych 101 lecture · from your calendar
                     </div>
-                    <div className="rounded-lg bg-accent px-2 py-1.5 font-medium text-accent-ink">Send the quarterly report · 1h</div>
+                    <div className="rounded-lg bg-accent px-2 py-1.5 font-medium text-accent-ink">Finish the lab report · 1h</div>
                   </div>
                 </div>
               </Card>
             </div>
           }
         >
-          <p>“Send report friday 3pm !high #work” becomes a task with a due date, time, priority and tag. Star up to three tasks as today’s top 3.</p>
-          <p>The Planner is a week view in 15-minute steps. Drag tasks onto it to block time; your synced calendar events show alongside, locked.</p>
+          <p>“essay draft fri 5pm !high #history” becomes a task with a due date, time, priority and tag. Star up to three tasks as today’s top 3.</p>
+          <p>The Planner is a week view in 15-minute steps. Drag tasks onto it to block time around lectures and shifts; your synced calendar events show alongside, locked.</p>
           <p>✨ Plan my day suggests blocks for your open tasks in your free time. You accept or discard each one. ✨ Break it down splits a big task into steps.</p>
         </Feature>
 
@@ -182,13 +271,14 @@ export default function Landing() {
           flip
           eyebrow="Atlas"
           title="An assistant that can actually do things"
+          previewLabel="Example Atlas chat. You ask: move the lab report to tomorrow at 10 and add “buy printer paper” to my list. Atlas replies that both are done, and lists what it changed: rescheduled a task, added a task."
           preview={
             <Card className="space-y-3 !p-4 text-sm">
-              <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-accent-ink">Move the report to tomorrow at 10 and add “buy candles” to my list.</div>
+              <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-accent-ink">Move the lab report to tomorrow at 10 and add “buy printer paper” to my list.</div>
               <div className="flex gap-2">
                 <OrbGlyph size={24} />
                 <div className="max-w-[85%] space-y-2">
-                  <div className="rounded-2xl rounded-tl-md bg-raised px-3 py-2">Done. The report is now tomorrow at 10:00, and “Buy candles” is on your list. Anything else, Alex?</div>
+                  <div className="rounded-2xl rounded-tl-md bg-raised px-3 py-2">Done. The lab report is now tomorrow at 10:00, and “Buy printer paper” is on your list. Anything else, Alex?</div>
                   <div className="faint flex flex-wrap gap-1.5 text-xs">
                     <span className="rounded-full border border-atlas/30 px-2 py-0.5">✓ Rescheduled task</span>
                     <span className="rounded-full border border-atlas/30 px-2 py-0.5">✓ Added task</span>
@@ -200,7 +290,7 @@ export default function Landing() {
         >
           <p>Atlas is a calm, slightly dry assistant built into Daybloom. Ask what’s on today, add or move tasks, capture notes, log habits or update goals. It tells you exactly what it changed, and asks before deleting anything.</p>
           <p>
-            <Mic size={14} className="mr-1 inline" />
+            <Mic size={14} className="mr-1 inline" aria-hidden />
             Open voice mode for a full-screen, hands-free view: speak your request and Atlas answers out loud. Each Atlas reply uses one from your daily ✨ allowance.
           </p>
         </Feature>
@@ -245,7 +335,7 @@ export default function Landing() {
       <section className="mx-auto max-w-6xl px-4 pb-20 text-center sm:px-6">
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">Ready to clear your head?</h2>
         <Link to="/signup" className="btn-primary mt-5 !px-6 !py-3 text-base">
-          Sign up free <ArrowRight size={17} />
+          Sign up free <ArrowRight size={17} aria-hidden />
         </Link>
       </section>
     </PublicLayout>

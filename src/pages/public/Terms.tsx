@@ -1,16 +1,20 @@
 import { Link } from 'react-router-dom';
-import { LegalPage } from './PublicLayout';
+import { LegalPage, Pending } from './PublicLayout';
+import { useDocumentTitle } from './useDocumentTitle';
 
 export default function Terms() {
+  useDocumentTitle('Terms of Service · Daybloom');
   return (
-    <LegalPage title="Terms of Service" updated="[DATE]">
+    <LegalPage title="Terms of Service" updated={<Pending>date</Pending>}>
       <p>
-        These terms apply to Daybloom at daybloom.online, run by [COMPANY / YOUR NAME] (“we”). By creating an account you agree to them. If you don’t agree,
-        please don’t use Daybloom.
+        These terms apply to Daybloom at daybloom.online, run by <Pending>company or your name</Pending> (“we”). By creating an account you agree to them. If you
+        don’t agree, please don’t use Daybloom.
       </p>
       <h2>1. Your account</h2>
       <ul>
-        <li>You need a valid email address and must be at least [16] years old.</li>
+        <li>
+          You need a valid email address and must be at least <Pending>16</Pending> years old.
+        </li>
         <li>Keep your password safe. You’re responsible for activity on your account.</li>
         <li>You can delete your account at any time in Settings; this permanently deletes your data.</li>
       </ul>
@@ -37,11 +41,13 @@ export default function Terms() {
       <h2>7. Ending things</h2>
       <p>You can stop using Daybloom and delete your account whenever you like. We may suspend accounts that break these terms.</p>
       <h2>8. Liability</h2>
-      <p>[LIMITATION OF LIABILITY CLAUSE APPROPRIATE TO YOUR JURISDICTION]</p>
+      <p>
+        <Pending>Limitation of liability clause appropriate to your jurisdiction</Pending>
+      </p>
       <h2>9. Changes and contact</h2>
       <p>
-        We’ll post changes here and update the date above. Questions: <a href="mailto:hello@daybloom.online" className="link">hello@daybloom.online</a>. Governing law:
-        [JURISDICTION].
+        We’ll post changes here and update the date above. Questions: <a href="mailto:hello@daybloom.online" className="link">hello@daybloom.online</a>. Governing law:{' '}
+        <Pending>jurisdiction</Pending>.
       </p>
     </LegalPage>
   );
