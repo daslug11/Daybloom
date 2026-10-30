@@ -65,12 +65,28 @@
   html {
     color-scheme: dark;
     -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Taps act immediately (no double-tap-zoom wait) and long-presses don't select control labels. */
+  button,
+  a,
+  summary,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'] {
+    touch-action: manipulation;
+  }
+  button,
+  [role='button'],
+  [role='tab'] {
+    -webkit-user-select: none;
+    user-select: none;
   }
   html:not(.dark) {
     color-scheme: light;
   }
   body {
-    @apply min-h-screen bg-canvas font-sans text-ink antialiased;
+    @apply min-h-dvh bg-canvas font-sans text-ink antialiased;
     font-feature-settings: 'cv11', 'ss01';
     caret-color: rgb(var(--ink));
   }
@@ -174,11 +190,11 @@
     @apply btn border border-atlas/40 bg-atlas/10 text-atlas hover:bg-atlas/15;
   }
   .icon-btn {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-muted transition-colors duration-fast
+    @apply relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-muted transition-colors duration-fast
       hover:bg-raised hover:text-ink disabled:opacity-40;
   }
   .chip {
-    @apply inline-flex min-h-7 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-fast;
+    @apply relative inline-flex min-h-7 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-fast;
   }
   .chip-off {
     @apply chip border-line-strong bg-surface text-muted hover:bg-raised hover:text-ink;
@@ -246,5 +262,27 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+/* Touch screens: small controls keep their look but get a 44px invisible hit area.
+   Add `.hit` to any other small control (it must be positioned; `.hit` makes it relative). */
+@layer components {
+  .hit {
+    @apply relative;
+  }
+}
+@media (pointer: coarse) {
+  .icon-btn::after,
+  .chip::after,
+  .chip-on::after,
+  .chip-off::after,
+  .hit::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc((100% - 44px) / 2));
+    bottom: min(0px, calc((100% - 44px) / 2));
+    left: min(0px, calc((100% - 44px) / 2));
+    right: min(0px, calc((100% - 44px) / 2));
   }
 }

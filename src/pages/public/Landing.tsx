@@ -317,8 +317,8 @@ export default function Landing() {
         <h2 className="text-center text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">Questions</h2>
         <div className="mt-8 space-y-2">
           {FAQ.map((f) => (
-            <details key={f.q} className="card group p-4">
-              <summary className="cursor-pointer list-none font-semibold marker:hidden">
+            <details key={f.q} className="card group">
+              <summary className="block cursor-pointer list-none p-4 font-semibold marker:hidden">
                 <span className="flex items-center justify-between gap-3">
                   {f.q}
                   <span className="faint transition-transform duration-fast ease-out group-open:rotate-45" aria-hidden>
@@ -326,7 +326,7 @@ export default function Landing() {
                   </span>
                 </span>
               </summary>
-              <div className="muted mt-3 text-sm leading-relaxed">{f.a}</div>
+              <div className="muted px-4 pb-4 text-sm leading-relaxed">{f.a}</div>
             </details>
           ))}
         </div>

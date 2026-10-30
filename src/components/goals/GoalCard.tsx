@@ -73,10 +73,10 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
         </span>
         {onBump && (
           <div className="ml-auto flex gap-1">
-            <button className="btn-ghost !px-2.5 !py-1.5" onClick={() => onBump(-step)} aria-label={`Decrease by ${step}`} disabled={Number(goal.current) <= 0}>
+            <button className="btn-ghost min-h-11 min-w-11 !px-2.5 !py-1.5 sm:min-h-0 sm:min-w-0" onClick={() => onBump(-step)} aria-label={`Decrease by ${step}`} disabled={Number(goal.current) <= 0}>
               <Minus size={14} />
             </button>
-            <button className="btn-primary !px-2.5 !py-1.5" onClick={() => onBump(step)} aria-label={`Increase by ${step}`}>
+            <button className="btn-primary min-h-11 !px-2.5 !py-1.5 sm:min-h-0" onClick={() => onBump(step)} aria-label={`Increase by ${step}`}>
               <Plus size={14} /> {step}
             </button>
           </div>
@@ -89,7 +89,7 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
               <button
                 onClick={() => onToggleMilestone?.(m)}
                 disabled={!onToggleMilestone}
-                className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', m.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
+                className={cn('hit flex h-4 w-4 shrink-0 items-center justify-center rounded border', m.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
                 aria-label={m.done ? `Mark milestone “${m.title}” not done` : `Complete milestone “${m.title}”`}
               >
                 {m.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}

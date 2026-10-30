@@ -1,4 +1,4 @@
-import { CalendarClock, Check, ChevronLeft, ChevronRight, GripVertical, Inbox, Lock, Repeat, X } from 'lucide-react';
+import { CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Inbox, Lock, Repeat, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SyncStatusPill } from '../../components/calendars/SyncStatusPill';
 import { MoveRepeatDialog } from '../../components/plans/MoveRepeatDialog';
@@ -116,6 +116,15 @@ export default function Planner() {
   const [dropGhost, setDropGhost] = useState<Block | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Phones: Unscheduled starts folded so the timeline is near the top; picking a task folds it again.
+  const wide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+  const [listOpen, setListOpen] = useState(wide);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!selectedId || wide()) return;
+    setListOpen(false);
+    timelineRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [selectedId]);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [nudge, setNudge] = useState<{ id: string; orig: Block; preview: Block } | null>(null);
   const [scheduling, setScheduling] = useState<{ task: Task; initial: Block; scheduled: boolean } | null>(null);
@@ -544,12 +553,20 @@ export default function Planner() {
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <div ref={sidebarRef} className="lg:sticky lg:top-20 lg:self-start" data-tour="planner-unscheduled">
           <div className={cn('card p-4 transition-colors', lifted?.overSidebar && 'border-ink/40 ring-2 ring-ink/30')}>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <h2 className="text-sm font-semibold">
+              <button
+                type="button"
+                className="flex min-h-11 w-full items-center gap-2 text-left lg:pointer-events-none lg:min-h-0"
+                onClick={() => setListOpen((o) => !o)}
+                aria-expanded={listOpen}
+                aria-controls="planner-unscheduled"
+              >
                 <Inbox size={16} className="text-muted" aria-hidden /> Unscheduled
-              </h2>
-              <span className="faint text-xs">{unscheduled.length}</span>
-            </div>
+                <span className="faint ml-auto text-xs font-normal">{unscheduled.length}</span>
+                <ChevronDown size={16} className={cn('faint transition-transform duration-fast ease-out lg:hidden', listOpen && 'rotate-180')} aria-hidden />
+              </button>
+            </h2>
+            <div id="planner-unscheduled" className={cn('mt-3', !listOpen && 'hidden lg:block')}>
             <QuickAddTask inset className="mb-3" placeholder="Add… “review PR 3pm for 30m”" />
             {lifted?.overSidebar && <div className="mb-2 rounded-control border-2 border-dashed border-ink/40 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
             <div className="-mx-1 max-h-56 divide-y divide-line overflow-y-auto px-1 lg:max-h-[calc(100vh-22rem)]">
@@ -599,10 +616,11 @@ export default function Planner() {
               ))}
             </div>
             <p className="faint mt-3 text-xs">Tip: tap a task, then tap a time on the timeline, or use its clock button to pick a day and time.</p>
+            </div>
           </div>
         </div>
 
-        <div className="card min-w-0 !p-0">
+        <div ref={timelineRef} className="card min-w-0 scroll-mt-20 !p-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
             <div className="flex rounded-xl border border-line p-0.5" role="tablist" aria-label="View">
               {(['day', 'week'] as const).map((v) => (

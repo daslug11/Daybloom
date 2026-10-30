@@ -7,7 +7,7 @@ import { useDocumentTitle } from '../public/useDocumentTitle';
 export function AuthLayout({ title, pageTitle, subtitle, children, footer }: { title: string; pageTitle?: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
   useDocumentTitle(`${pageTitle ?? title} · Daybloom`);
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+    <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
       <Link to="/" className="mb-8" aria-label="Daybloom home">
         <Logo />
       </Link>

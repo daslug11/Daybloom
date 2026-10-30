@@ -83,7 +83,7 @@ export default function LogIn() {
               <label className="label" htmlFor="password">
                 Password
               </label>
-              <Link to="/forgot-password" className="mb-1.5 text-xs font-semibold text-ink hover:underline">
+              <Link to="/forgot-password" className="hit mb-1.5 text-xs font-semibold text-ink hover:underline">
                 Forgot password?
               </Link>
             </div>

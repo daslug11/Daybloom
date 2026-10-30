@@ -47,7 +47,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-line bg-surface p-3 md:flex',
+        'sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line bg-surface p-3 md:flex',
         collapsed ? 'w-[72px]' : 'w-60',
       )}
       aria-label="Main navigation"
