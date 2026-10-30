@@ -100,7 +100,13 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
             <AiButton size="sm" className={hud ? HUD_AI : undefined} loading={regen.isPending} onClick={() => regen.mutate({ plan_id: plan.id }, { onSuccess: () => actions.refresh() })} hint="Write a different version of this plan">
               Regenerate
             </AiButton>
-            <button className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} onClick={() => run(actions.setStatus(plan, 'dismissed'))}>
+            <button className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} onClick={() =>
+                run(
+                  actions.setStatus(plan, 'dismissed').then(() =>
+                    toast(`Dismissed “${plan.title}”`, { label: 'Undo', onClick: () => void run(actions.setStatus(plan, 'draft')) }),
+                  ),
+                )
+              }>
               <X size={13} /> Dismiss
             </button>
           </>

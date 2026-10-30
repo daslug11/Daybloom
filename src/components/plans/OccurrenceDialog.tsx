@@ -26,11 +26,11 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
   const changed = title.trim() !== occ.title || details.trim() !== occ.details || start !== occ.start || duration !== occ.duration;
   const valid = !!title.trim() && start + duration <= 1440;
 
-  const run = async (fn: () => Promise<unknown>, message: string, keepOpen = false) => {
+  const run = async (fn: () => Promise<unknown>, message: string, keepOpen = false, undo?: () => Promise<unknown>) => {
     setBusy(true);
     try {
       await fn();
-      toast(message);
+      toast(message, undo && { label: 'Undo', onClick: () => void undo().catch(() => toast('That change could not be undone. Please try again.')) });
       if (keepOpen) setBusy(false);
       else onClose();
     } catch {
@@ -136,7 +136,7 @@ export function OccurrenceDialog({ occ, series, plan, onClose }: { occ: Occurren
       <div className="mt-5 border-t border-line pt-4">
         <p className="label">Delete</p>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-ghost !py-2 text-danger" disabled={busy} onClick={() => run(() => actions.editOccurrence(occ, { skipped: true }), 'Removed this session')}>
+          <button className="btn-ghost !py-2 text-danger" disabled={busy} onClick={() => run(() => actions.editOccurrence(occ, { skipped: true }), 'Removed this session', false, () => actions.editOccurrence(occ, { skipped: false }))}>
             Delete this session
           </button>
           <button className="btn-danger !py-2" disabled={busy} onClick={() => setConfirmDelete(true)}>
