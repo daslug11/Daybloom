@@ -23,9 +23,10 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             react: ['react', 'react-dom', 'react-router-dom'],
-            motion: ['framer-motion'],
             charts: ['recharts'],
             supabase: ['@supabase/supabase-js'],
+            // Icons in one small file instead of dozens of tiny ones (fewer requests on every page).
+            icons: ['lucide-react'],
           },
         },
       },

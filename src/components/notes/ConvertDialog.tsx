@@ -5,7 +5,7 @@ import { useUpdateNote } from '../../hooks/data/notes';
 import { useAddTasks } from '../../hooks/data/tasks';
 import { useToday } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
-import { minutesFromTime } from '../../lib/quickAdd';
+import { minutesFromTime } from '../../lib/format';
 import { firstLine } from '../../lib/text';
 import type { Note } from '../../lib/types';
 import { EmojiPicker } from '../ui/EmojiPicker';

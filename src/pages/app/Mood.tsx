@@ -1,6 +1,5 @@
 import { Check } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { MoodChart } from '../../components/mood/MoodChart';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { MoodPicker } from '../../components/mood/MoodPicker';
 import { AiButton } from '../../components/ui/Ai';
 import { Card, CardTitle } from '../../components/ui/Card';
@@ -15,6 +14,9 @@ import { MOODS } from '../../lib/moods';
 import { useSavedResult } from '../../lib/savedResult';
 import { meanScore } from '../../lib/stats';
 import type { Mood as MoodRow } from '../../lib/types';
+
+// The chart library is large; load it after the rest of the page.
+const MoodChart = lazy(() => import('../../components/mood/MoodChart').then((m) => ({ default: m.MoodChart })));
 
 const moodFor = (score: number) => MOODS.find((m) => m.value === score) ?? { value: score, emoji: '❔', label: `Score ${score}` };
 
@@ -150,7 +152,9 @@ export default function Mood() {
           </Card>
           <Card>
             <CardTitle>Last 7 days</CardTitle>
-            <MoodChart moods={list} today={today} />
+            <Suspense fallback={<div className="h-40" aria-hidden />}>
+              <MoodChart moods={list} today={today} />
+            </Suspense>
             <p className="muted mt-2 text-sm">
               {avg !== null ? (
                 <>

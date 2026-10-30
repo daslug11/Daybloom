@@ -9,7 +9,7 @@ import { useTasks } from '../../hooks/data/tasks';
 import { useToday } from '../../hooks/useProfile';
 import { REST_RANGE, WORK_RANGE, useTimer } from '../../hooks/useTimer';
 import { parseKey } from '../../lib/dates';
-import { formatDuration } from '../../lib/quickAdd';
+import { formatDuration } from '../../lib/format';
 import { focusStats } from '../../lib/stats';
 import { cn } from '../../lib/utils';
 

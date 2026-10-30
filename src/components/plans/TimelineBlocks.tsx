@@ -3,7 +3,7 @@ import type { SyncedEvent } from '../../../server/calendar/types';
 import type { Occurrence } from '../../../server/data/recurrence';
 import { CALENDAR_COLORS } from '../../lib/calendars';
 import { DAY_MINUTES, formatMinutes, rangeLabel, SNAP, type DayEvent, type Lane, type TimeBlock } from '../../lib/planner';
-import { formatDuration } from '../../lib/quickAdd';
+import { formatDuration } from '../../lib/format';
 import type { Task } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { PRIORITY_STYLES } from '../tasks/TaskChips';

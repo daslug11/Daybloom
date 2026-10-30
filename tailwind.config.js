@@ -55,6 +55,8 @@ export default {
         fade: { from: { opacity: '0' }, to: { opacity: '1' } },
         'check-pop': { from: { transform: 'scale(0.6)', opacity: '0' }, to: { transform: 'scale(1)', opacity: '1' } },
         'sheet-up': { from: { transform: 'translateY(100%)' }, to: { transform: 'translateY(0)' } },
+        'toast-in': { from: { transform: 'translateY(20px) scale(0.95)', opacity: '0' }, to: { transform: 'none', opacity: '1' } },
+        'toast-out': { from: { opacity: '1' }, to: { transform: 'translateY(10px) scale(0.95)', opacity: '0' } },
         'menu-pop': { from: { transform: 'scale(0.97)', opacity: '0' }, to: { transform: 'scale(1)', opacity: '1' } },
       },
       animation: {
@@ -64,6 +66,8 @@ export default {
         // A checked mark settles in: the app's most rewarding moment, kept short.
         'check-pop': 'check-pop 160ms cubic-bezier(0.23, 1, 0.32, 1) both',
         'sheet-up': 'sheet-up 260ms cubic-bezier(0.32, 0.72, 0, 1) both',
+        'toast-in': 'toast-in 300ms cubic-bezier(0.23, 1, 0.32, 1) both',
+        'toast-out': 'toast-out 150ms cubic-bezier(0.23, 1, 0.32, 1) both',
         'menu-pop': 'menu-pop 150ms cubic-bezier(0.23, 1, 0.32, 1) both',
       },
     },

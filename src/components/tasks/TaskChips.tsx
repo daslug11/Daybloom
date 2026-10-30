@@ -1,6 +1,6 @@
 import { CalendarDays, Clock, Flag, Hash, Hourglass } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { formatDue, formatDuration, formatTime } from '../../lib/quickAdd';
+import { formatDue, formatDuration, formatTime } from '../../lib/format';
 import type { Priority } from '../../lib/types';
 import { cn } from '../../lib/utils';
 

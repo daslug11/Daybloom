@@ -8,7 +8,7 @@ import { useAi } from '../../hooks/useAi';
 import { useToday } from '../../hooks/useProfile';
 import { useTimer } from '../../hooks/useTimer';
 import { useToast } from '../../hooks/useToast';
-import { minutesFromTime } from '../../lib/quickAdd';
+import { minutesFromTime } from '../../lib/format';
 import { formatMinutesShort } from '../../lib/planner';
 import { clip, firstLine } from '../../lib/text';
 import type { Priority, Task } from '../../lib/types';
