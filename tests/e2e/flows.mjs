@@ -990,6 +990,158 @@ await flow('mobile-touch', browser, { viewport: { width: 390, height: 844 }, isM
   }
 });
 
+
+// break-ui pass on the Atlas panel: worst-case history, plan card and composer, at phone and desktop widths.
+await flow('atlas-worst-case', browser, {}, async (page) => {
+  const user = await makeUser('Aleksandra Wiśniewska-Kowalczyk');
+  const longUrl = `https://northwind-industries-holdings.example.com/shared/documents/${'q3-planning-retrospective-final-v12-'.repeat(8)}`.slice(0, 300);
+  const sessionTitles = ['Leg day: squats, lunges and Bulgarian split squats', 'Upper body push', 'Long run along the canal', 'Mobility', 'Intervals', 'Rest & stretch', 'Swim technique drills'];
+  const { data: plan, error: planErr } = await admin
+    .from('plans')
+    .insert({
+      user_id: user.id,
+      title: 'Twelve-week half-marathon build with strength, mobility and recovery sessions around a busy lecture timetable'.padEnd(120, '!').slice(0, 120),
+      summary: 'Seven sessions a week, built around your lectures and part-time shifts, easing off before exams.',
+      weeks: 12,
+      sessions: sessionTitles.map((title, i) => ({
+        day: i + 1,
+        start: 6 * 60 + i * 37,
+        duration: 45 + i * 10,
+        title,
+        details: i === 0 ? 'warm up 10 min then 4×8 each side, rest 90 s https://example.com/very/long/exercise/video/link/that/does/not/break/anywhere-at-all' : '',
+      })),
+    })
+    .select('id')
+    .single();
+  if (planErr) throw planErr;
+  const heavy = [
+    '# Your week at a glance',
+    '## Priorities',
+    '1. **Finish the lab report** — due *Thursday*',
+    '2. `npm run build` keeps failing; try `rm -rf node_modules && npm ci --prefer-offline --no-audit --no-fund`',
+    '- [ ] email Dr. Okonkwo-Hargreaves about the extension',
+    '- [x] book the library room',
+    '',
+    '| Day | Morning | Afternoon | Evening | Notes |',
+    '| --- | --- | --- | --- | --- |',
+    ...Array.from({ length: 12 }, (_, i) => `| Day ${i + 1} | Lecture: Introduction to Thermodynamics ${i} | Lab ${i} | Shift at the café 18:00–22:00 | ${'bring-the-safety-goggles-and-lab-coat-'.repeat(2)} |`),
+    '',
+    '```',
+    'const schedule=weeks.flatMap((w)=>w.days.map((d)=>({...d,start:d.start+offset}))).filter(Boolean).sort((a,b)=>a.start-b.start);',
+    `const url = "${longUrl}";`,
+    '```',
+    `Read more: ${longUrl}`,
+    `[${'The full reading list for Organic Chemistry '.repeat(3)}](${longUrl})`,
+  ].join('\n');
+  const special = [
+    { role: 'user', content: 'Plan my revision for exams and add the reading list. '.repeat(40).slice(0, 2000) },
+    { role: 'assistant', content: `Here is the link you asked for: ${longUrl}` },
+    { role: 'user', content: longUrl },
+    { role: 'assistant', content: heavy },
+    { role: 'user', content: '🎉🔥💪🏽👩🏾‍💻🧑‍🤝‍🧑🏳️‍🌈 '.repeat(30) + '\n' + '👨‍👩‍👧‍👦'.repeat(60) },
+    { role: 'assistant', content: 'مرحبا! لقد أضفت المهمة "مراجعة الفصل الثالث من كتاب الكيمياء العضوية" إلى قائمتك ليوم الخميس. هل تريد أن أحجز لها وقتًا في المخطط؟' },
+    { role: 'user', content: 'أضف مهمة: الاتصال بالبنك غدًا الساعة العاشرة' },
+    {
+      role: 'assistant',
+      content: 'Here is your plan.',
+      actions: [
+        { tool: 'add_task', summary: `Added task “${'Read chapter 4 of Organic Chemistry: Structure and Function '.repeat(3)}${longUrl}”`, ok: true },
+        { tool: 'complete_task', summary: 'Could not find “T999”', ok: false },
+        { tool: 'create_plan', summary: 'Drafted a plan', ok: true, plan_id: plan.id },
+      ],
+    },
+  ];
+  const filler = Array.from({ length: 200 - special.length }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: i % 2 ? `Done — reply number ${i}.` : `Message number ${i}` }));
+  const { error: histErr } = await admin.from('atlas_messages').insert([...filler, ...special].map((m) => ({ user_id: user.id, actions: [], ...m })));
+  if (histErr) throw histErr;
+
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
+  await panel.getByRole('region', { name: /^Plan:/ }).waitFor({ timeout: 10000 });
+  await panel.getByText(/^مرحبا!/).waitFor();
+
+  // Nothing in the panel sticks out sideways, and the page never scrolls sideways.
+  const overflow = () =>
+    page.evaluate(() => {
+      const aside = document.querySelector('[role=dialog][aria-label="Atlas assistant"] aside');
+      const box = aside.getBoundingClientRect();
+      const scroller = aside.querySelector('.overflow-y-auto');
+      const out = [...aside.querySelectorAll('*')]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1);
+        })
+        .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} (${Math.round(el.getBoundingClientRect().right - box.right)}px)`);
+      return { page: document.documentElement.scrollWidth - window.innerWidth, scroller: scroller.scrollWidth - scroller.clientWidth, out: out.slice(0, 8) };
+    });
+  for (const [w, h] of [[1280, 860], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await sleep(300);
+    const o = await overflow();
+    assert(o.page <= 0 && o.scroller <= 0 && !o.out.length, `overflow at ${w}px: page ${o.page}px, transcript ${o.scroller}px, ${o.out.join(', ')}`);
+    await shot(page, `atlas-worst-case-${w}`);
+  }
+  // RTL replies read right to left.
+  assert((await panel.getByText(/^مرحبا!/).evaluate((el) => getComputedStyle(el).direction)) === 'rtl', 'Arabic reply not laid out right to left');
+  // The transcript is not a live region; one sr-only status speaks for it.
+  assert((await panel.locator('[aria-live]').count()) === 0, 'an element in the Atlas panel still has aria-live');
+
+  // A 2,000-character message grows the composer (to its cap), and a failed send keeps it.
+  const input = panel.getByLabel('Message Atlas');
+  const long = 'Please move my thermodynamics revision to the mornings and keep evenings free for shifts. '.repeat(30).slice(0, 2000);
+  await input.fill(long);
+  const hgt = await input.evaluate((el) => el.getBoundingClientRect().height);
+  assert(hgt > 60 && hgt <= 130, `composer height ${hgt}px for a long message`);
+  await page.route('**/api/atlas', (route) => route.abort('failed'));
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByText('Not sent', { exact: true }).waitFor();
+  await panel.getByRole('alert').getByText(/Can't reach Atlas/).waitFor();
+  assert(await panel.getByText(long.slice(0, 120)).first().isVisible(), 'failed message not kept in the transcript');
+  assert((await input.inputValue()) === '', 'composer not cleared after sending');
+  await panel.getByRole('button', { name: 'Edit' }).click();
+  assert((await input.inputValue()) === long, 'Edit did not restore the failed message');
+  await page.unroute('**/api/atlas');
+  await input.fill('');
+
+  // Stop: Send becomes Stop while a reply streams; Stop aborts the request and keeps what arrived.
+  await page.evaluate(() => {
+    const real = window.fetch;
+    window.__atlas = { aborted: false, sent: 0 };
+    window.fetch = (url, init) => {
+      if (!String(url).includes('/api/atlas') || !String(init?.body ?? '').includes('"chat"')) return real(url, init);
+      const enc = new TextEncoder();
+      const body = new ReadableStream({
+        start(c) {
+          const id = setInterval(() => {
+            c.enqueue(enc.encode(JSON.stringify({ t: 'text', v: `word${window.__atlas.sent++} ` }) + '\n'));
+          }, 40);
+          init.signal?.addEventListener('abort', () => {
+            window.__atlas.aborted = true;
+            clearInterval(id);
+            c.error(new DOMException('Aborted', 'AbortError'));
+          });
+        },
+      });
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'application/x-ndjson' } }));
+    };
+  });
+  await input.fill('Write me a long essay');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByText(/word5 /).waitFor();
+  assert((await panel.getByRole('status').first().innerText()).includes('Atlas is thinking'), 'no thinking announcement');
+  await panel.getByRole('button', { name: 'Stop' }).click();
+  await panel.getByText(/^Stopped\./).waitFor();
+  const sentAtStop = await page.evaluate(() => window.__atlas.sent);
+  await sleep(400);
+  const state = await page.evaluate(() => window.__atlas);
+  assert(state.aborted, 'Stop did not abort the request');
+  assert(state.sent === sentAtStop, 'the stream kept going after Stop');
+  await panel.getByRole('button', { name: 'Send' }).waitFor();
+  assert(await panel.getByText('Write me a long essay').isVisible(), 'stopped message disappeared');
+  await shot(page, 'atlas-worst-case-stopped');
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

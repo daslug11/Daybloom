@@ -54,7 +54,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
     <section
       aria-label={`Plan: ${plan.title}`}
       className={cn(
-        'rounded-2xl border p-3.5 text-sm',
+        'min-w-0 rounded-2xl border p-3.5 text-sm',
         hud ? 'border-cyan-400/40 bg-cyan-950/40 font-mono text-cyan-50' : 'border-atlas/30 bg-surface shadow-card',
         plan.status === 'dismissed' && 'opacity-60',
       )}
@@ -62,7 +62,9 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
       <header className="flex items-start gap-2.5">
         <CalendarRange size={18} className={cn('mt-0.5 shrink-0', hud ? 'text-cyan-300' : 'text-atlas')} aria-hidden />
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug">{plan.title}</h3>
+          <h3 dir="auto" className="font-semibold leading-snug [overflow-wrap:anywhere]">
+            {plan.title}
+          </h3>
           <p className={cn('text-xs', hud ? 'text-cyan-300/80' : 'muted')}>
             {weeksLabel(plan.weeks)} · {plan.sessions.length} session{plan.sessions.length === 1 ? '' : 's'} a week{start ? ` · from ${start}` : ''}
           </p>
@@ -78,12 +80,16 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
           </span>
         )}
       </header>
-      {plan.summary && <p className={cn('mt-2', hud ? 'text-cyan-100/90' : 'muted')}>{plan.summary}</p>}
+      {plan.summary && (
+        <p dir="auto" className={cn('mt-2 [overflow-wrap:anywhere]', hud ? 'text-cyan-100/90' : 'muted')}>
+          {plan.summary}
+        </p>
+      )}
       <ul className="mt-2.5 space-y-1" aria-label="Sessions">
         {plan.sessions.map((s, i) => (
           <li key={i} className="flex gap-2">
             <span className={cn('mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full', hud ? 'bg-cyan-300' : 'bg-atlas')} aria-hidden />
-            <span>{sessionText(s)}</span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">{sessionText(s)}</span>
           </li>
         ))}
       </ul>
