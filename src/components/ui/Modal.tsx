@@ -16,10 +16,12 @@ interface ModalProps {
   layer?: string;
   /** Skip the open animation (dialogs opened from keyboard shortcuts). */
   instant?: boolean;
+  /** `sheet` slides up from the bottom edge on phones (menus opened from the tab bar). */
+  variant?: 'dialog' | 'sheet';
 }
 
 /** Accessible dialog: focus moves in once, Escape closes only the top-most layer, focus returns on close. */
-export function Modal({ open, onClose, title, description, children, className, layer = 'z-50', instant = false }: ModalProps) {
+export function Modal({ open, onClose, title, description, children, className, layer = 'z-50', instant = false, variant = 'dialog' }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   const descId = useId();
   useOverlay({ open, onEscape: onClose, container: panel });
@@ -37,7 +39,7 @@ export function Modal({ open, onClose, title, description, children, className, 
         tabIndex={-1}
         className={cn(
           'sheet relative max-h-[92vh] w-full max-w-lg overflow-y-auto p-6',
-          !instant && 'animate-fade-in',
+          !instant && (variant === 'sheet' ? 'max-sm:animate-sheet-up sm:animate-fade-in' : 'animate-fade-in'),
           className,
         )}
       >

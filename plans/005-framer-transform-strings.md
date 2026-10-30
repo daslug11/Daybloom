@@ -1,6 +1,6 @@
 # 005 — Use hardware-accelerated transforms in Framer Motion
 
-- **Status**: TODO
+- **Status**: DONE (Phase 5)
 - **Commit**: 9799a50
 - **Severity**: MEDIUM
 - **Category**: Performance / Interruptibility

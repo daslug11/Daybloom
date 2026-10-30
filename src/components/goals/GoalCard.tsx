@@ -59,7 +59,7 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
           aria-valuetext={`${pct}% — ${Number(goal.current).toLocaleString()} of ${Number(goal.target).toLocaleString()} ${goal.unit}`.trim()}
           aria-label={`${goal.title} progress`}
         >
-          <div className={cn('h-full rounded-full transition-[width] duration-500', reached ? 'bg-success' : 'bg-ink')} style={{ width: `${pct}%` }} />
+          <div className={cn('h-full w-full origin-left rounded-full transition-transform duration-base ease-out', reached ? 'bg-success' : 'bg-ink')} style={{ transform: `scaleX(${pct / 100})` }} />
         </div>
         <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums" aria-hidden>
           {pct}%
@@ -92,7 +92,7 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
                 className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', m.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
                 aria-label={m.done ? `Mark milestone “${m.title}” not done` : `Complete milestone “${m.title}”`}
               >
-                {m.done && <Check size={10} strokeWidth={3} />}
+                {m.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
               </button>
               <span className={cn(m.done && 'faint line-through')}>{m.title}</span>
             </li>

@@ -37,12 +37,12 @@ export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goal
       <button
         onClick={() => onToggle?.(task)}
         className={cn(
-          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-fast',
+          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,color,background-color,border-color] duration-press ease-out motion-safe:active:scale-[0.9]',
           task.done ? 'border-transparent bg-accent text-accent-ink' : 'border-control hover:border-ink hover:bg-raised',
         )}
         aria-label={task.done ? `Mark “${task.title}” as not done` : `Complete “${task.title}”`}
       >
-        {task.done && <Check size={12} strokeWidth={3} />}
+        {task.done && <Check size={12} strokeWidth={3} className="animate-check-pop" />}
       </button>
       <Body
         className="min-w-0 flex-1 text-left"

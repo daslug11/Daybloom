@@ -92,7 +92,10 @@
     *::after {
       scroll-behavior: auto !important;
     }
-    .animate-fade-in {
+    .animate-fade-in,
+    .animate-check-pop,
+    .animate-sheet-up,
+    .animate-menu-pop {
       animation: fade 150ms ease-out both !important;
     }
     .btn:active {

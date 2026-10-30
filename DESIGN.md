@@ -225,8 +225,13 @@ Backdrops are a plain black scrim (60% for dialogs, 40% for the Atlas side panel
 Tokens (`tailwind.config.js`), from plan 001:
 - **Easing:** `ease-out` = `cubic-bezier(0.23, 1, 0.32, 1)` (default for UI), `ease-in-out` = `cubic-bezier(0.77, 0, 0.175, 1)` (things moving on screen), `ease-drawer` = `cubic-bezier(0.32, 0.72, 0, 1)` (sheets and panels).
 - **Duration:** `duration-press` 160ms (button press), `duration-fast` 150ms (hover, colour), `duration-base` 200ms (enter/exit).
-- **Press feedback:** every `.btn` scales to 0.97 while pressed.
-- `prefers-reduced-motion` is respected.
+- **Press feedback:** every `.btn` scales to 0.97 while pressed; check-off controls (task circle, habit tile) scale to 0.9.
+- **Keyframes:** `animate-fade-in` (dialogs opened by pointer, Process inbox's next note), `animate-fade` (opacity only), `animate-check-pop` (a checked mark settles in, 160ms), `animate-menu-pop` (menus grow from the trigger's corner, 150ms), `animate-sheet-up` (the phone "More" sheet, 260ms drawer curve).
+- **Instant on purpose:** cards, the command palette (⌘K), Capture (N), the Atlas panel when opened from the keyboard, and the sidebar collapse.
+- **Only transform and opacity animate.** Progress bars use `scaleX`, the Planner now-line uses `translateY`, toasts use full `transform` strings with a spring.
+- **Hover** styles apply only on devices with a real hover (`hoverOnlyWhenSupported`).
+- **Reduced motion:** movement turns into a 150ms fade; colour changes and spinners stay. Framer Motion follows the OS setting (`MotionConfig reducedMotion="user"`).
+- **The voice HUD** is the exception: a full boot sequence and state-driven rings, on the compositor, with no loops under reduced motion.
 
 ## Components
 

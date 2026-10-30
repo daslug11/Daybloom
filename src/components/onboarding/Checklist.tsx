@@ -57,7 +57,7 @@ export function GettingStarted() {
         Getting started · {done}/{items.length}
       </CardTitle>
       <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-        <div className="h-full bg-accent transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
+        <div className="h-full w-full origin-left bg-accent transition-transform duration-base ease-out" style={{ transform: `scaleX(${done / items.length})` }} />
       </div>
       <ul className="grid gap-1.5 sm:grid-cols-2">
         {[...items, optional].map((i) => (

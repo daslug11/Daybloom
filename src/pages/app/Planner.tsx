@@ -826,7 +826,7 @@ export default function Planner() {
                           </div>
                         )}
                         {d === today && (
-                          <div className="pointer-events-none absolute inset-x-0 z-30 transition-[top] duration-1000 ease-linear" style={{ top: nowMinutes * PX_PER_MIN }} aria-hidden>
+                          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 transition-transform duration-1000 ease-linear" style={{ transform: `translateY(${nowMinutes * PX_PER_MIN}px)` }} aria-hidden>
                             <div className="relative h-0.5 bg-danger">
                               <span className="absolute -left-1.5 -top-[5px] h-3 w-3 rounded-full bg-danger" />
                               {view === 'day' && <span className="absolute -top-5 right-2 rounded-md bg-danger px-1.5 py-0.5 text-xs font-semibold tabular-nums text-canvas">{formatMinutes(nowMinutes)}</span>}
