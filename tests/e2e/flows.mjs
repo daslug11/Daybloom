@@ -1119,6 +1119,26 @@ await flow('harden-a', browser, {}, async (page) => {
   await page.getByRole('button', { name: /^Archived/ }).waitFor({ state: 'detached' });
   const { count } = await admin.from('habit_logs').select('day', { count: 'exact', head: true }).eq('habit_id', h.id);
   assert(count === 1, 'history lost on archive/restore');
+
+  // Settings: export reports what it exported; the password field reveals and checks length inline;
+  // a voice slider saves once after it settles and doesn't snap back.
+  await page.goto(`${BASE}/app/settings`);
+  await page.getByRole('button', { name: 'Download JSON' }).click();
+  await page.getByText(/^Exported \d+ items? to daybloom-export-/).waitFor();
+  const pass = page.getByPlaceholder('New password');
+  await pass.fill('short');
+  await page.getByText('3 more characters needed.').waitFor();
+  await page.getByRole('button', { name: 'Show password' }).click();
+  assert((await pass.getAttribute('type')) === 'text', 'password not revealed');
+  await page.getByRole('button', { name: 'Update' }).click();
+  await page.getByText('Use at least 8 characters (you have 5).').waitFor();
+  assert((await pass.getAttribute('aria-invalid')) === 'true', 'short password not marked invalid');
+  const rate = page.getByLabel(/^Speed/);
+  await rate.focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
+  await eventually(async () => (await admin.from('profiles').select('voice').eq('id', user.id).single()).data?.voice?.rate === 1.2, 'speed not saved as 1.2');
+  await sleep(800);
+  assert((await rate.inputValue()) === '1.2', `speed snapped back to ${await rate.inputValue()}`);
 });
 
 await browser.close();
