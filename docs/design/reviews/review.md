@@ -100,4 +100,162 @@ Decision points with more than 4 options: **none.** The only control on the page
 - Habit names are cut at `w-40 truncate` (`:181`) with no `title`, so long habit names lose their ending on desktop even when there's room to spare.
 - The light-theme habit meter track (`bg-slate-900/10`) is 1.19:1 against the card. The `n/of` numbers carry the meaning, so it's only a polish issue.
 
-<!-- AUDIT-BELOW: written after opening the detector file -->
+## Audit
+
+### Audit Health Score
+
+| # | Dimension | Score | Key Finding |
+|---|-----------|-------|-------------|
+| 1 | Accessibility | 2 | The "how it's calculated" notes, the habit `n/of` counts, the chart caption and the overdue dates are `#64748b` on `#14131b`, which is 3.9:1 in dark (fails 1.4.3). The chart is `role="img"` with no numbers in its label but contains a focusable SVG. Its two series differ only by hue (1.15:1). The AI result isn't announced. The skip link, landmarks, h1→h2 order and visible focus rings are all correct. |
+| 2 | Performance | 3 | The route is lazy-loaded, so Recharts is only paid for here, and bar animation is off. Nine cards each carry `backdrop-blur-xl` plus a fade-in on mount. `useMemo` deps are lint-suppressed (`Review.tsx:63`) but complete in practice. |
+| 3 | Theming | 2 | The chart is all hard-coded hex (`#8b5cf6`, `#3b82f6`, `#94a3b8`, `#475569`, `#14112a`, a violet `rgba` border) picked by reading `document.documentElement.classList` during render (`Review.tsx:31`), which goes stale on a theme toggle. Violet carries the bars, the habit meters, the tooltip, the ✨ button and the gradient title. Under the direction, ✨/AI should be cyan and emphasis neutral. |
+| 4 | Responsive Design | 3 | There's no horizontal overflow at 390px (verified). Tiles reflow 4→2 columns and cards stack. The ✨ button is 113×30, which passes 2.5.8 (≥24px) but is below the 44px comfort size. The Capture "+" and Atlas orb float over the right edge of cards mid-scroll (`main` has `pb-32`, so the end of the page clears them). |
+| 5 | Implementation Integrity | 2 | Verified logic defects in the numbers: habit-day rules differ between the tile/list and the chart, only two of six queries are gated for loading and errors, and `cached` is fetched but unused. That's on top of the old-brand violet. These are several verified issues, not systemic drift. |
+| **Total** | | **12/20** | **Acceptable** |
+
+**Implementation integrity verdict: fail (narrowly).** The honesty layer (formula lines, a cost statement, null-not-zero handling) is product-specific and good. But two defects on a page whose whole purpose is honest numbers mean it currently says things that aren't true. The habit tile, list and chart disagree on the seeded data, and failed queries render as "No check-ins this week".
+
+### Detector findings
+
+Counts for the review screen. Most findings come from the app shell, which every app screen shares.
+
+| Rule | dark-desktop | dark-phone | light-desktop | light-phone | Where | Verdict |
+|------|---:|---:|---:|---:|------|---------|
+| low-contrast | 7 | 7 | 1 | 1 | 5× `p.faint` on this page (4 tile `how` lines `Review.tsx:122`, chart caption `:171`) + habit `n/of` `:187` at 3.9:1. 1× the avatar "M" white on violet→pink (`TopBar.tsx:70`), in both themes | **Real.** The page's own findings are dark-only (light measures 4.56:1). Overdue "due …" (`:224`) is the same faint style and also fails, but the detector didn't report it. The avatar is a shell finding. |
+| tiny-text | 4 | 4 | 4 | 4 | the four tile `how` lines, `text-[11px]` (`Review.tsx:122`) | **Real.** These carry the honest-numbers explanations, so they're the worst place for 11px. |
+| ai-color-palette | 4 | 4 | 4 | 4 | Logo mark (`Logo.tsx:6`), avatar gradient (`TopBar.tsx:70`), body-wide "violet accents", **Atlas orb cyan gradient** | Violet ones are **real but already slated for removal** (DESIGN.md direction). The cyan orb is a **false positive**: cyan is reserved for Atlas. The detector missed the page's own violet, which is in inline JS/SVG: bar fills `Review.tsx:166-167`, tooltip border `:165`, habit meter `bg-violet-500` `:185`. |
+| gradient-text | 2 | 1 | 2 | 1 | `h1.gradient-text` "Weekly Review" (`PageHeader.tsx:8`, `index.css:59-62`); sidebar wordmark on desktop | **Real**, slated for removal (No-Ornament Type Rule). |
+| dark-glow | 2 | 2 | 0 | 0 | Capture FAB violet glow; Atlas orb cyan glow | FAB glow is **real** (shell, slated for removal). The orb glow is Atlas's own surface. It's borderline under "no glows", but cyan-on-orb is sanctioned, so it's a **false positive** for this page. |
+| overused-font | 1 | 1 | 1 | 1 | Inter for 100% of text | **False positive.** One sans family is a deliberate system choice (DESIGN.md typography, operate.md "One family is often right"). |
+| straggler | 0 | 1 | 0 | 1 | Header description: "week." alone on its last line at 390px | **Real, P3.** Fixable with `text-wrap: pretty` on `PageHeader` descriptions. |
+
+The source scan (`src_scan_all`, 12 findings) has no hits in `Review.tsx`, `Card.tsx`, `Ai.tsx` or `PageHeader.tsx`. Its `index.css:60-61` gradient-text and `index.css:79` violet button hits apply here through `.gradient-text`. **What the detector can't see** (all found in Assessment A): the habit-number contradiction, the unguarded loading and error states, the stale theme in the chart, the hue-only chart series, and the focusable SVG inside `role="img"`.
+
+### Findings by severity
+
+**[P1] Habit consistency, the per-habit list and the chart count habit-days by different rules**
+- **Location:** `src/pages/app/Review.tsx:44-51` (tile + list: days ≥ `created_at`, today always eligible) vs `src/pages/app/Review.tsx:60` (chart: every log); `src/components/habits/ContributionGrid.tsx:46-54` (past days before creation can be ticked)
+- **Category:** Implementation Integrity
+- **Impact:** On the same screen, the user sees 33% / "1 of 3 habit-days" and 13 habit check-ins. Every morning the tile drops because today counts as a miss. The AI is given the low figure.
+- **Recommendation:** Use one `habitDays(habit, logs, days, today)` helper for all three. The window starts at min(created, first log). Today counts only if it's done. Update the `how` copy to match, and add a unit test.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Only tasks and habit logs gate loading and errors; everything else renders failures as real empties**
+- **Location:** `src/pages/app/Review.tsx:21-25, 109, 113, 68-80`
+- **Category:** Implementation Integrity
+- **Impact:** A slow or failed moods/habits/focus/notes query shows "No check-ins this week", "No habits yet", "0m" or "0 captured", and the ✨ summary is generated from those zeros.
+- **Recommendation:** Combine `isLoading`/`error` across all six queries (or handle them per tile). Show a per-tile error with retry. Disable ✨ until all inputs have loaded.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] The calculation notes and secondary figures fail text contrast in dark, at 11px**
+- **Location:** `src/pages/app/Review.tsx:122` (`faint text-[11px]`), `:171` (chart caption), `:187` (habit `n/of`), `:224` (overdue due date); `.faint` = `text-slate-500` in both themes (`src/index.css:66-68`)
+- **Category:** Accessibility
+- **Impact:** At 3.9:1 (measured `#64748b` on `#14131b`) the explanations that make the numbers honest are the hardest text to read, especially on a phone.
+- **WCAG:** 1.4.3 Contrast (Minimum), AA
+- **Recommendation:** Use `muted` (`slate-400` in dark, 7.26:1) at 12px for `how` lines, counts and dates. Separately, fix `.faint` in dark to at least `slate-400` (system-wide, see DESIGN.md "faint tier fails AA").
+- **Suggested command:** `/impeccable typeset`
+
+**[P2] Chart colours are hard-coded and go stale on theme change**
+- **Location:** `src/pages/app/Review.tsx:31` (`dark` read from the DOM during render), `:162-167`; the theme is applied in an effect after render (`src/hooks/useProfile.ts:76-80`, toggle at `src/components/layout/TopBar.tsx:41`)
+- **Category:** Theming
+- **Impact:** After toggling the theme, the grid, axis ticks and tooltip keep the previous theme's colours until something else re-renders the page (the next `useNow` minute tick). Light-on-light ticks and a `#14112a` tooltip are the likely result. This was traced in code but not exercised live, because the toggle writes `profile.theme`.
+- **Recommendation:** Derive chart colours from CSS custom properties (`getComputedStyle` on a ref, or pass `var(--chart-…)` as `fill`/`stroke`, which SVG accepts). Alternatively, read the theme from the same state that `useThemeSync` uses.
+- **Suggested command:** `/impeccable colorize`
+
+**[P2] The chart's two series are told apart by hue only, in off-direction violet**
+- **Location:** `src/pages/app/Review.tsx:166-167` (`#8b5cf6` / `#3b82f6`), `:165` (violet tooltip border), `:171-173` (caption "Purple: … · Blue: …"); habit meter `:185` `bg-violet-500`
+- **Category:** Accessibility / Theming
+- **Impact:** The two series have a luminance ratio of 1.15:1, so they're hard to separate for colour-vision-deficient users and in greyscale. The legend tells you a colour name instead of showing a key. Violet goes against the confirmed direction.
+- **WCAG:** 1.4.1 Use of Color; 1.4.11 Non-text Contrast (blue bar 3.52:1 on light passes, violet bar 4.05:1)
+- **Recommendation:** Use neutral near-white (dark) / near-black (light) for Tasks and a mid-grey for Habits, so the series differ in lightness. Add a real legend with swatches and labels ("Tasks done", "Habits ticked"). Make meters neutral. Don't use cyan: this chart isn't AI.
+- **Suggested command:** `/impeccable colorize`
+
+**[P2] The chart is an "image" containing a keyboard stop, with no text alternative for its values**
+- **Location:** `src/pages/app/Review.tsx:159-170`; Recharts 3.10.1 `accessibilityLayer` makes the SVG focusable (live: a Tab stop of 494×208 desktop / 316×208 phone)
+- **Category:** Accessibility
+- **Impact:** Screen-reader users get "Tasks completed and habits done per day this week, image" and none of the 14 numbers. A focusable descendant inside `role="img"` is announced inconsistently.
+- **WCAG:** 1.1.1 Non-text Content; 4.1.2 Name, Role, Value
+- **Recommendation:** Drop `role="img"` and let Recharts' accessibility layer speak. Alternatively, keep `role="img"`, set `accessibilityLayer={false}`, and add a visually hidden `<table>` (day × tasks × habits) or a value-bearing `aria-label` ("Fri: 0 tasks, 2 habits; …").
+- **Suggested command:** `/impeccable harden`
+
+**[P2] The ✨ summary hides whether it cost an action, and can't be re-read**
+- **Location:** `src/pages/app/Review.tsx:27, 130-153`; `src/components/ui/Ai.tsx:41-47`; `server/ai/run.ts:69-81`
+- **Category:** Implementation Integrity
+- **Impact:** `cached` is returned and ignored. The tooltip claims a cost on a free cache hit. At 0 allowance a cached summary is unreachable. Regenerate always costs an action, against "free if nothing changed". The result isn't announced (no `aria-live`).
+- **Recommendation:** Render "Saved summary · no action used" or "Used 1 action". Give Regenerate its own cost hint. Allow cache hits at zero allowance. Persist the result per `week_start` in the query cache. Wrap the result in `aria-live="polite"`. Move the ✨ button and the result panel to Atlas cyan, per the direction.
+- **Suggested command:** `/impeccable clarify`
+
+**[P2] "Last 7 days" vs "this week" wording; "Still overdue" scope unstated**
+- **Location:** `src/pages/app/Review.tsx:93, 98, 112, 159, 176, 201, 218`; overdue filter `:38`
+- **Category:** Implementation Integrity (copy matches data)
+- **Impact:** The labels describe a different window than the one computed. The all-time overdue count reads as weekly.
+- **Recommendation:** Say "last 7 days" consistently. Add a sub-line to "Still overdue". Mark today's bar as "so far".
+- **Suggested command:** `/impeccable clarify`
+
+**[P2] Lists are silently truncated and can't be acted on**
+- **Location:** `src/pages/app/Review.tsx:204, 221` (`slice(0, 20)` under a full-count title), `:222-225` (plain text rows, ISO date)
+- **Category:** Implementation Integrity
+- **Impact:** "Done this week (27)" lists 20 items with no hint of the rest. Overdue tasks can't be opened or rescheduled from the review.
+- **Recommendation:** Add "+N more → Tasks" (filtered). Make rows buttons that open the task editor, with quick reschedule actions. Format dates in words ("Tue 27 Oct · 3 days ago").
+- **Suggested command:** `/impeccable layout`
+
+**[P2] Small ✨ target and floating buttons over content on phone**
+- **Location:** `src/pages/app/Review.tsx:131` (`size="sm"` → `!px-2.5 !py-1.5 !text-xs`, measured 113×30); shell FAB + Atlas orb fixed at bottom right
+- **Category:** Responsive
+- **Impact:** The page's only action is a 30px-tall target at the top right of a card. Mid-scroll, the two 48px floating buttons cover the right edge of card text (the AI copy, "due …" dates).
+- **WCAG:** 2.5.8 Target Size (Minimum) passes; this falls short of the 44px guideline
+- **Recommendation:** Use the `md` size on phones (≥44px height). On narrow screens, put the AI button under the copy at full width. Keep the floating buttons' right gutter clear in cards (`pr-14` on right-aligned meta, or move dates under titles on phone).
+- **Suggested command:** `mobile-native`
+
+**[P3] Every card fades in on each visit**
+- **Location:** `src/components/ui/Card.tsx:16` (`animate-fade-in`), `tailwind.config.js:11-16` (250ms ease-out, 4px rise)
+- **Category:** Performance / Implementation Integrity
+- **Impact:** Nine cards fade in together each time the page mounts. It tells you nothing about state, on a page you open to read numbers.
+- **Recommendation:** Remove the mount fade from static data cards (keep it for cards that appear in response to an action, like the AI result).
+- **Suggested command:** `remove-animations`
+
+**[P3] The delta glyph and mood emoji are unlabeled; header straggler**
+- **Location:** `src/pages/app/Review.tsx:86` ("▲ 3"), `:98` (rounded emoji), `src/components/ui/PageHeader.tsx:9` (straggler "week.")
+- **Category:** Accessibility
+- **Impact:** Screen readers say "black up-pointing triangle". Sighted users don't learn "3 more". It's minor.
+- **Recommendation:** Write "3 more than the 7 days before" (or `aria-hidden` the glyph with sr-only text). Add `text-wrap: pretty` to page descriptions.
+- **Suggested command:** `/impeccable polish`
+
+### Positive findings
+
+- **Honest formulas, implemented faithfully where it matters.** Focus time really counts only finished work blocks (`useTimer.tsx:68-69`). Subtasks are excluded as the copy says. All day bucketing uses the profile time zone. `null` (not 0) is used when there's no data, which renders "—".
+- **The AI cost model is real.** The server caches by week + stats hash and doesn't spend allowance on a hit (`server/ai/run.ts:69-77`). The button shows the remaining allowance and disables itself at zero.
+- **Keyboard and structure basics are right.** There's a skip link, one `main`, an h1 followed by h2 card titles, visible focus rings on every stop (verified across the full tab cycle), and no horizontal overflow at 390px.
+- **Chart motion is already off** (`isAnimationActive={false}`, `Review.tsx:166-167`): data appears immediately.
+
+## Motion on this surface
+
+| What | Where | Trigger | Duration / easing | Earns its place? |
+|------|-------|---------|-------------------|------------------|
+| Card fade-in + 4px rise (all 9 cards) | `src/components/ui/Card.tsx:16`, `tailwind.config.js:12,15` | Mount (each visit, after loading) | 250ms `ease-out`, `both` | **No.** Decorative on a read-only data page. Remove for static cards (P3 above). |
+| Skeleton pulse | `src/components/ui/States.tsx:43` (via `QueryState`, `Review.tsx:113`) | While tasks/habit logs load | Tailwind `animate-pulse` 2s infinite | **Yes.** It conveys loading. Should cover all six queries (P1). |
+| ✨ button spinner | `src/components/ui/Ai.tsx:51` | While the summary request is pending | `animate-spin` 1s linear | **Yes.** It's the only feedback during a multi-second AI call. Pair it with "Writing…" text for screen readers. |
+| Button press scale | `src/index.css:75-76` (`.btn` `transition` + `active:scale-[0.97]`) | Press on ✨ button | Tailwind default 150ms | **Yes.** Tactile feedback, consistent with the "tactile, confident" direction. |
+| Recharts tooltip move | `Review.tsx:165` (`<Tooltip>` with default animation) | Hover or arrow-keys on the chart | Recharts default ~400ms ease | **Marginal.** It slides between bars. Set `isAnimationActive={false}` to match the bars and the "quick" character. |
+| Bar grow-in | `Review.tsx:166-167` | — | Disabled (`isAnimationActive={false}`) | Correctly off. |
+| Reduced motion | `src/index.css:32-40` | `prefers-reduced-motion: reduce` | Global 0.01ms | Acceptable here. None of this page's motion carries state that would be lost (the spinner still renders a static icon). |
+
+## Machine-readable summary
+
+```json
+{"surface":"review","critique_total":22,"critique_max":40,"na_heuristics":[],"audit_total":12,
+ "issues":[
+  {"id":"review-1","severity":"P1","title":"Habit consistency, per-habit list and chart count habit-days by different rules and contradict each other (33% / 1-of-3 vs 13 check-ins); today counts as a miss","fix":"One shared habitDays helper for tile, list and chart; window starts at min(created, first log); count today only if done; update the how-line; add a test","command":"/impeccable harden","files":["src/pages/app/Review.tsx:44","src/pages/app/Review.tsx:60","src/components/habits/ContributionGrid.tsx:46"],"source":"both"},
+  {"id":"review-2","severity":"P1","title":"Loading/error gated on tasks and logs only; failed or slow habits/moods/focus/notes render as false empties and feed zeros to AI","fix":"Gate loading/error on all six queries or per tile with retry; disable the AI button until inputs load","command":"/impeccable harden","files":["src/pages/app/Review.tsx:109","src/pages/app/Review.tsx:113","src/pages/app/Review.tsx:21"],"source":"both"},
+  {"id":"review-3","severity":"P1","title":"How-it's-calculated notes, habit counts, chart caption and due dates are 11-12px faint text at 3.9:1 in dark; chart, Brain Dump counts and overdue scope have no explanation","fix":"Use muted 12px (7.26:1) for how-lines and secondary figures; add how-lines for chart, Brain Dump counts and Still overdue; raise .faint in dark","command":"/impeccable typeset","files":["src/pages/app/Review.tsx:122","src/pages/app/Review.tsx:171","src/pages/app/Review.tsx:187","src/pages/app/Review.tsx:224","src/index.css:66"],"source":"both"},
+  {"id":"review-4","severity":"P2","title":"Rolling last-7-days window labelled 'this week' in cards, empty states and chart label; Still overdue is all-time","fix":"Say 'last 7 days' consistently (or switch to Mon-Sun with a week picker); sub-line on Still overdue; mark today's bar 'so far'","command":"/impeccable clarify","files":["src/pages/app/Review.tsx:93","src/pages/app/Review.tsx:159","src/pages/app/Review.tsx:176","src/pages/app/Review.tsx:201","src/pages/app/Review.tsx:38"],"source":"critique"},
+  {"id":"review-5","severity":"P2","title":"AI summary hides whether it used an action (cached ignored), tooltip always claims a cost, cached summary unreachable at 0 allowance, lost on navigation, not announced; button still violet","fix":"Show 'Saved summary - no action used' / 'Used 1 action'; Regenerate cost hint; allow cache hits at 0; persist per week_start; aria-live result; move AI button/panel to Atlas cyan","command":"/impeccable clarify","files":["src/pages/app/Review.tsx:27","src/pages/app/Review.tsx:133","src/components/ui/Ai.tsx:41","server/ai/run.ts:69"],"source":"critique"},
+  {"id":"review-6","severity":"P2","title":"Done/overdue lists silently cut at 20 and not actionable; ISO due dates; no previous weeks","fix":"'+N more' link to filtered Tasks; rows open the task editor with quick reschedule; human dates; week navigation","command":"/impeccable layout","files":["src/pages/app/Review.tsx:204","src/pages/app/Review.tsx:221"],"source":"critique"},
+  {"id":"review-7","severity":"P2","title":"Chart colours hard-coded hex chosen from the DOM at render; stale after theme toggle","fix":"Drive chart fills/strokes from CSS custom properties or the theme state instead of classList at render","command":"/impeccable colorize","files":["src/pages/app/Review.tsx:31","src/pages/app/Review.tsx:162","src/hooks/useProfile.ts:76"],"source":"audit"},
+  {"id":"review-8","severity":"P2","title":"Chart series distinguished by hue only (violet vs blue, 1.15:1), legend by colour name, violet bars, tooltip and habit meters off-direction","fix":"Neutral near-white vs mid-grey series with a swatch legend; neutral meters and tooltip; no violet, no cyan","command":"/impeccable colorize","files":["src/pages/app/Review.tsx:165","src/pages/app/Review.tsx:166","src/pages/app/Review.tsx:171","src/pages/app/Review.tsx:185"],"source":"both"},
+  {"id":"review-9","severity":"P2","title":"Chart is role=img with a value-less label but contains a focusable Recharts SVG; no text alternative for the 14 values","fix":"Drop role=img and use Recharts accessibilityLayer, or keep role=img with accessibilityLayer off plus an sr-only data table / value-bearing label","command":"/impeccable harden","files":["src/pages/app/Review.tsx:159"],"source":"audit"},
+  {"id":"review-10","severity":"P2","title":"AI summary button is 30px tall at the top right on phone; floating Capture/Atlas buttons cover right-edge card text mid-scroll","fix":"md size (>=44px) and full-width under the copy on phone; keep right gutter clear for floating buttons","command":"mobile-native","files":["src/pages/app/Review.tsx:131"],"source":"both"},
+  {"id":"review-11","severity":"P3","title":"All nine cards fade in on every visit","fix":"Remove mount fade from static data cards; keep for the AI result appearing","command":"remove-animations","files":["src/components/ui/Card.tsx:16","tailwind.config.js:15"],"source":"audit"},
+  {"id":"review-12","severity":"P3","title":"Delta '▲ 3' and rounded mood emoji unlabeled; header description straggler on phone","fix":"'3 more than the 7 days before' with glyph aria-hidden; text-wrap: pretty on page descriptions","command":"/impeccable polish","files":["src/pages/app/Review.tsx:86","src/pages/app/Review.tsx:98","src/components/ui/PageHeader.tsx:9"],"source":"both"}
+ ]}
+```

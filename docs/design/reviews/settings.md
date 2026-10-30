@@ -105,3 +105,180 @@ Decision points with more than 4 options: the time zone select (419), the voice 
 - There is no "Reset voice to defaults", and the default values (1.00×, 0.85) aren't marked.
 - The AI allowance shows "—" while loading, with no skeleton. That's acceptable, but it reads as "no allowance".
 - The Terms · Privacy links are 15px tall violet text (`:259-261`).
+
+## Audit
+
+### Audit Health Score
+
+| # | Dimension | Score | Key Finding |
+|---|-----------|-------|-------------|
+| 1 | Accessibility | 2 | Dark-theme row hints at 3.9:1 (11 detector hits per dark desktop scan). The light Delete button is 3.7:1. Focus is lost after the delete dialog closes. Toasts have no live region. |
+| 2 | Performance | 3 | Each slider step fires a Supabase `update` (≈15 writes per drag, and out-of-order responses can snap the slider back). Otherwise light: one page, no images, export runs its queries one after another. |
+| 3 | Theming | 2 | Both themes are complete, but colour comes from raw Tailwind literals, not tokens. The Modal hard-codes `dark:bg-[#13111f]`. Violet/gradient emphasis contradicts the direction. |
+| 4 | Responsive Design | 3 | Rows stack cleanly at 390px with no horizontal scroll (scrollWidth 390). Switches are 36×20, chips 26px tall, sliders 16px tall and fixed at 192px. |
+| 5 | Implementation Integrity | 2 | Several verified issues: Modal's "focus returns on close" promise is broken, "Export everything" silently caps each table at 50,000 rows, and gradient/violet drift is still in the shared primitives. |
+| **Total** | | **12/20** | **Acceptable** |
+
+**Implementation Integrity Verdict: fail (narrowly).** The page's structure and copy are product-specific and honest. Two shared primitives on this surface break their own contracts. `Modal` documents "focus returns on close" but loses focus whenever a child uses `autoFocus`. "Export everything" truncates at 50,000 rows per table without saying so (`Settings.tsx:94`), which runs against PRODUCT.md's "Honest by default" and "Your data is yours".
+
+### Detector findings
+
+Per-scan counts (rendered CDP scans):
+
+| Rule | dark-desktop | dark-phone | light-desktop | light-phone | Verdict |
+|---|---|---|---|---|---|
+| low-contrast: `p.faint.text-xs` row hints (#64748b on #14131b, 3.9:1) | 11 | 10 | 0 | 0 | **Real (P1).** Matches my 3.88:1 calculation. Light passes at 4.59:1. |
+| low-contrast: `#s-email` / `#s-pass` placeholders | 2 (3.4:1) | 2 | 2 (2.5:1) | 2 | **Real (P2).** Visible `<label>`s exist, so this isn't blocking, but the placeholder is the only example of the format. |
+| low-contrast: `button.btn-danger` (#e11d48 on #f8dfe5, 3.7:1) | 0 | 0 | 1 | 1 | **Real (P1).** The light-theme "Delete account…" button. |
+| low-contrast: `span.flex.h-8` (white on pink gradient avatar) | 1 | 1 | 1 | 1 | Real but **out of surface**: the TopBar avatar (`TopBar.tsx:70`). Slated for removal with gradients. |
+| gradient-text: `h1.gradient-text` | 1 | 1 | 1 | 1 | **Real (P2).** The "Settings" title (`PageHeader.tsx:40`, `index.css:59-62`). Already slated for removal per DESIGN.md. |
+| gradient-text: `span.gradient-text.text-lg` | 1 | 0 | 1 | 0 | Shell (sidebar logo wordmark). Out of surface, slated for removal. |
+| ai-color-palette: violet gradient (logo mark, avatar) | 2 | 2 | 2 | 2 | Shell. Slated for removal per direction. |
+| ai-color-palette: "Purple/violet accent colors detected" (`body`) | 1 | 1 | 1 | 1 | **Real.** On this surface it covers the violet switch, sliders, chip-on, links and focus ring. Slated for removal. |
+| ai-color-palette: "Cyan gradient background" `span.absolute.inset-[18%]` | 1 | 1 | 1 | 1 | **False positive.** That is the Atlas orb, and cyan is intentionally reserved for Atlas. |
+| dark-glow: `button.flex.h-12` (#4c1d95, the capture "+" FAB) | 1 | 1 | 0 | 0 | Real, shell-level. Violet glow slated for removal. |
+| dark-glow: `button.group.flex` (#164e63, the Atlas orb) | 1 | 1 | 0 | 0 | **False positive under the direction.** The orb is Atlas, and its cyan halo is Atlas identity. Worth toning down, not removing. |
+| overused-font: Inter 100% | 1 | 1 | 1 | 1 | **False positive / accepted.** DESIGN.md deliberately uses one sans for the product UI (operate.md: "One family is often right"). |
+| straggler: "one." / "open." orphan words in hints | 0 | 2 | 0 | 2 | **Real, P3.** The export and wake phrase hints at 390px. |
+| **Total** | **23** | **23** | **11** | **12** | |
+
+Source scan (`src_scan_all`) hits relevant to this surface: `Switch.tsx:14` (violet→blue gradient, **real**, and not flagged by the rendered scans because the switch is a non-text element), `index.css:60-61` (gradient-text, real) and `index.css:79` (`.btn-primary` gradient, not used on Settings). The rest are other surfaces: the VoiceHud grid (intended showpiece), CalendarCard, GoalCard, Planner, Logo and TopBar.
+
+**What the detector missed** (found in the critique and live probes): the Modal focus-loss bug, toasts with no live region, the 36×20 switches, 26px chips and 16px sliders, labels that don't toggle switches, the per-step slider writes, the silent 50,000-row export cap, and the stale DELETE confirm text.
+
+### Findings by severity
+
+**[P1] Focus is lost to `<body>` when the delete dialog closes**
+- **Location:** `src/components/ui/Modal.tsx:43,68` (with `src/pages/app/Settings.tsx:278` `autoFocus`, and `:265` inline `onClose` that re-runs the effect every render)
+- **Category:** Accessibility / Implementation Integrity
+- **Impact:** Keyboard and screen-reader users are thrown to the top of the document after cancelling account deletion. Verified live with a focusin trace: no focus event fires on the opener.
+- **WCAG:** 2.4.3 Focus Order (A)
+- **Recommendation:** Drop `autoFocus`. In Modal, capture the opener before children commit (a ref set during render when `open` becomes true), ignore it if it is inside the panel or disconnected, keep `onClose` in a ref, and depend only on `open`.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Toasts are silent to assistive tech and too short for their content**
+- **Location:** `src/hooks/useToast.tsx:36,44`. Consumers: `src/pages/app/Settings.tsx:74,76,80,84,86,105,118`. Silent profile errors: `src/hooks/useProfile.ts:40`
+- **Category:** Accessibility
+- **Impact:** "Password updated.", the two-link email instructions and every error go unannounced and disappear after 3 s.
+- **WCAG:** 4.1.3 Status Messages (AA), 2.2.1 Timing Adjustable (A)
+- **Recommendation:** `role="status" aria-live="polite"` on the container (`role="alert"` for errors). A length-scaled timeout of at least 4 s, paused on hover/focus. A persistent inline "pending email change" note. An error toast in `useUpdateProfile.onError`.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Row hints (dark) and the Delete button (light) fail text contrast**
+- **Location:** `src/pages/app/Settings.tsx:28` (`.faint`), `src/index.css:66-67`, `src/index.css:86-87` (`.btn-danger`)
+- **Category:** Accessibility
+- **Impact:** The safety copy ("can't be undone", "mic stays on") is 3.9:1 at 12px on dark, and the destructive button label is 3.7:1 on light.
+- **WCAG:** 1.4.3 Contrast (Minimum) (AA)
+- **Recommendation:** Use `.muted` for hints (7.2:1 dark) or raise `.faint` to slate-400 in dark. Use `text-rose-700` for `.btn-danger` in light.
+- **Suggested command:** `/impeccable polish`
+
+**[P2] Placeholder text below 4.5:1 on the Email and Password fields**
+- **Location:** `src/pages/app/Settings.tsx:215,223`, `src/index.css:69-72` (`placeholder:text-slate-400` / `dark:placeholder:text-slate-500`)
+- **Category:** Accessibility
+- **Impact:** 2.5:1 (light) and 3.4:1 (dark). Mitigated by the visible labels.
+- **WCAG:** 1.4.3 (advisory for placeholders)
+- **Recommendation:** Placeholder slate-500 in light and slate-400 in dark, or remove the placeholders and rely on the label plus the hint.
+- **Suggested command:** `/impeccable polish`
+
+**[P2] Touch targets and label hit areas are too small on phone**
+- **Location:** `src/components/ui/Switch.tsx:13` (36×20), `src/pages/app/Settings.tsx:150-164` (chips 71×26), `:198,201` (`w-48` ranges, 16px tall), `:21-33` (`Row` renders `<label>` with no `htmlFor` for switches and the theme control), `:150` (radiogroup without roving tabindex / arrow keys)
+- **Category:** Responsive / Accessibility
+- **Impact:** Mis-taps on a page where every tap writes to the server. Switch labels aren't tappable. The radio pattern doesn't match ARIA expectations.
+- **WCAG:** 2.5.8 Target Size (Minimum) passes on spacing, but this is below the 44px platform guidance. ARIA APG radio group pattern.
+- **Recommendation:** Switch at least 44×24 with a full-row hit area via `htmlFor`/`id`. Sliders `w-full sm:w-48` with a 24px thumb. The theme control as a ≥40px segmented control with arrow keys.
+- **Suggested command:** `mobile-native`
+
+**[P2] Sliders write to the database on every step**
+- **Location:** `src/pages/app/Settings.tsx:66,198,201`, `src/hooks/useProfile.ts:25-42`
+- **Category:** Performance / Implementation Integrity
+- **Impact:** Dragging Speed from 0.7 to 1.4 issues about 14 `profiles.update` calls. `onSuccess` writes each server response back into the cache, so a late older response can snap the thumb back. Nothing is spoken while adjusting.
+- **Recommendation:** Keep local slider state. Commit on `pointerup`/`change` end (or debounce 300 ms). Preview the voice on release with the Test phrase.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] "Export everything" silently caps each table at 50,000 rows**
+- **Location:** `src/pages/app/Settings.tsx:19,94,248`
+- **Category:** Implementation Integrity
+- **Impact:** The hint promises every item. A long-time user's `habit_logs` or `atlas_messages` could be truncated with no warning. This breaks the "honest numbers / your data is yours" commitments. Export runs 15 queries one after another with only "Preparing…" as feedback, and none inside the delete dialog.
+- **Recommendation:** Page through with `.range()` until exhausted (or run the export server-side), add a `counts` object to the file, and show "Exported N items" on completion, both inline and in the dialog.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] Violet/gradient emphasis on Settings controls**
+- **Location:** `src/components/ui/Switch.tsx:14`, `src/pages/app/Settings.tsx:198,201` (`accent-violet-600`), `src/components/ui/PageHeader.tsx:40` (`.gradient-text`), `src/index.css:30,97-98,140-141`
+- **Category:** Theming
+- **Impact:** Contradicts the confirmed direction (neutral near-white emphasis, no gradients, cyan only for Atlas).
+- **Recommendation:** Neutral solid tokens for the on-state, slider fill, selected segment, links and focus ring. Solid `h1`.
+- **Suggested command:** `/impeccable quieter`
+
+**[P2] The danger zone isn't separated, and the dialog state is sticky**
+- **Location:** `src/pages/app/Settings.tsx:253-257` (Delete inside "Your data"), `:57,265` (`confirmText` never reset), `:270,284` (case-sensitive match with no hint), `:274` (export link with no in-dialog progress), `src/components/ui/Modal.tsx:76-80` (no `aria-describedby`)
+- **Category:** Implementation Integrity / Accessibility
+- **Impact:** The irreversible action looks like a sibling of Export. A stale "delete" reappears on reopen. "There is no undo" isn't announced with the dialog name.
+- **Recommendation:** Give Delete its own final card. Reset state on close. Add a capitals hint or accept case-insensitive input. Show export status in the dialog. Add `aria-describedby`.
+- **Suggested command:** `/impeccable clarify`
+
+**[P3] Orphaned last words in hints on phone**
+- **Location:** `src/pages/app/Settings.tsx:28` (export hint "…one." and wake phrase hint "…open.")
+- **Category:** Implementation Integrity (typography)
+- **Impact:** Ragged two- and three-line hints.
+- **Recommendation:** `text-wrap: pretty` on `.faint`/hint paragraphs.
+- **Suggested command:** `/impeccable typeset`
+
+**[P3] Modal and cards hard-code the tinted dark surface and blur glass**
+- **Location:** `src/components/ui/Modal.tsx:75,83` (`dark:bg-[#13111f]`, `backdrop-blur-sm`), `src/components/ui/Card.tsx:16` / `src/index.css:52-54` (`.glass` with `backdrop-blur-xl`)
+- **Category:** Theming / Performance
+- **Impact:** A violet-tinted panel colour outside any token. Blur cost on every card. Both conflict with "neutral near-black, tactile solid surfaces".
+- **Recommendation:** A `--surface-raised` token (neutral) and solid card fills with one shallow shadow.
+- **Suggested command:** `/impeccable quieter`
+
+**[P3] Password change has no confirmation field or reveal toggle**
+- **Location:** `src/pages/app/Settings.tsx:221-228`
+- **Category:** Implementation Integrity (error prevention)
+- **Impact:** A typo in a masked field is only discovered at the next login.
+- **Recommendation:** Add a show/hide toggle (preferred on mobile over a second field), and keep the 8-character check inline rather than in a toast.
+- **Suggested command:** `/impeccable harden`
+
+### Positive findings
+
+- Every text field has a real `<label for>` (`Name`, `Time zone`, `Voice`, `Speed`, `Pitch`, `Email`, `Password`), and both switches expose `role="switch"`, `aria-checked` and `aria-label` (`Switch.tsx:5-9`).
+- A visible focus ring on every control, verified live: a 2px offset plus a 2px ring (`index.css:29-31`). Tab order follows the visual order top to bottom, then the shell (verified at both sizes).
+- Modal traps Tab, closes on Esc and the backdrop, and becomes a bottom sheet on phones (`Modal.tsx:44-58,74,83`).
+- The destructive submit is disabled until the exact phrase is typed, with a busy label (`Settings.tsx:284-286`). Email change uses Supabase's secure double confirmation with a redirect back to `/auth/callback` (`:72`).
+- No horizontal overflow at 390px (scrollWidth 390). Rows switch from side-by-side to stacked at `sm` (`:23`).
+- Speech support is feature-detected, with honest fallbacks (`speech.ts:13-14`, `Settings.tsx:176-177`).
+
+## Motion on this surface
+
+| Animation | Where | Trigger | Duration / easing | Earns its place? |
+|---|---|---|---|---|
+| Card fade + 4px rise | `src/components/ui/Card.tsx:16` (`animate-fade-in`), `tailwind.config.js:12-15` | All four cards on every visit to Settings | 250ms `ease-out`, all at once | **No.** A page-load sequence on an Operate surface that conveys no state. Remove it for Settings cards (`remove-animations`). |
+| Modal fade + rise | `src/components/ui/Modal.tsx:83` (`animate-fade-in`) | Opening "Delete account…" | 250ms `ease-out`. No exit animation, and the backdrop appears instantly | **Yes, mostly.** It signals the context change. Trim to ~180ms, and on phone a slide-up from the bottom would match the sheet shape. The missing exit makes close feel abrupt but quick, which is acceptable. |
+| Switch thumb slide | `src/components/ui/Switch.tsx:17` (`transition-all`, `left` 2px→18px) | Toggling Speak replies / Hey Atlas | Tailwind default 150ms `cubic-bezier(0.4,0,0.2,1)` | **Yes**: state feedback. But it animates `left` (a layout property) via `transition-all`. Use `transform: translateX()` with `transition-transform` (`animation-performance`). The track's gradient↔grey swap doesn't interpolate (`transition` on a background-image). |
+| Button press scale | `src/index.css:74-76` (`.btn` `active:scale-[0.97]` + `transition`) | Pressing Replay tour, Test, Change, Update, Log out, Download JSON, Delete | 150ms default | **Yes.** Tactile press feedback, in line with the "tactile, confident" direction. |
+| Input focus border/ring | `src/index.css:69-72` (`.input` `transition`) | Focusing any field | 150ms | **Yes.** Subtle state change. |
+| Chip hover / state | `src/index.css:132-141` (`.chip` `transition`) | Hover/select on the Theme chips | 150ms | Neutral. Fine. |
+| Toast enter/exit with layout | `src/hooks/useToast.tsx:47-52` (framer-motion `initial {opacity 0, y 20, scale .95}`, `layout`) | Every save/error message on this page | Framer default spring | **Yes**, it announces arrival. But there is no `MotionConfig reducedMotion="user"` anywhere in `src`, and the global CSS kill (`index.css:32-40`) doesn't reach framer's JS animations, so toasts still move under reduced motion. Add `<MotionConfig reducedMotion="user">` at the root. |
+| Theme switch | `applyTheme` (`useProfile.ts:66-67`) toggles `.dark` instantly | Clicking Dark/Light | Instant (every element's own `transition` briefly animates colours) | Acceptable. Instant is right for a theme swap. |
+| Replay tour delay | `Settings.tsx:168` `setTimeout(startTour, 300)` | Replay tour | 300ms fixed wait | Not an animation but a timing hack. It should wait for the Dashboard's tour targets instead (`/impeccable harden`). |
+
+The global reduced-motion rule (`index.css:32-40`) cuts every CSS animation and transition to 0.01ms. That is acceptable here because no Settings motion carries information that isn't also shown statically.
+
+## Machine-readable summary
+
+```json
+{"surface":"settings","critique_total":25,"critique_max":40,"na_heuristics":[],"audit_total":12,
+ "issues":[
+  {"id":"settings-1","severity":"P1","title":"Delete dialog close drops keyboard focus to <body>","fix":"Remove autoFocus from the DELETE input; in Modal capture the opener before children commit, ignore it if inside the panel or disconnected, keep onClose in a ref and depend only on open","command":"/impeccable harden","files":["src/components/ui/Modal.tsx:43","src/components/ui/Modal.tsx:68","src/pages/app/Settings.tsx:278","src/pages/app/Settings.tsx:265"],"source":"both"},
+  {"id":"settings-2","severity":"P1","title":"Toasts unannounced and 3 s long; profile saves silent, errors silent","fix":"role=status aria-live=polite (alert for errors), length-scaled timeout >=4s paused on hover/focus, persistent inline pending-email note, inline Saved tick, error toast in useUpdateProfile.onError","command":"/impeccable harden","files":["src/hooks/useToast.tsx:36","src/hooks/useToast.tsx:44","src/hooks/useProfile.ts:40","src/pages/app/Settings.tsx:76","src/pages/app/Settings.tsx:136"],"source":"both"},
+  {"id":"settings-3","severity":"P1","title":"Row hints 3.9:1 in dark; light Delete button 3.7:1","fix":"Use .muted (slate-400 dark) for row hints; text-rose-700 for .btn-danger in light","command":"/impeccable polish","files":["src/pages/app/Settings.tsx:28","src/index.css:66","src/index.css:86"],"source":"both"},
+  {"id":"settings-4","severity":"P2","title":"Email/password placeholders below 4.5:1","fix":"placeholder slate-500 light / slate-400 dark, or drop placeholders","command":"/impeccable polish","files":["src/index.css:69","src/pages/app/Settings.tsx:215","src/pages/app/Settings.tsx:223"],"source":"audit"},
+  {"id":"settings-5","severity":"P2","title":"36x20 switches, 26px theme chips, 16px fixed-width sliders; switch labels not tappable; radiogroup lacks arrow keys","fix":"44x24 switch with full-row hit area via htmlFor/id; w-full sm:w-48 sliders with 24px thumb; >=40px segmented theme control with roving tabindex","command":"mobile-native","files":["src/components/ui/Switch.tsx:13","src/pages/app/Settings.tsx:21","src/pages/app/Settings.tsx:150","src/pages/app/Settings.tsx:198","src/pages/app/Settings.tsx:201"],"source":"both"},
+  {"id":"settings-6","severity":"P2","title":"Speed/Pitch sliders write to Supabase on every step and can snap back","fix":"Local slider state, commit on release or 300ms debounce, speak a preview on release","command":"/impeccable harden","files":["src/pages/app/Settings.tsx:66","src/pages/app/Settings.tsx:198","src/pages/app/Settings.tsx:201","src/hooks/useProfile.ts:41"],"source":"audit"},
+  {"id":"settings-7","severity":"P2","title":"Export everything silently caps each table at 50,000 rows","fix":"Page with .range() until exhausted or export server-side; include counts; confirm 'Exported N items' inline and in the delete dialog","command":"/impeccable harden","files":["src/pages/app/Settings.tsx:94","src/pages/app/Settings.tsx:248"],"source":"audit"},
+  {"id":"settings-8","severity":"P2","title":"Violet/gradient emphasis (h1, switch, sliders, chip-on, links, focus ring) against neutral direction","fix":"Neutral near-white/near-black solid tokens for on-states, slider fill, selected segment, links, focus ring; solid h1","command":"/impeccable quieter","files":["src/components/ui/Switch.tsx:14","src/pages/app/Settings.tsx:198","src/components/ui/PageHeader.tsx:40","src/index.css:30","src/index.css:140"],"source":"both"},
+  {"id":"settings-9","severity":"P2","title":"Delete account not separated from Export; dialog state sticky and under-described","fix":"Own final Delete card; reset confirmText on close; capitals hint or case-insensitive; in-dialog export status; aria-describedby on Modal","command":"/impeccable clarify","files":["src/pages/app/Settings.tsx:253","src/pages/app/Settings.tsx:57","src/pages/app/Settings.tsx:274","src/components/ui/Modal.tsx:76"],"source":"both"},
+  {"id":"settings-10","severity":"P3","title":"Orphaned last words in hints on phone","fix":"text-wrap: pretty on hint paragraphs","command":"/impeccable typeset","files":["src/pages/app/Settings.tsx:28"],"source":"audit"},
+  {"id":"settings-11","severity":"P3","title":"Tinted hard-coded modal surface and blur glass cards","fix":"Neutral --surface-raised token, solid card fills, one shallow shadow","command":"/impeccable quieter","files":["src/components/ui/Modal.tsx:83","src/components/ui/Card.tsx:16","src/index.css:52"],"source":"audit"},
+  {"id":"settings-12","severity":"P3","title":"Password change has no reveal toggle or inline validation","fix":"Show/hide toggle and inline 8-character check","command":"/impeccable harden","files":["src/pages/app/Settings.tsx:221"],"source":"critique"},
+  {"id":"settings-13","severity":"P3","title":"Cards fade in on every Settings visit; toasts ignore reduced motion","fix":"Remove card mount fade on Settings; add MotionConfig reducedMotion='user' at root; switch thumb via transform","command":"remove-animations","files":["src/components/ui/Card.tsx:16","src/hooks/useToast.tsx:47","src/components/ui/Switch.tsx:17"],"source":"audit"}
+ ]}
+```
