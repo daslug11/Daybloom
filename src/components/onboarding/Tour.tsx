@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useOverlay } from '../../hooks/useOverlay';
 import { useUpdateProfile } from '../../hooks/useProfile';
 
 interface Step {
@@ -53,10 +54,10 @@ export default function Tour({ onClose }: { onClose: () => void }) {
     };
   }, [step.target]);
 
+  // Escape (top-most layer only), focus containment and focus return come from the shared layer stack.
+  useOverlay({ open: true, onEscape: () => finish(), container: card });
   useEffect(() => {
-    card.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') finish();
       if (e.key === 'ArrowRight') setI((n) => Math.min(n + 1, STEPS.length - 1));
       if (e.key === 'ArrowLeft') setI((n) => Math.max(n - 1, 0));
     };
@@ -83,8 +84,8 @@ export default function Tour({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[70]" aria-live="polite">
       {rect ? (
         <div
-          className="pointer-events-none absolute rounded-2xl ring-2 ring-violet-400 transition-all duration-200"
-          style={{ left: rect.left - pad, top: rect.top - pad, width: rect.width + pad * 2, height: rect.height + pad * 2, boxShadow: '0 0 0 9999px rgba(3,2,10,0.65)' }}
+          className="pointer-events-none absolute rounded-2xl ring-2 ring-ink/40 transition-all duration-200"
+          style={{ left: rect.left - pad, top: rect.top - pad, width: rect.width + pad * 2, height: rect.height + pad * 2, boxShadow: '0 0 0 9999px rgba(0,0,0,0.65)' }}
         />
       ) : (
         <div className="absolute inset-0 bg-black/65" />
@@ -95,18 +96,18 @@ export default function Tour({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="tour-title"
-        className="absolute rounded-2xl border border-violet-400/40 bg-white p-5 shadow-2xl outline-none dark:bg-[#15121f]"
+        className="absolute rounded-card border border-line-strong bg-overlay p-5 shadow-modal outline-none"
         style={style}
       >
-        <div className="faint text-[11px] font-semibold uppercase tracking-wider">
+        <div className="faint text-xs font-medium tabular-nums">
           Step {i + 1} of {STEPS.length}
         </div>
-        <h2 id="tour-title" className="mt-1 text-base font-bold">
+        <h2 id="tour-title" className="mt-1 text-base font-semibold">
           {step.title}
         </h2>
         <p className="muted mt-1.5 text-sm leading-relaxed">{step.body}</p>
         <div className="mt-4 flex items-center gap-2">
-          <button className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-400" onClick={finish}>
+          <button className="text-sm font-medium text-muted hover:underline" onClick={finish}>
             Skip tour
           </button>
           <div className="ml-auto flex gap-2">
@@ -116,11 +117,11 @@ export default function Tour({ onClose }: { onClose: () => void }) {
               </button>
             )}
             {i < STEPS.length - 1 ? (
-              <button className="btn-primary !px-3 !py-1.5" onClick={() => setI(i + 1)} autoFocus>
+              <button className="btn-primary !px-3 !py-1.5" onClick={() => setI(i + 1)} data-autofocus>
                 Next
               </button>
             ) : (
-              <button className="btn-primary !px-3 !py-1.5" onClick={finish} autoFocus>
+              <button className="btn-primary !px-3 !py-1.5" onClick={finish} data-autofocus>
                 Done
               </button>
             )}

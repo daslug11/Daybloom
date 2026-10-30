@@ -29,7 +29,7 @@ Written by the `improve-animations` skill (Emil Kowalski's animation philosophy)
 
 | # | Title | Severity | Status |
 |---|---|---|---|
-| 001 | [Motion tokens](001-motion-tokens.md) | MEDIUM | TODO |
+| 001 | [Motion tokens](001-motion-tokens.md) | MEDIUM | DONE (Phase 2) |
 | 002 | [No motion on frequent/keyboard surfaces](002-no-motion-on-frequent-surfaces.md) | HIGH | TODO |
 | 003 | [Reduced motion keeps feedback](003-reduced-motion-keep-feedback.md) | MEDIUM | TODO |
 | 004 | [Transform, not layout properties](004-transform-not-layout.md) | MEDIUM | TODO |

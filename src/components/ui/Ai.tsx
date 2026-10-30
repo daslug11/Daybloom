@@ -13,8 +13,8 @@ export function AiAllowance({ className }: { className?: string }) {
       className={cn(
         'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium',
         data.enabled && data.remaining > 0
-          ? 'border-violet-400/40 bg-violet-500/10 text-violet-700 dark:text-violet-200'
-          : 'border-slate-900/10 bg-slate-900/5 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-400',
+          ? 'border-ink/40 bg-ink/[0.06] text-ink'
+          : 'border-line bg-raised text-muted',
         className,
       )}
       title={data.enabled ? `You can use ✨ AI actions ${data.remaining} more times today (resets at midnight UTC).` : data.message}

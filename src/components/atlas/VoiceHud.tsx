@@ -11,6 +11,7 @@ import { useInvalidateUserData } from '../../hooks/useInvalidateAll';
 import { useProfile, useToday } from '../../hooks/useProfile';
 import { ApiError, atlasStream } from '../../lib/api';
 import { greeting } from '../../lib/dates';
+import { useOverlay } from '../../hooks/useOverlay';
 import { PlanCard } from '../plans/PlanCard';
 import { createRecognizer, speak, speechInputSupported, speechOutputSupported, stopSpeaking, type Recognizer } from '../../lib/speech';
 import { cn } from '../../lib/utils';
@@ -211,20 +212,21 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase === 'idle']);
 
+  // Escape and focus containment come from the shared layer stack, so a dialog opened
+  // on top of the HUD (e.g. editing a plan) gets Escape first.
+  const isTopLayer = useOverlay({ open: true, onEscape: close, container: root });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A dialog opened on top (e.g. editing a plan) handles its own keys.
-      if ([...document.querySelectorAll('[role="dialog"]')].some((d) => d !== root.current)) return;
-      if (e.key === 'Escape') close();
-      if (e.code === 'Space' && !(e.target instanceof HTMLInputElement)) {
-        e.preventDefault();
-        if (phaseRef.current === 'listening') stopListening();
-        else if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') listen();
-      }
+      if (e.code !== 'Space' || !isTopLayer()) return;
+      // Space on a focused control (Exit, the keyboard toggle, a plan card button) activates that control.
+      if ((e.target as HTMLElement | null)?.closest('button, a, input, textarea, select, [role="button"]')) return;
+      e.preventDefault();
+      if (phaseRef.current === 'listening') stopListening();
+      else if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') listen();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [close, listen]);
+  }, [listen, isTopLayer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => {
     abort.current?.abort();
@@ -291,7 +293,7 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   return createPortal(
-    <div ref={root} className="fixed inset-0 z-[90] overflow-hidden bg-[#020409] font-mono text-cyan-100" role="dialog" aria-modal="true" aria-label="Atlas voice mode">
+    <div ref={root} tabIndex={-1} className="fixed inset-0 z-[90] overflow-hidden bg-[#020409] font-mono text-cyan-100 outline-none" role="dialog" aria-modal="true" aria-label="Atlas voice mode">
       <style>{HUD_CSS}</style>
       <div className="hud-grid pointer-events-none absolute inset-0" aria-hidden />
       <div className="hud-scan pointer-events-none absolute inset-0" aria-hidden />
@@ -358,6 +360,7 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
         <button
           onClick={() => (phase === 'listening' ? stopListening() : phase === 'idle' || phase === 'speaking' ? listen() : undefined)}
           disabled={phase === 'booting' || phase === 'thinking'}
+          data-autofocus
           className="absolute left-1/2 top-1/2 flex h-[34%] w-[34%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-cyan-300"
           aria-label={phase === 'listening' ? 'Stop listening' : 'Talk to Atlas (Space)'}
         >

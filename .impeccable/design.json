@@ -1,112 +1,76 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-29T21:54:16Z",
+  "generatedAt": "2026-10-30T02:30:00Z",
   "title": "Design System: Daybloom",
   "extensions": {
     "colorMeta": {
-      "violet-accent": {
+      "ink": {
         "role": "primary",
-        "displayName": "Brand Violet",
-        "canonical": "#7c3aed",
+        "displayName": "Ink (emphasis)",
+        "canonical": "#f4f4f5",
         "tonalRamp": [
-          "#2e1065",
-          "#4c1d95",
-          "#5b21b6",
-          "#6d28d9",
-          "#7c3aed",
-          "#8b5cf6",
-          "#a78bfa",
-          "#ddd6fe"
+          "#0b0b0c",
+          "#151517",
+          "#1d1d20",
+          "#2a2a2e",
+          "#3d3d43",
+          "#6b6b73",
+          "#8d8d95",
+          "#a8a8b0",
+          "#f4f4f5"
         ]
       },
-      "atlas-cyan": {
+      "atlas": {
         "role": "tertiary",
         "displayName": "Atlas Cyan",
-        "canonical": "#22d3ee",
+        "canonical": "#5ee3f5",
         "tonalRamp": [
-          "#083344",
-          "#164e63",
-          "#155e75",
           "#0e7490",
-          "#0891b2",
-          "#22d3ee",
-          "#67e8f9",
-          "#cffafe"
+          "#5ee3f5"
         ]
       },
-      "ink-night": {
+      "canvas": {
         "role": "neutral",
-        "displayName": "Night Ink",
-        "canonical": "#08070f",
+        "displayName": "Canvas",
+        "canonical": "#0b0b0c",
         "tonalRamp": [
-          "#08070f",
-          "#0d0c16",
-          "#13111f",
-          "#1c1a2b",
-          "#2a2838",
-          "#4b4a57",
-          "#94a3b8",
-          "#e2e8f0"
+          "#0b0b0c",
+          "#f3f3f4"
         ]
       },
-      "paper-mist": {
-        "role": "neutral",
-        "displayName": "Paper Mist",
-        "canonical": "#f1f5f9",
-        "tonalRamp": [
-          "#0f172a",
-          "#1e293b",
-          "#334155",
-          "#475569",
-          "#64748b",
-          "#94a3b8",
-          "#e2e8f0",
-          "#f8fafc"
-        ]
-      },
-      "danger-rose": {
+      "danger": {
         "role": "semantic",
-        "displayName": "Danger Rose",
-        "canonical": "#f43f5e",
+        "displayName": "Danger",
+        "canonical": "#fb7185",
         "tonalRamp": [
-          "#4c0519",
-          "#881337",
-          "#9f1239",
           "#be123c",
-          "#e11d48",
-          "#f43f5e",
-          "#fda4af",
-          "#ffe4e6"
+          "#fb7185"
         ]
       },
-      "caution-amber": {
+      "warning": {
         "role": "semantic",
-        "displayName": "Caution Amber",
-        "canonical": "#f59e0b",
+        "displayName": "Warning",
+        "canonical": "#fbbf24",
         "tonalRamp": [
-          "#451a03",
-          "#78350f",
-          "#92400e",
-          "#b45309",
-          "#d97706",
-          "#f59e0b",
-          "#fcd34d",
-          "#fef3c7"
+          "#a14c06",
+          "#fbbf24"
         ]
       },
-      "done-emerald": {
+      "success": {
         "role": "semantic",
-        "displayName": "Done Emerald",
-        "canonical": "#059669",
+        "displayName": "Success",
+        "canonical": "#4ade80",
         "tonalRamp": [
-          "#022c22",
-          "#064e3b",
-          "#065f46",
-          "#047857",
-          "#059669",
-          "#10b981",
-          "#6ee7b7",
-          "#d1fae5"
+          "#15803d",
+          "#4ade80"
+        ]
+      },
+      "hud-black": {
+        "role": "neutral",
+        "displayName": "HUD Black",
+        "canonical": "#020409",
+        "tonalRamp": [
+          "#020409"
         ]
       }
     },
@@ -117,11 +81,11 @@
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Page titles and the dashboard greeting."
+        "purpose": "Page titles (.page-title) and the dashboard greeting."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Card titles."
+        "purpose": "Card and dialog titles."
       },
       "body": {
         "displayName": "Body",
@@ -129,59 +93,60 @@
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Uppercase form labels and kickers."
-      },
-      "micro": {
-        "displayName": "Micro",
-        "purpose": "Chips, timestamps, Planner block text."
+        "purpose": "Sentence-case form labels and small headings (.label)."
       },
       "mono": {
-        "displayName": "HUD Mono",
-        "purpose": "Voice HUD only (font not loaded today)."
+        "displayName": "Mono",
+        "purpose": "Keyboard hints and the voice HUD (system monospace)."
       }
     },
     "shadows": [
       {
-        "name": "violet-glow",
-        "value": "0 8px 30px -8px rgba(124,58,237,0.7)",
-        "purpose": "Primary button glow (decorative; to be removed)."
+        "name": "card",
+        "value": "var(--shadow-card)",
+        "purpose": "Cards, ghost buttons, Planner blocks."
       },
       {
-        "name": "card-light",
-        "value": "0 1px 2px 0 rgba(0,0,0,0.05)",
-        "purpose": "Cards in the light theme."
+        "name": "button",
+        "value": "var(--shadow-button)",
+        "purpose": "Primary buttons (inset highlight)."
       },
       {
-        "name": "overlay",
-        "value": "0 25px 50px -12px rgba(0,0,0,0.25)",
-        "purpose": "Modals, Atlas panel, toasts."
+        "name": "pop",
+        "value": "var(--shadow-pop)",
+        "purpose": "Menus, toasts, floating button, active block."
       },
       {
-        "name": "now-line",
-        "value": "0 0 8px 1px rgba(236,72,153,0.7)",
-        "purpose": "Planner current-time line."
+        "name": "modal",
+        "value": "var(--shadow-modal)",
+        "purpose": "Dialogs, Atlas panel, palette, tour."
       }
     ],
     "motion": [
       {
-        "name": "fade-in",
-        "value": "250ms ease-out, opacity 0→1, translateY 4px→0",
-        "purpose": "Every Card and Modal on mount."
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Default UI easing."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.77, 0, 0.175, 1)",
+        "purpose": "Elements moving on screen."
+      },
+      {
+        "name": "ease-drawer",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "Sheets and side panels."
       },
       {
         "name": "press",
-        "value": "scale(0.97) on :active",
+        "value": "160ms ease-out, scale(0.97) on :active",
         "purpose": "All .btn variants."
       },
       {
-        "name": "transition-default",
-        "value": "150ms cubic-bezier(0.4,0,0.2,1)",
-        "purpose": "Tailwind `transition` on hovers and toggles."
-      },
-      {
-        "name": "reduced-motion",
-        "value": "all animation/transition durations → 0.01ms",
-        "purpose": "Global prefers-reduced-motion rule."
+        "name": "fade-in",
+        "value": "200ms ease-out",
+        "purpose": "Dialogs and panels on open."
       }
     ],
     "breakpoints": [
@@ -204,57 +169,57 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Main action on a screen (today: violet gradient with glow).",
+      "description": "Main action in an area: ink fill, inverse text.",
       "html": "<button class=\"ds-btn-primary\">Process inbox</button>",
-      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:12px;padding:10px 16px;font:600 14px/1.25 Inter,system-ui,sans-serif;color:#fff;background:linear-gradient(90deg,#7c3aed,#6366f1,#3b82f6);box-shadow:0 8px 30px -8px rgba(124,58,237,.7);cursor:pointer;transition:filter .15s,transform .15s}.ds-btn-primary:hover{filter:brightness(1.1)}.ds-btn-primary:active{transform:scale(.97)}.ds-btn-primary:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}"
+      "css": ".ds-btn-primary{font:600 14px/1.25 Inter,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;min-height:40px;border-radius:10px;padding:8px 16px;cursor:pointer;transition:transform .16s cubic-bezier(.23,1,.32,1);border:0;color:#0b0b0c;background:#f4f4f5;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 1px 2px rgba(0,0,0,.5)}.ds-btn-primary:active{transform:scale(.97)}"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "Secondary actions.",
+      "description": "Secondary action: surface fill with a strong hairline.",
       "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
-      "css": ".ds-btn-ghost{border-radius:12px;padding:10px 16px;font:600 14px/1.25 Inter,system-ui,sans-serif;color:#e2e8f0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:background .15s,transform .15s}.ds-btn-ghost:hover{background:rgba(255,255,255,.1)}.ds-btn-ghost:active{transform:scale(.97)}.ds-btn-ghost:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}"
+      "css": ".ds-btn-ghost{font:600 14px/1.25 Inter,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;min-height:40px;border-radius:10px;padding:8px 16px;cursor:pointer;transition:transform .16s cubic-bezier(.23,1,.32,1);border:1px solid #3d3d43;color:#f4f4f5;background:#151517}.ds-btn-ghost:hover{background:#1d1d20}.ds-btn-ghost:active{transform:scale(.97)}"
     },
     {
       "name": "AI Button",
       "kind": "button",
       "refersTo": "button-ai",
-      "description": "✨ actions that use one AI action from the daily allowance.",
+      "description": "✨ AI action: cyan tint, the only cyan outside Atlas itself.",
       "html": "<button class=\"ds-btn-ai\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z\"/></svg>Organize</button>",
-      "css": ".ds-btn-ai{display:inline-flex;align-items:center;gap:8px;border-radius:12px;padding:10px 16px;font:600 14px/1.25 Inter,system-ui,sans-serif;color:#ddd6fe;background:rgba(139,92,246,.1);border:1px solid rgba(167,139,250,.4);cursor:pointer;transition:background .15s}.ds-btn-ai:hover{background:rgba(139,92,246,.2)}.ds-btn-ai:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}"
+      "css": ".ds-btn-ai{font:600 14px/1.25 Inter,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;min-height:40px;border-radius:10px;padding:8px 16px;cursor:pointer;transition:transform .16s cubic-bezier(.23,1,.32,1);border:1px solid rgba(94,227,245,.4);color:#5ee3f5;background:rgba(94,227,245,.1)}.ds-btn-ai:active{transform:scale(.97)}"
     },
     {
       "name": "Text Input",
       "kind": "input",
       "refersTo": "input",
-      "description": "Every form field.",
+      "description": "Surface fill, control outline; focus turns the border to ink.",
       "html": "<input class=\"ds-input\" placeholder=\"Capture a thought or task…\">",
-      "css": ".ds-input{width:260px;border-radius:12px;padding:10px 14px;font:400 14px/1.4 Inter,system-ui,sans-serif;color:#f1f5f9;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);outline:none;transition:border-color .15s,box-shadow .15s}.ds-input::placeholder{color:#64748b}.ds-input:focus{border-color:#a78bfa;box-shadow:0 0 0 3px rgba(139,92,246,.3)}"
+      "css": ".ds-input{width:100%%;border-radius:10px;border:1px solid rgba(107,107,115,.7);background:#151517;color:#f4f4f5;padding:10px 14px;font:400 14px/1.4 Inter,system-ui,sans-serif}.ds-input:focus{outline:none;border-color:#f4f4f5;box-shadow:0 0 0 3px rgba(244,244,245,.12)}"
     },
     {
       "name": "Filter Chips",
       "kind": "chip",
       "refersTo": "chip-on",
-      "description": "Filters, tags and focus areas.",
+      "description": "Off: surface + hairline + muted text. On: ink fill.",
       "html": "<span class=\"ds-chip ds-chip-on\">Inbox 4</span> <span class=\"ds-chip\">Ideas</span>",
-      "css": ".ds-chip{display:inline-flex;align-items:center;gap:6px;border-radius:9999px;padding:4px 12px;font:500 12px/1.3 Inter,system-ui,sans-serif;color:#cbd5e1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}.ds-chip-on{color:#ddd6fe;background:rgba(139,92,246,.2);border-color:rgba(167,139,250,.5)}"
+      "css": ".ds-chip{display:inline-flex;min-height:28px;align-items:center;border-radius:9999px;padding:4px 12px;font:500 12px/1 Inter,system-ui,sans-serif;border:1px solid #3d3d43;background:#151517;color:#a8a8b0}.ds-chip[aria-pressed=true]{background:#f4f4f5;border-color:#f4f4f5;color:#0b0b0c}"
     },
     {
       "name": "Card",
       "kind": "card",
       "refersTo": "card",
-      "description": "Glass card used for every dashboard and page section.",
+      "description": "Solid surface, hairline border, shallow shadow. No blur.",
       "html": "<div class=\"ds-card\"><h3 class=\"ds-card-title\">Top tasks</h3><p class=\"ds-card-body\">Finish the stats problem set</p></div>",
-      "css": ".ds-card{width:280px;border-radius:16px;padding:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(24px)}.ds-card-title{margin:0 0 12px;font:600 14px/1.25 Inter,system-ui,sans-serif;letter-spacing:.025em;color:#f1f5f9}.ds-card-body{margin:0;font:400 14px/1.5 Inter,system-ui,sans-serif;color:#94a3b8}"
+      "css": ".ds-card{border-radius:14px;border:1px solid #2a2a2e;background:#151517;padding:20px;color:#f4f4f5;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 1px 2px rgba(0,0,0,.5)}"
     },
     {
       "name": "Sidebar Nav Item",
       "kind": "nav",
       "refersTo": "nav",
-      "description": "Main navigation row; active state shown.",
+      "description": "Icon plus label; active is a raised fill with a hairline ring.",
       "html": "<a class=\"ds-nav ds-nav-active\">Brain Dump <span class=\"ds-badge\">4</span></a><a class=\"ds-nav\">Tasks</a>",
-      "css": ".ds-nav{display:flex;align-items:center;gap:12px;width:200px;border-radius:12px;padding:10px 12px;font:500 14px/1.25 Inter,system-ui,sans-serif;color:#94a3b8;text-decoration:none}.ds-nav:hover{background:rgba(255,255,255,.05);color:#fff}.ds-nav-active{color:#fff;background:rgba(139,92,246,.15);box-shadow:inset 0 0 0 1px rgba(167,139,250,.3)}.ds-badge{margin-left:auto;border-radius:9999px;padding:0 6px;font:700 11px/1.6 Inter,system-ui,sans-serif;color:#fff;background:#7c3aed}"
+      "css": ".ds-nav{display:flex;align-items:center;gap:12px;border-radius:10px;padding:8px 12px;font:500 14px/1.25 Inter,system-ui,sans-serif;color:#a8a8b0}.ds-nav[aria-current=page]{background:#1d1d20;color:#f4f4f5;box-shadow:inset 0 0 0 1px #3d3d43}"
     },
     {
       "name": "Atlas Orb",
@@ -267,17 +232,17 @@
   ],
   "narrative": {
     "northStar": "The Clear Head",
-    "overview": "Daybloom exists to get thoughts out of a student's head and into a clear, sorted place. The interface should feel like that moment: nothing competing for attention, the next action obvious, everything else quiet. The confirmed character is crisp, precise and quick, and surfaces should feel tactile and confident. Today's implementation is dark-first glass over a violet-tinted near-black; the confirmed direction moves emphasis to neutral near-white, reserves cyan for Atlas, uses a neutral near-black, and keeps the voice HUD as the one showpiece.",
+    "overview": "Daybloom exists to get thoughts out of a student's head and into a clear, sorted place. The interface is crisp, precise and quick, with tactile, confident surfaces. Dark-first on an untinted near-black with a complete light theme; emphasis is ink (near-white in dark, near-black in light); colour appears only for meaning (priority, status, calendar identity) and cyan only for Atlas. The voice HUD is the one showpiece.",
     "keyCharacteristics": [
-      "Dark-first, with a complete light theme.",
-      "One sans family (Inter) for everything outside the HUD; monospace only in the HUD.",
-      "Dense, card-based app screens (Operate mode); a marketing landing page (Persuade mode).",
+      "Dark-first, light theme complete; every text role passes WCAG AA on every surface.",
+      "One sans family (Inter); system monospace for keyboard hints and the HUD.",
+      "Solid surfaces with shallow shadows; no blur, gradients or glows.",
       "Colour reserved for meaning: priority, status, calendar identity and Atlas."
     ],
     "rules": [
       {
         "name": "The Atlas Colour Rule",
-        "body": "Cyan appears only where Atlas or AI is present. Anything else that is cyan today (including manual repeating blocks) is a bug to fix.",
+        "body": "Cyan appears only where Atlas or AI is present. Manual repeating blocks, the time chip and type badges are neutral.",
         "section": "colors"
       },
       {
@@ -287,23 +252,23 @@
       },
       {
         "name": "The No-Ornament Type Rule",
-        "body": "Headings are solid colour. Hierarchy comes from size and weight, never gradients. (Today: 77 gradient-text findings per theme.)",
+        "body": "Headings are solid colour. Hierarchy comes from size and weight, never gradients, and labels are never uppercase-tracked.",
         "section": "typography"
       }
     ],
     "dos": [
-      "Do keep the dark theme as the default and keep the light theme complete.",
-      "Do keep every page's header as title + one plain sentence saying what the page is for.",
-      "Do use cyan only for Atlas and AI (The Atlas Colour Rule).",
-      "Do respect prefers-reduced-motion: the global rule in index.css reduces all motion to 0.01ms.",
-      "Do keep the voice HUD as the single bold surface."
+      "Use semantic roles (bg-surface, text-muted, border-line), never raw palette classes.",
+      "Keep dark as the default and the light theme complete; check contrast in both.",
+      "Use cyan only for Atlas and AI.",
+      "Register any new overlay with useOverlay.",
+      "Respect prefers-reduced-motion."
     ],
     "donts": [
-      "Don't use gradient text, gradient buttons or coloured glows in the everyday UI (confirmed direction).",
-      "Don't add violet or purple emphasis; emphasis moves to neutral near-white (confirmed direction).",
-      "Don't tint the dark background or add background glows (confirmed direction).",
-      "Don't use 10px text for anything a user needs to read.",
-      "Don't invent numbers, testimonials or \"insights\" in any design (PRODUCT.md commitment)."
+      "Don't use gradient text, gradient buttons, coloured glows or backdrop blur in the everyday UI.",
+      "Don't add violet or any other brand hue; emphasis is ink.",
+      "Don't tint the dark background.",
+      "Don't use text smaller than 12px or uppercase-tracked labels.",
+      "Don't invent numbers, testimonials or insights."
     ]
   }
 }

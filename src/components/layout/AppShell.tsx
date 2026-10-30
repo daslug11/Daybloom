@@ -101,7 +101,7 @@ export function AppShell() {
   return (
     <AppActionsContext.Provider value={actions}>
       <TimerProvider>
-        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow">
+        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:bg-overlay focus:px-3 focus:py-2 focus:text-sm focus:shadow">
           Skip to content
         </a>
         <div className="flex min-h-screen">
@@ -126,7 +126,7 @@ export function AppShell() {
         <div className="fixed bottom-20 right-4 z-30 flex flex-col items-end gap-3 md:bottom-6 md:right-6">
           <button
             onClick={() => openCapture()}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg shadow-violet-900/30 transition hover:bg-violet-500 focus-visible:ring-offset-2"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-ink shadow-pop transition hover:bg-accent/90 focus-visible:ring-offset-2"
             aria-label="Capture (N)"
             title="Capture a note or task (N)"
           >

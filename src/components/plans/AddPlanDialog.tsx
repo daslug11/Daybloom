@@ -101,7 +101,7 @@ export function AddPlanDialog({ plan, onClose, layer }: { plan: Plan; onClose: (
       {conflicts.length ? (
         <section aria-label="Conflicts">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-300">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-warning">
               <AlertTriangle size={15} aria-hidden /> {conflicts.length} session{conflicts.length === 1 ? '' : 's'} overlap{conflicts.length === 1 ? 's' : ''} something
             </p>
             <div className="ml-auto flex gap-1 text-xs">
@@ -120,7 +120,7 @@ export function AddPlanDialog({ plan, onClose, layer }: { plan: Plan; onClose: (
             {conflicts.map((c) => {
               const choice = choiceFor(c);
               return (
-                <li key={c.key} className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-2.5 text-sm" aria-label={`Conflict on ${dayLabel(c.occ.day)}`}>
+                <li key={c.key} className="rounded-xl border border-warning/40 bg-warning/5 p-2.5 text-sm" aria-label={`Conflict on ${dayLabel(c.occ.day)}`}>
                   <p>
                     <strong>{dayLabel(c.occ.day)}</strong> · {formatMinutes(c.occ.start)} {c.occ.title}
                   </p>
@@ -153,21 +153,21 @@ export function AddPlanDialog({ plan, onClose, layer }: { plan: Plan; onClose: (
           </ul>
         </section>
       ) : (
-        <p className="flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-300">
-          <Check size={15} aria-hidden /> No conflicts with your Planner{events.length ? ' or calendar' : ''}.
+        <p className="flex items-center gap-1.5 text-sm text-success">
+          <Check size={15} aria-hidden /> No conflicts with your Planner{events.length ? 'or calendar' : ''}.
         </p>
       )}
       {endDate > addDays(today, CALENDAR_HORIZON_DAYS) && events.length > 0 && (
         <p className="faint mt-2 text-xs">Calendar events are checked up to {dayLabel(addDays(today, CALENDAR_HORIZON_DAYS))}.</p>
       )}
 
-      <div className="mt-4 space-y-2 border-t border-slate-900/10 pt-4 text-sm dark:border-white/10">
+      <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
         <label className="flex items-center gap-2">
-          <input type="checkbox" className="accent-violet-600" checked={habit} onChange={(e) => setHabit(e.target.checked)} />
+          <input type="checkbox" className="accent-ink" checked={habit} onChange={(e) => setHabit(e.target.checked)} />
           Also track as a habit <span className="faint text-xs">(checking off a session logs it)</span>
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" className="accent-violet-600" checked={goal} onChange={(e) => setGoal(e.target.checked)} />
+          <input type="checkbox" className="accent-ink" checked={goal} onChange={(e) => setGoal(e.target.checked)} />
           Also create a goal <span className="faint text-xs">({total} sessions)</span>
         </label>
         {goal && <input className="input !py-1.5" maxLength={200} value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} aria-label="Goal title" />}

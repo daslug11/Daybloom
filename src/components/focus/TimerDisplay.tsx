@@ -22,14 +22,14 @@ export function TimerView({ mode, remaining, total, running, taskTitle, size = 2
   const progress = total ? 1 - remaining / total : 0;
   return (
     <div className="flex flex-col items-center gap-5">
-      <div className="flex rounded-full border border-slate-900/10 bg-white/60 p-1 dark:border-white/10 dark:bg-white/5" role="tablist" aria-label="Timer mode">
+      <div className="flex rounded-full border border-line bg-surface p-1" role="tablist" aria-label="Timer mode">
         {(['work', 'rest'] as const).map((m) => (
           <button
             key={m}
             role="tab"
             aria-selected={mode === m}
             onClick={() => onMode?.(m)}
-            className={cn('rounded-full px-4 py-1.5 text-sm font-semibold transition', mode === m ? 'bg-violet-600 text-white' : 'muted')}
+            className={cn('rounded-full px-4 py-1.5 text-sm font-semibold transition', mode === m ? 'bg-accent text-accent-ink' : 'muted')}
           >
             {m === 'work' ? 'Focus' : 'Break'}
           </button>
@@ -49,7 +49,7 @@ export function TimerView({ mode, remaining, total, running, taskTitle, size = 2
         </button>
         <button
           onClick={running ? onPause : onStart}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg shadow-violet-900/30 transition hover:bg-violet-500"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-ink shadow-button transition hover:bg-accent/90"
           aria-label={running ? 'Pause timer' : 'Start timer'}
         >
           {running ? <Pause size={24} /> : <Play size={24} className="ml-0.5" />}

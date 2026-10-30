@@ -176,7 +176,7 @@ export function ConvertDialog({ note, kind, selection, onClose, onDone }: Props)
           )}
           {note.state !== 'archived' && (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="accent-violet-600" checked={archive} onChange={(e) => setArchive(e.target.checked)} />
+              <input type="checkbox" className="accent-ink" checked={archive} onChange={(e) => setArchive(e.target.checked)} />
               Archive the note afterwards (it stays linked)
             </label>
           )}

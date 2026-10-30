@@ -74,7 +74,7 @@ export default function SignUp() {
           </p>
         </div>
         <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 accent-violet-600" />
+          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 accent-ink" />
           <span>
             I agree to the{' '}
             <Link to="/terms" className="link" target="_blank">

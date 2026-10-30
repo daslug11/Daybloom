@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { CALENDAR_EMOJIS, detectCalendarType, gradient, isGoogleEmbed, looksLikeFeed, validateCalendarUrl } from '../../lib/calendars';
+import { CALENDAR_EMOJIS, detectCalendarType, calendarTile, isGoogleEmbed, looksLikeFeed, validateCalendarUrl } from '../../lib/calendars';
 import type { CalendarGroup, CalendarLink } from '../../lib/types';
 import type { CalendarDraft } from '../../hooks/data/calendars';
 import { EmojiPicker } from '../ui/EmojiPicker';
@@ -57,9 +57,10 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
     <Modal open={open} onClose={onClose} title={initial ? 'Edit calendar ✏️' : 'Add calendar 📅'}>
       <form onSubmit={submit} className="space-y-5" noValidate>
         {/* Live preview */}
-        <div className="flex items-center gap-3 overflow-hidden rounded-2xl border border-slate-900/10 bg-white/40 dark:border-white/10 dark:bg-white/5">
-          <div className="h-16 w-1.5 self-stretch" style={{ background: gradient(draft.color, '180deg') }} />
-          <span className="text-2xl">{draft.emoji}</span>
+        <div className="flex items-center gap-3 overflow-hidden rounded-2xl border border-line bg-surface">
+          <span className="ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-2xl" style={calendarTile(draft.color)}>
+            {draft.emoji}
+          </span>
           <div className="min-w-0 py-3">
             <div className="truncate font-semibold">{draft.name || 'My calendar'}</div>
             <TypeBadge type={type} className="mt-1" />
@@ -77,7 +78,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             aria-invalid={nameError}
           />
-          {nameError && <p className="mt-1.5 text-xs text-rose-500">Give it a name so future-you knows what it is ✍️</p>}
+          {nameError && <p className="mt-1.5 text-xs text-danger">Give it a name so future-you knows what it is ✍️</p>}
         </div>
 
         <div>
@@ -87,7 +88,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
           </div>
           <input
             id="cal-url"
-            className={`input font-mono text-xs ${showError ? '!border-rose-400 !ring-rose-500/30' : ''}`}
+            className={`input font-mono text-xs ${showError ? '!border-danger !ring-danger/30' : ''}`}
             placeholder="https://calendar.google.com/calendar/embed?src=…"
             value={draft.url}
             onChange={(e) => setDraft({ ...draft, url: e.target.value, sync: syncTouched ? draft.sync : looksLikeFeed(e.target.value) })}
@@ -104,7 +105,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 id="cal-url-help"
-                className="mt-1.5 flex items-center gap-1.5 text-xs text-rose-500"
+                className="mt-1.5 flex items-center gap-1.5 text-xs text-danger"
               >
                 <AlertCircle size={13} /> {urlError}
               </motion.p>
@@ -118,7 +119,7 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
           </AnimatePresence>
         </div>
 
-        <div className="rounded-2xl border border-slate-900/10 bg-white/40 p-3 dark:border-white/10 dark:bg-white/5">
+        <div className="rounded-2xl border border-line bg-surface p-3">
           <div className="flex items-center gap-3">
             <Switch
               checked={!!draft.sync}
@@ -134,15 +135,15 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
             </div>
           </div>
           {draft.sync && draft.url && !looksLikeFeed(draft.url) && !urlError && (
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            <p className="mt-2 text-xs text-warning">
               ⚠️ This doesn't look like an ICS feed{isGoogleEmbed(draft.url) ? ' (it\'s a Google embed link)' : ''}. Sync may fail — use the secret iCal address.
             </p>
           )}
-          <button type="button" className="mt-2 text-xs font-semibold text-violet-600 hover:underline dark:text-violet-300" onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}>
+          <button type="button" className="mt-2 text-xs font-semibold text-ink hover:underline" onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}>
             {showHelp ? 'Hide' : '🕵️ How do I find my secret ICS address?'}
           </button>
           {showHelp && (
-            <div className="mt-3 border-t border-slate-900/10 pt-3 dark:border-white/10">
+            <div className="mt-3 border-t border-line pt-3">
               <IcsHelp />
             </div>
           )}

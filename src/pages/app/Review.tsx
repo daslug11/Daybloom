@@ -28,7 +28,6 @@ export default function Review() {
   const start = addDays(today, -6);
   const prevStart = addDays(today, -13);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
   const s = useMemo(() => {
     const all = tasks.data ?? [];
@@ -116,10 +115,10 @@ export default function Review() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {tiles.map((t) => (
               <Card key={t.label} className="!p-4">
-                <p className="muted text-xs font-semibold uppercase tracking-wider">{t.label}</p>
+                <p className="muted text-xs font-medium">{t.label}</p>
                 <p className="mt-1 text-3xl font-extrabold tabular-nums">{t.value}</p>
                 <p className="muted mt-0.5 text-xs">{t.sub}</p>
-                <p className="faint mt-2 text-[11px] leading-snug">{t.how}</p>
+                <p className="faint mt-2 text-xs leading-snug">{t.how}</p>
               </Card>
             ))}
           </div>
@@ -159,17 +158,17 @@ export default function Review() {
               <div className="h-52" role="img" aria-label="Tasks completed and habits done per day this week">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={s.perDay} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'} vertical={false} />
-                    <XAxis dataKey="day" tick={{ fontSize: 12, fill: dark ? '#94a3b8' : '#475569' }} axisLine={false} tickLine={false} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: dark ? '#94a3b8' : '#475569' }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ background: dark ? '#14112a' : '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 12, fontSize: 12 }} />
-                    <Bar dataKey="Tasks" fill="#8b5cf6" radius={[5, 5, 0, 0]} isAnimationActive={false} />
-                    <Bar dataKey="Habits" fill="#3b82f6" radius={[5, 5, 0, 0]} isAnimationActive={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--line))" vertical={false} />
+                    <XAxis dataKey="day" tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'rgb(var(--muted))' }} axisLine={false} tickLine={false} />
+                    <Tooltip cursor={{ fill: 'rgb(var(--ink) / 0.05)' }} contentStyle={{ background: 'rgb(var(--overlay))', border: '1px solid rgb(var(--line-strong))', borderRadius: 10, fontSize: 12, color: 'rgb(var(--ink))' }} />
+                    <Bar dataKey="Tasks" fill="rgb(var(--ink))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="Habits" fill="rgb(var(--faint))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
               <p className="faint mt-2 text-xs">
-                Purple: tasks completed · Blue: habits done · Brain Dump: {s.captured} captured, {s.processed} processed
+                Dark bars: tasks completed · Light bars: habits done · Brain Dump: {s.captured} captured, {s.processed} processed
               </p>
             </Card>
             <Card>
@@ -181,8 +180,8 @@ export default function Review() {
                       <span className="w-40 truncate">
                         {habit.emoji} {habit.name}
                       </span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-900/10 dark:bg-white/10" aria-hidden>
-                        <div className="h-full bg-violet-500" style={{ width: of ? `${(n / of) * 100}%` : 0 }} />
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-line" aria-hidden>
+                        <div className="h-full bg-accent" style={{ width: of ? `${(n / of) * 100}%` : 0 }} />
                       </div>
                       <span className="faint w-10 text-right tabular-nums">
                         {n}/{of}
@@ -203,7 +202,7 @@ export default function Review() {
                 <ul className="space-y-1 text-sm">
                   {s.done.slice(0, 20).map((t) => (
                     <li key={t.id} className="flex gap-2">
-                      <span className="text-emerald-600" aria-hidden>
+                      <span className="text-success" aria-hidden>
                         ✓
                       </span>
                       {t.title}

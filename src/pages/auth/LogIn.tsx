@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SITE_URL } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, FormError } from './AuthLayout';
+import { AuthLayout, authMessage, authMessageFromUrl, FormError } from './AuthLayout';
 
 export default function LogIn() {
   const [params] = useSearchParams();
@@ -11,7 +11,7 @@ export default function LogIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(params.get('error') ?? '');
+  const [error, setError] = useState(() => authMessageFromUrl(params.get('error')));
   const [sent, setSent] = useState(false);
   const navigate = useNavigate();
 
@@ -50,14 +50,14 @@ export default function LogIn() {
         </>
       }
     >
-      <div className="mb-4 flex rounded-xl border border-slate-900/10 p-0.5 dark:border-white/10" role="tablist">
+      <div className="mb-4 flex rounded-xl border border-line p-0.5" role="tablist">
         {(
           [
             ['password', 'Password'],
             ['magic', 'Email me a link'],
           ] as const
         ).map(([m, label]) => (
-          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold ${mode === m ? 'bg-violet-600 text-white' : 'muted'}`}>
+          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold ${mode === m ? 'bg-accent text-accent-ink' : 'muted'}`}>
             {label}
           </button>
         ))}
@@ -75,7 +75,7 @@ export default function LogIn() {
               <label className="label" htmlFor="password">
                 Password
               </label>
-              <Link to="/forgot-password" className="mb-1.5 text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">
+              <Link to="/forgot-password" className="mb-1.5 text-xs font-semibold text-ink hover:underline">
                 Forgot password?
               </Link>
             </div>

@@ -143,7 +143,7 @@ export default function Tasks() {
               (s.items.length > 0 || (s.key === 'top' && !q && !tag)) && (
                 <section key={s.key} aria-labelledby={`sec-${s.key}`}>
                   <div className="mb-2 flex items-baseline gap-2">
-                    <h2 id={`sec-${s.key}`} className={cn('text-sm font-bold', s.key === 'overdue' && 'text-rose-600 dark:text-rose-300')}>
+                    <h2 id={`sec-${s.key}`} className={cn('text-sm font-bold', s.key === 'overdue' && 'text-danger ')}>
                       {s.title}
                     </h2>
                     <span className="faint text-xs">{s.key === 'top' ? `${s.items.length}/3` : s.items.length}</span>
@@ -152,7 +152,7 @@ export default function Tasks() {
                   {s.items.length ? (
                     <ul className="space-y-1.5">{[...s.items].sort(byPriorityThenDue).map((t) => renderTask(t, s.hideDue))}</ul>
                   ) : (
-                    <p className="muted rounded-xl border border-dashed border-slate-900/15 px-3 py-3 text-sm dark:border-white/15">
+                    <p className="muted rounded-xl border border-dashed border-line-strong px-3 py-3 text-sm">
                       Star (☆) up to three tasks to make them today’s top 3.
                     </p>
                   )}

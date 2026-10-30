@@ -88,8 +88,9 @@ export default function Habits() {
       {list.length > 0 && (
         <>
           <p className="muted mb-3 text-sm" aria-live="polite">
-            <strong className="text-slate-900 dark:text-white">{doneToday}</strong> of {list.length} done today.
+            <strong className="text-ink ">{doneToday}</strong> of {list.length} done today.
           </p>
+          <h2 className="sr-only">Your habits</h2>
           <div className="grid gap-3 lg:grid-cols-2">
             {list.map((h) => {
               const days = byHabit.get(h.id) ?? new Set<string>();
@@ -183,7 +184,7 @@ export default function Habits() {
           ) : (
             <ul className="space-y-2">
               {suggestions.map((s, i) => (
-                <li key={i} className="flex items-start gap-3 rounded-2xl border border-slate-900/10 p-3 dark:border-white/10">
+                <li key={i} className="flex items-start gap-3 rounded-2xl border border-line p-3">
                   <span className="text-xl" aria-hidden>
                     {s.emoji}
                   </span>

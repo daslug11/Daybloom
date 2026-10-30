@@ -282,15 +282,15 @@ export default function Planner() {
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <div ref={sidebarRef} className="lg:sticky lg:top-20 lg:self-start" data-tour="planner-unscheduled">
-          <div className={cn('glass p-4 transition', interaction?.overSidebar && 'border-violet-400 ring-2 ring-violet-400/50')}>
+          <div className={cn('card p-4 transition-colors', interaction?.overSidebar && 'border-ink/40 ring-2 ring-ink/30')}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
-                <Inbox size={16} className="text-violet-500" aria-hidden /> Unscheduled
+                <Inbox size={16} className="text-ink" aria-hidden /> Unscheduled
               </h2>
               <span className="faint text-xs">{unscheduled.length}</span>
             </div>
             <QuickAddTask className="mb-3 !p-1.5 !shadow-none" placeholder="Add… “review PR 3pm for 30m”" />
-            {interaction?.overSidebar && <div className="mb-2 rounded-xl border-2 border-dashed border-violet-400 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
+            {interaction?.overSidebar && <div className="mb-2 rounded-xl border-2 border-dashed border-ink/40 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
             <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1 lg:max-h-[calc(100vh-22rem)]">
               {!isLoading && unscheduled.length === 0 && (
                 <p className="muted py-4 text-center text-sm">Everything open is scheduled. Add a task above, or drag a block here to unschedule it.</p>
@@ -314,8 +314,8 @@ export default function Planner() {
                   onClick={() => setSelectedId((s) => (s === t.id ? null : t.id))}
                   onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelectedId((s) => (s === t.id ? null : t.id)))}
                   className={cn(
-                    'flex cursor-grab items-start gap-2 rounded-xl border bg-white/80 p-2.5 text-sm active:cursor-grabbing dark:bg-white/[0.05]',
-                    selectedId === t.id ? 'border-violet-500 ring-2 ring-violet-400/40' : 'border-slate-900/5 hover:border-violet-400/40 dark:border-white/10',
+                    'flex cursor-grab items-start gap-2 rounded-xl border bg-surface p-2.5 text-sm active:cursor-grabbing',
+                    selectedId === t.id ? 'border-ink/40 ring-2 ring-ink/40' : 'border-line hover:border-line-strong',
                     draggingId === t.id && 'opacity-40',
                   )}
                 >
@@ -330,15 +330,15 @@ export default function Planner() {
                 </div>
               ))}
             </div>
-            <p className="faint mt-3 text-[11px]">Tip: tap a task, then tap a time on the timeline — works on phones too.</p>
+            <p className="faint mt-3 text-xs">Tip: tap a task, then tap a time on the timeline — works on phones too.</p>
           </div>
         </div>
 
-        <div className="glass min-w-0 !p-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-900/5 p-3 dark:border-white/5">
-            <div className="flex rounded-xl border border-slate-900/10 p-0.5 dark:border-white/10" role="tablist" aria-label="View">
+        <div className="card min-w-0 !p-0">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
+            <div className="flex rounded-xl border border-line p-0.5" role="tablist" aria-label="View">
               {(['day', 'week'] as const).map((v) => (
-                <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold capitalize', view === v ? 'bg-violet-600 text-white' : 'muted')}>
+                <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold capitalize', view === v ? 'bg-accent text-accent-ink' : 'muted')}>
                   {v}
                 </button>
               ))}
@@ -361,7 +361,7 @@ export default function Planner() {
           </div>
 
           {ghosts.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 border-b border-violet-400/30 bg-violet-500/10 px-4 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-ink/40 bg-ink/[0.06] px-4 py-2 text-sm">
               <span>
                 ✨ {ghosts.length} suggested block{ghosts.length === 1 ? '' : 's'} (dashed). Accept the ones you like.
               </span>
@@ -381,7 +381,7 @@ export default function Planner() {
             </div>
           )}
           {selectedTask && (
-            <div className="flex items-center gap-2 bg-violet-500/10 px-4 py-2 text-xs">
+            <div className="flex items-center gap-2 bg-ink/[0.06] px-4 py-2 text-xs">
               Tap a time to schedule <strong className="truncate">“{selectedTask.title}”</strong>
               <button className="link ml-auto" onClick={() => setSelectedId(null)}>
                 Cancel
@@ -391,13 +391,13 @@ export default function Planner() {
 
           <div className="overflow-x-auto">
             <div className={cn(view === 'week' && 'min-w-[760px]')}>
-              <div className="flex border-b border-slate-900/5 dark:border-white/5">
+              <div className="flex border-b border-line">
                 <div className="w-14 shrink-0" />
                 {days.map((d) => {
                   const date = parseKey(d);
                   const allDay = allDayEventsOn(events, d);
                   return (
-                    <div key={d} className="min-w-0 flex-1 border-l border-slate-900/5 px-1.5 py-2 dark:border-white/5">
+                    <div key={d} className="min-w-0 flex-1 border-l border-line px-1.5 py-2">
                       <button
                         className="flex w-full items-baseline justify-center gap-1.5"
                         onClick={() => {
@@ -406,13 +406,13 @@ export default function Planner() {
                         }}
                         aria-label={`Open ${date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} in day view`}
                       >
-                        <span className="muted text-[11px] font-semibold uppercase">{date.toLocaleDateString(undefined, { weekday: 'short' })}</span>
-                        <span className={cn('flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-sm font-bold', d === today && 'bg-violet-600 text-white')}>{date.getDate()}</span>
+                        <span className="muted text-xs font-medium">{date.toLocaleDateString(undefined, { weekday: 'short' })}</span>
+                        <span className={cn('flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-sm font-bold', d === today && 'bg-accent text-accent-ink')}>{date.getDate()}</span>
                       </button>
                       {allDay.map((e) => {
                         const c = CALENDAR_COLORS[calById.get(e.calendarId)?.color ?? 1] ?? CALENDAR_COLORS[1];
                         return (
-                          <div key={e.id} className="striped mt-1 flex items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold" style={{ '--stripe': `${c.from}55`, borderLeft: `3px solid ${c.from}` } as React.CSSProperties} title={`${e.title} (all day, synced)`}>
+                          <div key={e.id} className="striped mt-1 flex items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ '--stripe': `${c.hex}55`, borderColor: `${c.hex}99` } as React.CSSProperties} title={`${e.title} (all day, synced)`}>
                             <Lock size={9} className="shrink-0 opacity-60" aria-hidden /> {e.title}
                           </div>
                         );
@@ -426,7 +426,7 @@ export default function Planner() {
                 <div className="flex" style={{ height: DAY_MINUTES * PX_PER_MIN }}>
                   <div className="relative w-14 shrink-0" aria-hidden>
                     {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
-                      <div key={h} className="faint absolute right-2 -translate-y-1/2 text-[10px] tabular-nums" style={{ top: h * 60 * PX_PER_MIN }}>
+                      <div key={h} className="faint absolute right-2 -translate-y-1/2 text-xs tabular-nums" style={{ top: h * 60 * PX_PER_MIN }}>
                         {hourLabel(h)}
                       </div>
                     ))}
@@ -454,7 +454,7 @@ export default function Planner() {
                         onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropGhost(null)}
                         onDrop={(e) => onColumnDrop(e, d)}
                         onClick={(e) => onColumnClick(e, d)}
-                        className={cn('relative min-w-0 flex-1 border-l border-slate-900/5 dark:border-white/5', d === today && 'bg-violet-500/[0.03]', selectedId && 'cursor-copy')}
+                        className={cn('relative min-w-0 flex-1 border-l border-line', d === today && 'bg-ink/[0.03]', selectedId && 'cursor-copy')}
                         style={{
                           backgroundImage: `repeating-linear-gradient(to bottom, var(--hour-line) 0 1px, transparent 1px ${SLOT * 4}px), repeating-linear-gradient(to bottom, var(--slot-line) 0 1px, transparent 1px ${SLOT}px)`,
                         }}
@@ -493,16 +493,16 @@ export default function Planner() {
                         {dayGhosts.map((g) => (
                           <div
                             key={`g-${g.task_id}`}
-                            className="absolute z-20 overflow-hidden rounded-lg border-2 border-dashed border-violet-500 bg-violet-500/15 px-1.5 py-0.5 text-[11px] text-violet-900 dark:text-violet-100"
+                            className="absolute z-20 overflow-hidden rounded-lg border-2 border-dashed border-ink/50 bg-surface/90 px-1.5 py-0.5 text-xs text-ink"
                             style={{ ...laneStyle(lanes.get(`g:${g.task_id}`)), top: g.start * PX_PER_MIN, height: g.duration * PX_PER_MIN - 1 }}
                             title={`Suggested: ${g.title} — ${g.reason}`}
                           >
                             <div className="flex items-start gap-1">
                               <span className="min-w-0 flex-1 truncate font-semibold">✨ {g.title}</span>
-                              <button className="rounded bg-violet-600 p-0.5 text-white" onClick={() => acceptGhost(g)} aria-label={`Accept suggested block for ${g.title}`}>
+                              <button className="rounded bg-accent p-0.5 text-accent-ink" onClick={() => acceptGhost(g)} aria-label={`Accept suggested block for ${g.title}`}>
                                 <Check size={11} />
                               </button>
-                              <button className="rounded p-0.5 hover:bg-violet-500/20" onClick={() => setGhosts((l) => l.filter((x) => x !== g))} aria-label={`Dismiss suggestion for ${g.title}`}>
+                              <button className="rounded p-0.5 hover:bg-raised" onClick={() => setGhosts((l) => l.filter((x) => x !== g))} aria-label={`Dismiss suggestion for ${g.title}`}>
                                 <X size={11} />
                               </button>
                             </div>
@@ -510,15 +510,15 @@ export default function Planner() {
                           </div>
                         ))}
                         {dropGhost?.date === d && (
-                          <div className="pointer-events-none absolute inset-x-1 z-20 rounded-lg border-2 border-dashed border-violet-500 bg-violet-500/15 px-2 py-1 text-[11px] font-semibold" style={{ top: dropGhost.start * PX_PER_MIN, height: dropGhost.duration * PX_PER_MIN }}>
+                          <div className="pointer-events-none absolute inset-x-1 z-20 rounded-lg border-2 border-dashed border-ink/40 bg-ink/[0.06] px-2 py-1 text-xs font-semibold" style={{ top: dropGhost.start * PX_PER_MIN, height: dropGhost.duration * PX_PER_MIN }}>
                             {formatMinutes(dropGhost.start)} – {formatMinutes(dropGhost.start + dropGhost.duration)}
                           </div>
                         )}
                         {d === today && (
                           <div className="pointer-events-none absolute inset-x-0 z-30 transition-[top] duration-1000 ease-linear" style={{ top: nowMinutes * PX_PER_MIN }} aria-hidden>
-                            <div className="relative h-0.5 bg-pink-500 shadow-[0_0_8px_1px_rgba(236,72,153,0.7)]">
-                              <span className="absolute -left-1.5 -top-[5px] h-3 w-3 rounded-full bg-pink-500" />
-                              {view === 'day' && <span className="absolute -top-5 right-2 rounded-md bg-pink-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{formatMinutes(nowMinutes)}</span>}
+                            <div className="relative h-0.5 bg-danger">
+                              <span className="absolute -left-1.5 -top-[5px] h-3 w-3 rounded-full bg-danger" />
+                              {view === 'day' && <span className="absolute -top-5 right-2 rounded-md bg-danger px-1.5 py-0.5 text-xs font-semibold tabular-nums text-canvas">{formatMinutes(nowMinutes)}</span>}
                             </div>
                           </div>
                         )}
@@ -530,21 +530,21 @@ export default function Planner() {
             </div>
           </div>
 
-          <div className="faint flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-900/5 px-4 py-2.5 text-[11px] dark:border-white/5">
+          <div className="faint flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 text-xs">
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-5 rounded bg-violet-600" /> Your tasks
+              <span className="h-3 w-5 rounded bg-accent" /> Your tasks
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="striped h-3 w-5 rounded" style={{ '--stripe': 'rgba(59,130,246,0.55)' } as React.CSSProperties} /> Calendar events (locked)
+              <span className="striped h-3 w-5 rounded" style={{ '--stripe': 'rgba(113,113,122,0.55)' } as React.CSSProperties} /> Calendar events (locked)
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-5 rounded bg-gradient-to-br from-cyan-600 to-teal-600" /> Repeating blocks &amp; plans
+              <span className="h-3 w-5 rounded border border-line-strong bg-raised" /> Repeating blocks &amp; plans
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-5 rounded border-2 border-dashed border-violet-500" /> ✨ Suggestions
+              <span className="h-3 w-5 rounded border-2 border-dashed border-ink/40" /> ✨ Suggestions
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-0.5 w-5 bg-pink-500" /> Now
+              <span className="h-0.5 w-5 bg-danger" /> Now
             </span>
           </div>
         </div>
@@ -578,16 +578,16 @@ function EventBlock({ de, lane, calendar }: { de: DayEvent; lane?: { lane: numbe
   return (
     <div
       className="striped absolute z-10 cursor-not-allowed overflow-hidden rounded-lg border px-1.5 py-0.5"
-      style={{ ...laneStyle(lane), top: de.start * PX_PER_MIN, height: Math.max(height, SLOT) - 1, '--stripe': `${c.from}40`, borderColor: `${c.from}80`, borderLeftWidth: 3, borderLeftColor: c.from } as React.CSSProperties}
+      style={{ ...laneStyle(lane), top: de.start * PX_PER_MIN, height: Math.max(height, SLOT) - 1, '--stripe': `${c.hex}40`, borderColor: `${c.hex}99` } as React.CSSProperties}
       title={label}
       aria-label={`Calendar event: ${label}`}
     >
-      <div className="flex items-center gap-1 truncate text-[10px] font-semibold leading-tight">
+      <div className="flex items-center gap-1 truncate text-xs font-semibold leading-tight">
         <Lock size={9} className="shrink-0 opacity-60" aria-hidden />
         <span className="truncate">{de.event.title}</span>
       </div>
       {height >= 34 && (
-        <div className="truncate text-[10px] opacity-75">
+        <div className="truncate text-xs opacity-75">
           {formatMinutes(de.start)} – {formatMinutes(de.end % DAY_MINUTES)}
           {de.event.location && (
             <span className="ml-1 inline-flex items-center gap-0.5">
@@ -610,7 +610,7 @@ function RepeatBlock({ occ, lane, onOpen, onToggleDone }: { occ: Occurrence; lan
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
-      className={cn('absolute z-20 cursor-pointer overflow-hidden rounded-lg bg-gradient-to-br from-cyan-600 to-teal-600 text-white shadow ring-1 ring-white/20 hover:ring-white/60', occ.done && 'opacity-55')}
+      className={cn('absolute z-20 cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-raised text-ink shadow-card hover:border-ink/40', occ.done && 'bg-surface text-muted')}
       style={{ ...laneStyle(lane), top: occ.start * PX_PER_MIN, height: height - 1 }}
       title={`${label}${occ.details ? `\n${occ.details}` : ''}\nRepeats weekly — click to edit`}
       aria-label={`Repeating block: ${label}`}
@@ -622,17 +622,17 @@ function RepeatBlock({ occ, lane, onOpen, onToggleDone }: { occ: Occurrence; lan
             onToggleDone();
           }}
           aria-label={occ.done ? `Mark “${occ.title}” not done` : `Mark “${occ.title}” done`}
-          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-white/80', occ.done && 'bg-white text-teal-700')}
+          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas')}
         >
           {occ.done && <Check size={10} strokeWidth={3} />}
         </button>
         <div className="min-w-0 flex-1">
-          <div className={cn('flex items-center gap-1 truncate text-[11px] font-semibold leading-tight', occ.done && 'line-through')}>
+          <div className={cn('flex items-center gap-1 truncate text-xs font-semibold leading-tight', occ.done && 'line-through')}>
             <Repeat size={9} className="shrink-0 opacity-80" aria-hidden />
             <span className="truncate">{occ.title}</span>
           </div>
           {!compact && (
-            <div className="truncate text-[10px] text-white/85">
+            <div className="muted truncate text-xs">
               {formatMinutes(occ.start)} – {formatMinutes(occ.start + occ.duration)}
             </div>
           )}
@@ -657,14 +657,12 @@ interface TaskBlockProps {
 function TaskBlock({ task, block, lane, active, fading, onMoveStart, onResizeStart, onToggleDone, onUnschedule }: TaskBlockProps) {
   const height = block.duration * PX_PER_MIN;
   const compact = height < 40;
-  const gradient = task.priority ? PRIORITY_STYLES[task.priority].block : 'from-violet-600 to-indigo-600';
   return (
     <div
       onPointerDown={onMoveStart}
       className={cn(
-        'group absolute z-20 cursor-grab touch-none overflow-hidden rounded-lg bg-gradient-to-br text-white shadow ring-1 ring-white/20',
-        gradient,
-        active && 'z-40 cursor-grabbing ring-2 ring-white/80',
+        'group absolute z-20 cursor-grab touch-none overflow-hidden rounded-lg bg-ink text-canvas shadow-card ring-1 ring-canvas/10',
+        active && 'z-40 cursor-grabbing shadow-pop ring-2 ring-canvas/60',
         task.done && 'opacity-55',
         fading && 'opacity-30',
       )}
@@ -676,24 +674,29 @@ function TaskBlock({ task, block, lane, active, fading, onMoveStart, onResizeSta
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onToggleDone}
           aria-label={task.done ? `Mark “${task.title}” not done` : `Complete “${task.title}”`}
-          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-white/80', task.done && 'bg-white text-violet-700')}
+          className={cn('mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-canvas/70', task.done && 'bg-canvas text-ink')}
         >
           {task.done && <Check size={10} strokeWidth={3} />}
         </button>
         <div className="min-w-0 flex-1">
-          <div className={cn('truncate text-[11px] font-semibold leading-tight', task.done && 'line-through')}>{task.title}</div>
+          <div className={cn('flex items-center gap-1 truncate text-xs font-semibold leading-tight', task.done && 'line-through')}>
+            {task.priority && (
+              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', PRIORITY_STYLES[task.priority].dot)} role="img" aria-label={`${PRIORITY_STYLES[task.priority].label} priority`} />
+            )}
+            <span className="truncate">{task.title}</span>
+          </div>
           {!compact && (
-            <div className="truncate text-[10px] text-white/85">
+            <div className="truncate text-xs text-canvas/75">
               {formatMinutes(block.start)} – {formatMinutes(block.start + block.duration)}
             </div>
           )}
         </div>
-        <button onPointerDown={(e) => e.stopPropagation()} onClick={onUnschedule} aria-label={`Unschedule “${task.title}”`} className="shrink-0 rounded p-0.5 opacity-70 hover:bg-white/20 hover:opacity-100 focus:opacity-100">
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={onUnschedule} aria-label={`Unschedule “${task.title}”`} className="shrink-0 rounded p-0.5 opacity-70 hover:bg-canvas/20 hover:opacity-100 focus:opacity-100">
           <X size={11} />
         </button>
       </div>
       <div onPointerDown={onResizeStart} className="absolute inset-x-0 bottom-0 flex h-2 cursor-ns-resize items-center justify-center" aria-hidden>
-        <span className="h-0.5 w-6 rounded-full bg-white/70 opacity-0 group-hover:opacity-100" />
+        <span className="h-0.5 w-6 rounded-full bg-surface opacity-0 group-hover:opacity-100" />
       </div>
     </div>
   );

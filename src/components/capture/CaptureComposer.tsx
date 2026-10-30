@@ -124,7 +124,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
 
   return (
     <Modal open={open} onClose={close} title="Capture" description="Get it out of your head. Notes land in your Brain Dump inbox to sort later.">
-      <div className="mb-3 flex rounded-xl border border-slate-900/10 p-0.5 dark:border-white/10" role="tablist" aria-label="What are you capturing?">
+      <div className="mb-3 flex rounded-xl border border-line p-0.5" role="tablist" aria-label="What are you capturing?">
         {(
           [
             ['note', 'Brain dump note', Inbox],
@@ -136,7 +136,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
             role="tab"
             aria-selected={mode === m}
             onClick={() => setMode(m)}
-            className={cn('flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition', mode === m ? 'bg-violet-600 text-white' : 'muted')}
+            className={cn('flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition', mode === m ? 'bg-accent text-accent-ink' : 'muted')}
           >
             <Icon size={15} aria-hidden /> {label}
           </button>
@@ -167,7 +167,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
           type="button"
           onClick={toggleVoice}
           disabled={!speechInputSupported()}
-          className={cn('icon-btn absolute right-2 top-2', listening && '!bg-rose-500/15 !text-rose-600')}
+          className={cn('icon-btn absolute right-2 top-2', listening && '!bg-danger/15 !text-danger')}
           aria-label={listening ? 'Stop voice input' : 'Speak instead of typing'}
           aria-pressed={listening}
           title={speechInputSupported() ? (listening ? 'Stop listening' : 'Dictate') : "Voice input isn't supported in this browser"}
@@ -175,15 +175,15 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
           {listening ? <MicOff size={17} /> : <Mic size={17} />}
         </button>
       </div>
-      {listening && <p className="mt-1.5 text-xs font-medium text-rose-600 dark:text-rose-300" role="status">● Listening… speak naturally, tap the mic to stop.</p>}
-      {voiceError && <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-300" role="alert">{voiceError}</p>}
+      {listening && <p className="mt-1.5 text-xs font-medium text-danger" role="status">● Listening… speak naturally, tap the mic to stop.</p>}
+      {voiceError && <p className="mt-1.5 text-xs text-danger" role="alert">{voiceError}</p>}
 
       {mode === 'task' ? (
-        <div className="mt-3 min-h-[64px] rounded-xl border border-dashed border-slate-900/15 p-3 dark:border-white/15" aria-live="polite">
+        <div className="mt-3 min-h-[64px] rounded-xl border border-dashed border-line-strong p-3" aria-live="polite">
           {text.trim() ? (
             <>
               <div className="flex items-center gap-2 text-sm">
-                <span className="faint text-[11px] font-semibold uppercase tracking-wider">{aiParsed ? '✨ AI read it as' : 'Will be saved as'}</span>
+                <span className="faint text-xs font-medium">{aiParsed ? '✨ AI read it as' : 'Will be saved as'}</span>
               </div>
               <p className="mt-1 font-semibold">{shown.title || <span className="faint italic">untitled</span>}</p>
               <TaskChips className="mt-1.5" due={shown.due} time={shown.time} tags={shown.tags} priority={shown.priority} duration={shown.duration} />

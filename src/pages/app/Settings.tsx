@@ -20,7 +20,7 @@ const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'hab
 
 function Row({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
   return (
-    <div className="flex flex-col gap-2 border-b border-slate-900/5 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between dark:border-white/5">
+    <div className="flex flex-col gap-2 border-b border-line py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <label htmlFor={htmlFor} className="text-sm font-medium">
           {label}
@@ -195,10 +195,10 @@ export default function Settings() {
             </div>
           </Row>
           <Row label={`Speed · ${(voice.rate ?? 1).toFixed(2)}×`} htmlFor="s-rate">
-            <input id="s-rate" type="range" min={0.7} max={1.4} step={0.05} value={voice.rate ?? 1} onChange={(e) => setVoice({ rate: Number(e.target.value) })} className="w-48 accent-violet-600" />
+            <input id="s-rate" type="range" min={0.7} max={1.4} step={0.05} value={voice.rate ?? 1} onChange={(e) => setVoice({ rate: Number(e.target.value) })} className="w-48 accent-ink" />
           </Row>
           <Row label={`Pitch · ${(voice.pitch ?? 0.85).toFixed(2)}`} htmlFor="s-pitch">
-            <input id="s-pitch" type="range" min={0.5} max={1.5} step={0.05} value={voice.pitch ?? 0.85} onChange={(e) => setVoice({ pitch: Number(e.target.value) })} className="w-48 accent-violet-600" />
+            <input id="s-pitch" type="range" min={0.5} max={1.5} step={0.05} value={voice.pitch ?? 0.85} onChange={(e) => setVoice({ pitch: Number(e.target.value) })} className="w-48 accent-ink" />
           </Row>
           <Row label="Speak replies aloud" hint="In voice mode, Atlas reads its answers out.">
             <Switch label="Speak replies aloud" checked={voice.speak !== false} onChange={(v) => setVoice({ speak: v })} />

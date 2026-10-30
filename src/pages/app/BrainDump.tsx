@@ -168,7 +168,7 @@ export default function BrainDump() {
         actions={<AiAllowance className="sm:hidden" />}
       />
 
-      <form onSubmit={capture} className="glass mb-5 p-3" data-tour="brain-dump-capture">
+      <form onSubmit={capture} className="card mb-5 p-3" data-tour="brain-dump-capture">
         <label htmlFor="dump" className="sr-only">
           New note
         </label>
@@ -182,21 +182,21 @@ export default function BrainDump() {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) capture();
           }}
           placeholder="What’s on your mind? Ideas, worries, things to buy, notes from a call… (Markdown and - [ ] checklists work)"
-          className="w-full resize-y bg-transparent text-sm outline-none placeholder:text-slate-500"
+          className="w-full resize-y bg-transparent text-sm outline-none placeholder:text-faint"
         />
         <div className="mt-2 flex items-center gap-2">
           <button
             type="button"
             onClick={toggleVoice}
             disabled={!speechInputSupported()}
-            className={cn('icon-btn', listening && '!bg-rose-500/15 !text-rose-600')}
+            className={cn('icon-btn', listening && '!bg-danger/15 !text-danger')}
             aria-label={listening ? 'Stop dictating' : 'Dictate a note'}
             aria-pressed={listening}
             title={speechInputSupported() ? 'Dictate' : "Voice input isn't supported in this browser"}
           >
             {listening ? <MicOff size={17} /> : <Mic size={17} />}
           </button>
-          {listening && <span className="text-xs font-medium text-rose-600 dark:text-rose-300">● Listening…</span>}
+          {listening && <span className="text-xs font-medium text-danger">● Listening…</span>}
           <span className="faint ml-auto hidden text-xs sm:inline">Ctrl/⌘ + Enter</span>
           <button className="btn-primary !px-3 !py-1.5" disabled={!text.trim()}>
             <Send size={14} /> Save to inbox
@@ -205,14 +205,14 @@ export default function BrainDump() {
       </form>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Views" className="flex flex-wrap gap-1 rounded-xl border border-slate-900/10 p-1 dark:border-white/10">
+        <div role="tablist" aria-label="Views" className="flex flex-wrap gap-1 rounded-xl border border-line p-1">
           {VIEWS.map((v) => (
             <button
               key={v.id}
               role="tab"
               aria-selected={!q && view === v.id}
               onClick={() => (setQuery(''), setView(v.id))}
-              className={cn('rounded-lg px-3 py-1.5 text-sm font-semibold transition', !q && view === v.id ? 'bg-violet-600 text-white' : 'muted hover:bg-slate-900/5 dark:hover:bg-white/5')}
+              className={cn('rounded-lg px-3 py-1.5 text-sm font-semibold transition', !q && view === v.id ? 'bg-accent text-accent-ink' : 'muted hover:bg-raised')}
             >
               {v.label}
               <span className="ml-1.5 text-xs opacity-75">{counts[v.id]}</span>

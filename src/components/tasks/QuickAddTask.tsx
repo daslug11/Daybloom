@@ -32,9 +32,9 @@ export function QuickAddTask({ extra, placeholder, className, onAdded }: { extra
   };
 
   return (
-    <form onSubmit={submit} className={cn('glass p-2', className)} data-tour="quick-add">
+    <form onSubmit={submit} className={cn('card p-2', className)} data-tour="quick-add">
       <div className="flex items-center gap-2 px-1">
-        <ListPlus size={18} className="shrink-0 text-violet-500" aria-hidden />
+        <ListPlus size={18} className="shrink-0 text-ink" aria-hidden />
         <label htmlFor="quick-add-task" className="sr-only">
           Add a task
         </label>
@@ -47,15 +47,15 @@ export function QuickAddTask({ extra, placeholder, className, onAdded }: { extra
           }}
           maxLength={300}
           placeholder={placeholder ?? 'Add a task… try “report fri 3pm for 1h #work !high”'}
-          className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-slate-500"
+          className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-faint"
         />
         <button type="submit" className="btn-primary !px-3 !py-1.5" disabled={!text.trim()}>
           <CornerDownLeft size={14} aria-hidden /> Add
         </button>
       </div>
       {text.trim() && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-900/5 px-2 pb-1 pt-2 dark:border-white/5" aria-live="polite">
-          <span className="faint text-[11px] font-semibold uppercase tracking-wider">{ai ? '✨ AI read it as' : 'Understood'}</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line px-2 pb-1 pt-2" aria-live="polite">
+          <span className="faint text-xs font-medium">{ai ? '✨ AI read it as' : 'Understood'}</span>
           <span className="text-sm font-medium">{shown.title || '…'}</span>
           <TaskChips due={shown.due} time={shown.time} tags={shown.tags} priority={shown.priority} duration={shown.duration} />
           {!ai && (

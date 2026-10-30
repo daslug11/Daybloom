@@ -60,17 +60,18 @@ export function IcsHelp() {
       <ol className="space-y-1.5 text-sm">
         {guide.steps.map((s, i) => (
           <li key={i} className="flex gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-[11px] font-bold text-violet-600 dark:text-violet-300">{i + 1}</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink/10 text-xs font-bold text-ink">{i + 1}</span>
             <span className="leading-snug">{s}</span>
           </li>
         ))}
       </ol>
       {guide.example && (
-        <p className={cn('muted mt-2 truncate rounded-lg bg-slate-900/5 px-2 py-1 font-mono text-[11px] dark:bg-white/5')}>{guide.example}</p>
+        <p className={cn('muted mt-2 truncate rounded-lg bg-raised px-2 py-1 font-mono text-xs')}>{guide.example}</p>
       )}
       <p className="muted mt-3 text-xs">
-        🔐 Secret addresses work like passwords — anyone with the link can read your calendar. Daybloom keeps them in this browser; the sync
-        server only fetches them (caching results in memory for 10 minutes) and never stores them.
+        🔐 Secret addresses work like passwords — anyone with the link can read your calendar. Daybloom saves them in your account (only you can read them) so your calendars sync on every
+        device. The sync server reads the feed when it fetches events, keeps the events in memory for up to 10 minutes, and never
+        shares the link. Remove a calendar here to delete its link.
       </p>
     </div>
   );

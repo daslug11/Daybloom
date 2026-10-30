@@ -11,10 +11,10 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
       onClick={() => onChange(!checked)}
       className={cn(
         'relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50',
-        checked ? 'bg-gradient-to-r from-violet-500 to-blue-500' : 'bg-slate-900/25 dark:bg-white/20',
+        checked ? 'bg-accent' : 'bg-raised ring-1 ring-inset ring-control/70',
       )}
     >
-      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', checked ? 'left-[18px]' : 'left-0.5')} />
+      <span className={cn('absolute left-0.5 top-0.5 h-4 w-4 rounded-full shadow transition-transform duration-fast ease-out', checked ? 'translate-x-4 bg-accent-ink' : 'bg-muted')} />
     </button>
   );
 }

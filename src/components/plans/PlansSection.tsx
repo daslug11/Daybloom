@@ -54,7 +54,7 @@ export function PlansSection() {
       )}
       {drafts.length > 0 && (
         <div className="mt-4">
-          <h3 className="muted mb-2 text-xs font-semibold uppercase tracking-wider">Drafts from Atlas — not on your Planner yet</h3>
+          <h3 className="mb-2 text-sm font-semibold">Drafts from Atlas <span className="muted font-normal">· not on your Planner yet</span></h3>
           <div className="grid gap-3 lg:grid-cols-2">
             {drafts.map((p) => (
               <PlanCard key={p.id} planId={p.id} />
@@ -119,7 +119,7 @@ function PlanProgress({ plan, series, rows }: { plan: Plan; series: BlockSeries[
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold">
-            {plan.title} {paused && <span className="ml-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">Paused</span>}
+            {plan.title} {paused && <span className="ml-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning">Paused</span>}
           </h3>
           <p className="muted text-sm" data-testid="plan-progress">
             {status} · {p.done} of {p.total} sessions done
@@ -132,8 +132,8 @@ function PlanProgress({ plan, series, rows }: { plan: Plan; series: BlockSeries[
           <Trash2 size={15} />
         </button>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-900/10 dark:bg-white/10" aria-hidden>
-        <div className="h-full bg-cyan-500 transition-all" style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+        <div className="h-full bg-ink transition-all" style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
       </div>
       {(habit || goal) && (
         <p className="faint mt-2 text-xs">
@@ -157,18 +157,18 @@ function PlanProgress({ plan, series, rows }: { plan: Plan; series: BlockSeries[
           <li key={`${o.series_id}:${o.day}`} className={cn('flex items-center gap-2 text-sm', o.skipped && 'faint')}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-cyan-600"
+              className="h-4 w-4 accent-ink"
               checked={o.done}
               disabled={busy || o.skipped || `${o.series_id}:${o.day}` in pending}
               onChange={() => void toggle(o)}
               aria-label={`${o.done ? 'Done' : 'Mark done'}: ${o.title} on ${dayLabel(o.day)}`}
             />
-            <span className={cn('w-24 shrink-0 text-xs tabular-nums', o.day === today ? 'font-bold text-cyan-700 dark:text-cyan-300' : 'muted')}>
+            <span className={cn('w-24 shrink-0 text-xs tabular-nums', o.day === today ? 'font-bold text-atlas' : 'muted')}>
               {dayLabel(o.day)}
             </span>
             <span className="faint w-16 shrink-0 text-xs tabular-nums">{formatMinutes(o.start)}</span>
             <span className={cn('min-w-0 flex-1 truncate', (o.done || o.skipped) && 'line-through')}>{o.title}</span>
-            {o.skipped && <span className="text-[11px]">skipped</span>}
+            {o.skipped && <span className="text-xs">skipped</span>}
           </li>
         ))}
         {!thisWeek.length && <li className="muted text-sm">No sessions this week.</li>}

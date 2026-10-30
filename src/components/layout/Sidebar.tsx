@@ -38,14 +38,14 @@ export function Sidebar() {
       'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
       collapsed && 'justify-center px-0',
       isActive
-        ? 'bg-violet-500/15 text-violet-800 ring-1 ring-violet-400/30 dark:text-white'
-        : 'text-slate-600 hover:bg-slate-900/5 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white',
+        ? 'bg-ink/[0.06] text-ink ring-1 ring-ink/40'
+        : 'text-muted hover:bg-raised hover:text-ink',
     );
 
   return (
     <aside
       className={cn(
-        'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-900/10 bg-white/50 p-3 backdrop-blur-xl transition-[width] md:flex dark:border-white/10 dark:bg-white/[0.02]',
+        'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-line bg-surface p-3 transition-[width] md:flex',
         collapsed ? 'w-[72px]' : 'w-60',
       )}
       aria-label="Main navigation"
@@ -60,7 +60,7 @@ export function Sidebar() {
             {!collapsed && <span className="truncate">{label}</span>}
             {to === '/app/brain-dump' && inbox > 0 && (
               <span
-                className={cn('rounded-full bg-violet-600 px-1.5 text-[11px] font-bold text-white', collapsed ? 'absolute right-2 top-1.5' : 'ml-auto')}
+                className={cn('badge', collapsed ? 'absolute right-1.5 top-1' : 'ml-auto')}
                 aria-label={`${inbox} in inbox`}
               >
                 {inbox}
@@ -69,7 +69,7 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="flex flex-col gap-0.5 border-t border-slate-900/10 pt-3 dark:border-white/10">
+      <div className="flex flex-col gap-0.5 border-t border-line pt-3">
         <NavLink to="/app/settings" className={linkClass} title={collapsed ? 'Settings' : undefined}>
           <SettingsIcon size={18} aria-hidden />
           {!collapsed && 'Settings'}

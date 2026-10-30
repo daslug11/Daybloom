@@ -10,7 +10,7 @@ export function EmojiPicker({ options, value, onChange }: { options: string[]; v
           onClick={() => onChange(e)}
           className={cn(
             'flex h-9 w-9 items-center justify-center rounded-xl text-lg transition hover:scale-110',
-            value === e ? 'bg-violet-500/25 ring-2 ring-violet-400' : 'bg-slate-900/5 dark:bg-white/5',
+            value === e ? 'bg-ink/10 ring-2 ring-ink/40' : 'bg-raised ',
           )}
         >
           {e}

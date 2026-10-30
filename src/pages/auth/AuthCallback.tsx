@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Spinner } from '../../components/ui/States';
 import { useAuth } from '../../hooks/useAuth';
-import { AuthLayout, authMessage } from './AuthLayout';
+import { AuthLayout, authMessageFromUrl } from './AuthLayout';
 
 /**
  * Where email links land (confirm sign-up, magic link, email change).
@@ -44,7 +44,7 @@ export default function AuthCallback() {
       <AuthLayout title="That link didn’t work" footer={<Link to="/login" className="link">Go to log in</Link>}>
         <p className="text-sm">
           {error
-            ? authMessage({ message: error })
+            ? authMessageFromUrl(error)
             : 'Your email may already be confirmed — try logging in. Links only work once, and must be opened in the browser where you signed up.'}
         </p>
       </AuthLayout>

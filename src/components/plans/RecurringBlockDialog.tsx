@@ -105,12 +105,12 @@ export function RecurringBlockDialog({ onClose, initialDay }: { onClose: () => v
         <fieldset className="space-y-2 text-sm">
           <legend className="label">Ends</legend>
           <label className="flex items-center gap-2">
-            <input type="radio" name="end" checked={endMode === 'weeks'} onChange={() => setEndMode('weeks')} className="accent-violet-600" /> After
+            <input type="radio" name="end" checked={endMode === 'weeks'} onChange={() => setEndMode('weeks')} className="accent-ink" /> After
             <input className="input !w-20 !py-1" type="number" min={1} max={52} value={weeks} onChange={(e) => setWeeks(Math.min(52, Math.max(1, Number(e.target.value) || 1)))} disabled={endMode !== 'weeks'} aria-label="Number of weeks" />
             weeks
           </label>
           <label className="flex items-center gap-2">
-            <input type="radio" name="end" checked={endMode === 'date'} onChange={() => setEndMode('date')} className="accent-violet-600" /> On
+            <input type="radio" name="end" checked={endMode === 'date'} onChange={() => setEndMode('date')} className="accent-ink" /> On
             <input className="input !w-44 !py-1" type="date" min={from} value={until} onChange={(e) => e.target.value && setUntil(e.target.value)} disabled={endMode !== 'date'} aria-label="End date" />
           </label>
         </fieldset>

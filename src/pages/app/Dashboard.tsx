@@ -97,7 +97,7 @@ export default function Dashboard() {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="muted text-sm">{parseKey(today).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-          <h1 className="gradient-text text-2xl font-extrabold tracking-tight sm:text-3xl">
+          <h1 className="page-title">
             {greeting(minutes)}, {name}
           </h1>
           <p className="muted mt-1 text-sm">
@@ -127,13 +127,13 @@ export default function Dashboard() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {briefing.data.focus.length > 0 && (
                   <div>
-                    <p className="faint mb-1 text-xs font-semibold uppercase tracking-wider">Focus on</p>
+                    <h3 className="mb-1 text-sm font-semibold">Focus on</h3>
                     <ul className="list-disc space-y-0.5 pl-5">{briefing.data.focus.map((f, i) => <li key={i}>{f}</li>)}</ul>
                   </div>
                 )}
                 {briefing.data.heads_up.length > 0 && (
                   <div>
-                    <p className="faint mb-1 text-xs font-semibold uppercase tracking-wider">Heads up</p>
+                    <h3 className="mb-1 text-sm font-semibold">Heads up</h3>
                     <ul className="list-disc space-y-0.5 pl-5">{briefing.data.heads_up.map((f, i) => <li key={i}>{f}</li>)}</ul>
                   </div>
                 )}
@@ -150,11 +150,11 @@ export default function Dashboard() {
         </Card>
 
         <Card aria-label="Today's schedule">
-          <CardTitle icon={<CalendarClock size={16} className="text-blue-600 dark:text-blue-300" />} action={<Link to="/app/planner" className="link text-xs">Planner <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<CalendarClock size={16} className="text-muted" />} action={<Link to="/app/planner" className="link text-xs">Planner <ArrowRight size={11} className="inline" /></Link>}>
             Schedule
           </CardTitle>
           {(errorCount > 0 || requestError) && (
-            <Link to="/app/calendars" className="mb-3 block rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-200">
+            <Link to="/app/calendars" className="mb-3 block rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
               Some calendars didn’t sync — fix on the Calendars page →
             </Link>
           )}
@@ -166,14 +166,14 @@ export default function Dashboard() {
               {schedule.slice(0, 6).map((i) => {
                 const now = i.start <= minutes && i.end > minutes;
                 return (
-                  <li key={i.key} className={cn('flex items-center gap-3 rounded-xl border px-3 py-2 text-sm', now ? 'border-violet-400/50 bg-violet-500/10' : 'border-slate-900/5 dark:border-white/5')}>
+                  <li key={i.key} className={cn('flex items-center gap-3 rounded-xl border px-3 py-2 text-sm', now ? 'border-ink/40 bg-ink/[0.06]' : 'border-line ')}>
                     <span className="faint w-20 shrink-0 text-xs tabular-nums">{formatMinutes(i.start)}</span>
                     <span className="min-w-0 flex-1 truncate">
                       {i.kind === 'event' && <Lock size={11} className="faint mr-1 inline" aria-label="calendar event" />}
                       {i.kind === 'repeat' && <Repeat size={11} className="faint mr-1 inline" aria-label="repeating block" />}
                       {i.title}
                     </span>
-                    {now && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">Now</span>}
+                    {now && <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">Now</span>}
                   </li>
                 );
               })}
@@ -186,7 +186,7 @@ export default function Dashboard() {
         </Card>
 
         <Card aria-label="Today's tasks">
-          <CardTitle icon={<ListChecks size={16} className="text-violet-600 dark:text-violet-300" />} action={<Link to="/app/tasks" className="link text-xs">All tasks <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<ListChecks size={16} className="text-ink " />} action={<Link to="/app/tasks" className="link text-xs">All tasks <ArrowRight size={11} className="inline" /></Link>}>
             Top tasks
           </CardTitle>
           {tasks.isLoading ? (
@@ -207,7 +207,7 @@ export default function Dashboard() {
         </Card>
 
         <Card aria-label="Habits due today">
-          <CardTitle icon={<Flame size={16} className="text-orange-500" />} action={<Link to="/app/habits" className="link text-xs">Habits <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<Flame size={16} className="text-muted" />} action={<Link to="/app/habits" className="link text-xs">Habits <ArrowRight size={11} className="inline" /></Link>}>
             Habits · {habits.length - habitsLeft.length}/{habits.length} today
           </CardTitle>
           {habits.length === 0 ? (
@@ -228,7 +228,7 @@ export default function Dashboard() {
         </Card>
 
         <Card aria-label="Brain dump inbox">
-          <CardTitle icon={<Inbox size={16} className="text-violet-600 dark:text-violet-300" />} action={<Link to="/app/brain-dump" className="link text-xs">Brain Dump <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<Inbox size={16} className="text-ink " />} action={<Link to="/app/brain-dump" className="link text-xs">Brain Dump <ArrowRight size={11} className="inline" /></Link>}>
             Inbox · {inbox.length}
           </CardTitle>
           {inbox.length === 0 ? (
@@ -256,7 +256,7 @@ export default function Dashboard() {
         </Card>
 
         <Card aria-label="Mood check-in" className="lg:col-span-2">
-          <CardTitle icon={<Smile size={16} className="text-pink-500" />} action={<Link to="/app/mood" className="link text-xs">Mood <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<Smile size={16} className="text-muted" />} action={<Link to="/app/mood" className="link text-xs">Mood <ArrowRight size={11} className="inline" /></Link>}>
             {mood ? `Today you’re feeling ${MOODS[mood.score - 1].label.toLowerCase()} ${MOODS[mood.score - 1].emoji}` : 'How are you feeling today?'}
           </CardTitle>
           <div className="max-w-md">

@@ -122,13 +122,13 @@ export function TaskEditor({ task, onClose }: Props) {
         </div>
 
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="accent-violet-600" checked={draft.top_date === today} onChange={(e) => set({ top_date: e.target.checked ? today : null })} />
+          <input type="checkbox" className="accent-ink" checked={draft.top_date === today} onChange={(e) => set({ top_date: e.target.checked ? today : null })} />
           ⭐ One of today’s top 3
         </label>
 
-        <div className="rounded-xl border border-slate-900/10 p-3 dark:border-white/10">
+        <div className="rounded-xl border border-line p-3">
           <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" className="accent-violet-600" checked={scheduled} onChange={(e) => toggleSchedule(e.target.checked)} />
+            <input type="checkbox" className="accent-ink" checked={scheduled} onChange={(e) => toggleSchedule(e.target.checked)} />
             Block time for it in the Planner
           </label>
           {scheduled && (
@@ -190,7 +190,7 @@ export function TaskEditor({ task, onClose }: Props) {
               <li key={s.id} className="flex items-center gap-2 text-sm">
                 <button
                   onClick={() => update.mutate({ id: s.id, patch: { done: !s.done, completed_at: s.done ? null : new Date().toISOString() } })}
-                  className={cn('flex h-4 w-4 items-center justify-center rounded border', s.done ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-400')}
+                  className={cn('flex h-4 w-4 items-center justify-center rounded border', s.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
                   aria-label={s.done ? `Mark step “${s.title}” not done` : `Complete step “${s.title}”`}
                 >
                   {s.done && <Check size={10} strokeWidth={3} />}
@@ -203,11 +203,11 @@ export function TaskEditor({ task, onClose }: Props) {
             ))}
           </ul>
           {proposed && (
-            <div className="mt-2 rounded-xl border border-violet-400/40 bg-violet-500/5 p-3">
+            <div className="mt-2 rounded-xl border border-ink/40 bg-ink/[0.03] p-3">
               <p className="mb-2 text-xs font-semibold">✨ Suggested steps — untick any you don’t want</p>
               {proposed.map((p, i) => (
                 <label key={i} className="flex items-center gap-2 py-0.5 text-sm">
-                  <input type="checkbox" className="accent-violet-600" checked={p.keep} onChange={(e) => setProposed(proposed.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} />
+                  <input type="checkbox" className="accent-ink" checked={p.keep} onChange={(e) => setProposed(proposed.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} />
                   <input className="min-w-0 flex-1 bg-transparent outline-none" value={p.title} onChange={(e) => setProposed(proposed.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
                   {p.estimate_min && <span className="faint text-xs">{p.estimate_min}m</span>}
                 </label>
@@ -257,7 +257,7 @@ export function TaskEditor({ task, onClose }: Props) {
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-900/10 pt-4 dark:border-white/10">
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
           {confirmDelete ? (
             <>
               <span className="text-sm">Delete this task{steps.length ? ` and its ${steps.length} steps` : ''}?</span>

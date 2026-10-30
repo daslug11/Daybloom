@@ -74,8 +74,8 @@ export default function Onboarding() {
       <ol className="mb-6 flex items-center gap-2" aria-label="Setup progress">
         {STEPS.map((s, i) => (
           <li key={s} className="flex flex-1 flex-col gap-1.5">
-            <span className={cn('h-1.5 rounded-full', i <= step ? 'bg-violet-600' : 'bg-slate-900/10 dark:bg-white/10')} aria-hidden />
-            <span className={cn('text-[11px] font-medium', i === step ? '' : 'faint')} aria-current={i === step ? 'step' : undefined}>
+            <span className={cn('h-1.5 rounded-full', i <= step ? 'bg-accent' : 'bg-line ')} aria-hidden />
+            <span className={cn('text-xs font-medium', i === step ? '' : 'faint')} aria-current={i === step ? 'step' : undefined}>
               {s}
             </span>
           </li>
@@ -144,7 +144,7 @@ export default function Onboarding() {
             <>
               <h1 className="text-xl font-bold">A small daily habit</h1>
               <p className="muted mt-1 text-sm">Pick something tiny you’d like to do every day. Tick it off on the dashboard to build a streak.</p>
-              <input autoFocus className="input mt-4" maxLength={80} value={habit} onChange={(e) => setHabit(e.target.value)} placeholder="e.g. Drink a glass of water" aria-label="Your first habit" />
+              <input autoFocus className="input mt-4" maxLength={80} value={habit} onChange={(e) => setHabit(e.target.value)} placeholder="e.g. Drink a card of water" aria-label="Your first habit" />
               <div className="mt-3">
                 <EmojiPicker options={HABIT_EMOJIS} value={emoji} onChange={setEmoji} />
               </div>

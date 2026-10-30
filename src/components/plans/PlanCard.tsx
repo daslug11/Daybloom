@@ -40,12 +40,12 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
       aria-label={`Plan: ${plan.title}`}
       className={cn(
         'rounded-2xl border p-3.5 text-sm',
-        hud ? 'border-cyan-400/40 bg-cyan-950/60 font-mono text-cyan-50 backdrop-blur' : 'border-cyan-500/30 bg-white/80 dark:bg-white/[0.04]',
+        hud ? 'border-cyan-400/40 bg-cyan-950/60 font-mono text-cyan-50' : 'border-atlas/30 bg-surface shadow-card',
         plan.status === 'dismissed' && 'opacity-60',
       )}
     >
       <header className="flex items-start gap-2.5">
-        <CalendarRange size={18} className={cn('mt-0.5 shrink-0', hud ? 'text-cyan-300' : 'text-cyan-600 dark:text-cyan-300')} aria-hidden />
+        <CalendarRange size={18} className={cn('mt-0.5 shrink-0', hud ? 'text-cyan-300' : 'text-atlas')} aria-hidden />
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold leading-snug">{plan.title}</h3>
           <p className={cn('text-xs', hud ? 'text-cyan-300/80' : 'muted')}>
@@ -53,7 +53,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
           </p>
         </div>
         {!draft && (
-          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', plan.status === 'dismissed' ? 'bg-slate-500/15' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300')}>
+          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', plan.status === 'dismissed' ? 'bg-raised text-muted' : 'bg-success/10 text-success')}>
             {plan.status === 'active' ? 'On your Planner' : plan.status === 'paused' ? 'Paused' : 'Dismissed'}
           </span>
         )}
@@ -62,7 +62,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
       <ul className="mt-2.5 space-y-1" aria-label="Sessions">
         {plan.sessions.map((s, i) => (
           <li key={i} className="flex gap-2">
-            <span className={cn('mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full', hud ? 'bg-cyan-300' : 'bg-cyan-500')} aria-hidden />
+            <span className={cn('mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full', hud ? 'bg-cyan-300' : 'bg-atlas')} aria-hidden />
             <span>{sessionLine(s)}</span>
           </li>
         ))}
