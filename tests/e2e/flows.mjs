@@ -991,6 +991,133 @@ await flow('mobile-touch', browser, { viewport: { width: 390, height: 844 }, isM
   }
 });
 
+await flow('harden-a', browser, {}, async (page) => {
+  const activeId = () => page.evaluate(() => document.activeElement?.id ?? '');
+  // Log in: the sign-in method is a pair of toggle buttons (not tabs), operable from the keyboard.
+  await page.goto(`${BASE}/login`);
+  const method = page.getByRole('group', { name: 'Sign-in method' });
+  const pwBtn = method.getByRole('button', { name: 'Password', exact: true });
+  const linkBtn = method.getByRole('button', { name: 'Email me a link' });
+  assert((await page.getByRole('tab').count()) === 0, 'login still uses role=tab');
+  assert((await pwBtn.getAttribute('aria-pressed')) === 'true', 'Password not pressed by default');
+  await pwBtn.focus();
+  await page.keyboard.press('Tab');
+  assert(await linkBtn.evaluate((el) => el === document.activeElement), 'Tab did not reach "Email me a link"');
+  await page.keyboard.press('Enter');
+  assert((await linkBtn.getAttribute('aria-pressed')) === 'true', 'Enter did not switch to the link method');
+  await page.getByRole('button', { name: 'Send me a sign-in link' }).waitFor();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Space');
+  assert((await pwBtn.getAttribute('aria-pressed')) === 'true', 'Space did not switch back to Password');
+  // Submitting empty: inline errors tied to the fields, focus on the first invalid one.
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.getByText('Enter your email address.').waitFor();
+  await eventually(async () => (await activeId()) === 'email', 'focus did not move to the email field');
+  const email = page.getByLabel('Email');
+  assert((await email.getAttribute('aria-invalid')) === 'true', 'email not marked invalid');
+  assert((await email.getAttribute('aria-describedby')) === 'email-error', 'email error not described');
+  const user = await makeUser('Hardy');
+  await email.fill(user.email);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.getByText('Enter your password.').waitFor();
+  await eventually(async () => (await activeId()) === 'password', 'focus did not move to the password field');
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.waitForURL(/\/app/);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+
+  // Command palette: options are not tab stops, sections are groups, arrows move the active option.
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.waitFor();
+  const input = palette.getByRole('combobox');
+  assert(await page.locator('[role=option]').evaluateAll((els) => els.length > 0 && els.every((e) => e.tabIndex === -1 && e.tagName !== 'BUTTON')), 'palette options are tab stops');
+  assert((await palette.locator('[role=listbox] > [role=group]').count()) >= 3, 'palette sections are not groups');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  assert((await input.getAttribute('aria-activedescendant')) === 'palette-2', 'ArrowDown did not move the active option');
+  assert((await palette.locator('#palette-2').getAttribute('aria-selected')) === 'true', 'active option not selected');
+  await page.keyboard.press('ArrowUp');
+  assert((await input.getAttribute('aria-activedescendant')) === 'palette-1', 'ArrowUp did not move back');
+  await page.keyboard.press('Tab');
+  assert(await input.evaluate((el) => el === document.activeElement), 'Tab left the palette input');
+  // Arrow down to Settings and run it with Enter.
+  for (let i = 0; i < 30; i++) {
+    const id = await input.getAttribute('aria-activedescendant');
+    if ((await palette.locator(`#${id}`).innerText()).trim() === 'Settings') break;
+    await page.keyboard.press('ArrowDown');
+  }
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/\/app\/settings/);
+  await palette.waitFor({ state: 'detached' });
+
+  // Mood picker: one tab stop; arrows, Home and End move and choose.
+  await page.goto(`${BASE}/app/mood`);
+  const radios = page.getByRole('radiogroup', { name: 'How are you feeling today?' }).getByRole('radio');
+  await radios.first().waitFor();
+  assert((await radios.evaluateAll((els) => els.filter((e) => e.tabIndex === 0).length)) === 1, 'mood picker should have one tab stop');
+  await radios.first().focus();
+  await page.keyboard.press('ArrowRight');
+  assert((await radios.nth(1).getAttribute('aria-checked')) === 'true', 'ArrowRight did not choose Meh');
+  assert(await radios.nth(1).evaluate((el) => el === document.activeElement), 'ArrowRight did not move focus');
+  await page.keyboard.press('End');
+  assert((await radios.nth(4).getAttribute('aria-checked')) === 'true', 'End did not choose Amazing');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowLeft');
+  assert((await radios.nth(4).getAttribute('aria-checked')) === 'true', 'ArrowLeft from the first did not wrap');
+  await eventually(async () => (await admin.from('moods').select('score').eq('user_id', user.id).maybeSingle()).data?.score === 5, 'mood not saved as 5');
+  // The note saves while typing and says so.
+  await page.getByLabel('A word about today (optional)').fill('Good run this morning');
+  await page.getByRole('status').filter({ hasText: 'Saved' }).waitFor();
+  await eventually(async () => (await admin.from('moods').select('note').eq('user_id', user.id).maybeSingle()).data?.note === 'Good run this morning', 'mood note not saved');
+
+  // Focus timer survives a reload, and a pill in the top bar links back to it from other pages.
+  await page.goto(`${BASE}/app/focus`);
+  await page.getByRole('button', { name: 'Start timer' }).click();
+  await page.getByRole('button', { name: 'Pause timer' }).waitFor();
+  assert(!(await page.getByTestId('timer-pill').isVisible()), 'timer pill shown on /focus');
+  await page.reload();
+  await page.getByRole('button', { name: 'Pause timer' }).waitFor({ timeout: 10000 });
+  await page.goto(`${BASE}/app/tasks`);
+  const pill = page.getByRole('link', { name: /^Focus timer, \d\d:\d\d left\. Open Focus$/ });
+  await pill.waitFor();
+  await pill.click();
+  await page.waitForURL(/\/app\/focus/);
+  await page.getByRole('button', { name: 'Pause timer' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Start timer' }).waitFor();
+  await page.getByText('Paused', { exact: true }).first().waitFor();
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByRole('link', { name: /^Focus timer, .* paused\. Open Focus$/ }).waitFor();
+  await page.goto(`${BASE}/app/focus`);
+  await page.getByRole('button', { name: 'Reset timer' }).click();
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  assert((await page.getByTestId('timer-pill').count()) === 0, 'timer pill still shown after reset');
+
+  // Habits: archive, then restore from "Archived (n)"; delete asks inside the dialog, naming the history.
+  const { data: h } = await admin.from('habits').insert({ user_id: user.id, name: 'Stretch', emoji: '🧘' }).select('id').single();
+  await admin.from('habit_logs').insert({ user_id: user.id, habit_id: h.id, day: new Date().toISOString().slice(0, 10) });
+  await page.goto(`${BASE}/app/habits`);
+  await page.getByRole('button', { name: 'Edit Stretch' }).click();
+  await page.getByRole('dialog', { name: 'Edit habit' }).getByRole('button', { name: 'Delete…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Edit habit' });
+  await dlg.getByText(/Delete “🧘 Stretch” for good\?/).waitFor();
+  await dlg.getByText(/1 ticked day from the last 120 days/).waitFor();
+  assert(await dlg.getByRole('button', { name: 'Keep it' }).evaluate((el) => el === document.activeElement), 'Keep it not focused');
+  await dlg.getByRole('button', { name: 'Archive instead' }).click();
+  await dlg.waitFor({ state: 'detached' });
+  const archivedToggle = page.getByRole('button', { name: 'Archived (1)' });
+  await archivedToggle.click();
+  assert((await archivedToggle.getAttribute('aria-expanded')) === 'true', 'archived section not expanded');
+  await page.getByRole('button', { name: 'Restore Stretch' }).click();
+  await page.getByRole('button', { name: 'Edit Stretch' }).waitFor();
+  await eventually(async () => (await admin.from('habits').select('archived_at').eq('id', h.id).single()).data?.archived_at === null, 'habit not restored');
+  await page.getByRole('button', { name: /^Archived/ }).waitFor({ state: 'detached' });
+  const { count } = await admin.from('habit_logs').select('day', { count: 'exact', head: true }).eq('habit_id', h.id);
+  assert(count === 1, 'history lost on archive/restore');
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);
