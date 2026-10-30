@@ -277,9 +277,9 @@ await flow('atlas', browser, {}, async (page) => {
   assert(before !== after, `allowance did not change (${before} → ${after})`);
   await panel.getByPlaceholder('Ask Atlas…').fill('delete Water the plants');
   await panel.getByRole('button', { name: 'Send' }).click();
-  await panel.getByText(/Confirm: /).waitFor({ timeout: 15000 });
+  await panel.getByText(/^Delete task “Water the plants”\?$/).waitFor({ timeout: 15000 });
   await shot(page, 'atlas-confirm');
-  await panel.getByRole('button', { name: 'Confirm' }).click();
+  await panel.getByRole('button', { name: 'Delete', exact: true }).click();
   await sleep(800);
   await page.getByRole('button', { name: 'Close Atlas' }).click();
   await page.goto(`${BASE}/app/tasks`);
@@ -904,6 +904,30 @@ await flow('honest-numbers', browser, {}, async (page) => {
   await page.getByText('Discarded 3 min of focus.').waitFor();
   await page.getByRole('button', { name: 'Undo' }).click();
   await page.getByText('Paused', { exact: true }).first().waitFor();
+});
+
+await flow('voice-hud-states', browser, { reducedMotion: 'reduce' }, async (page) => {
+  const user = await makeUser('Rae');
+  await admin.from('ai_overrides').upsert({ user_id: user.id, daily_limit: 0 });
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  await hud.getByRole('status').getByText('AI unavailable').waitFor({ timeout: 10000 });
+  // Focus starts on the orb; with no AI left it is marked unavailable and says why.
+  const orb = hud.getByRole('button', { name: /Talk to Atlas/ });
+  assert(await orb.evaluate((el) => el === document.activeElement), 'orb not focused on open');
+  assert((await orb.getAttribute('aria-disabled')) === 'true', 'orb not marked unavailable at 0 AI uses');
+  await hud.getByText(/used today's AI allowance/).first().waitFor();
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  assert(await hud.getByLabel('Type to Atlas').isDisabled(), 'typed input enabled at 0 AI uses');
+  // Reduced motion: nothing rotates or pulses (entrance fades are fine).
+  const looping = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).length);
+  assert(looping === 0, `${looping} looping animations under reduced motion`);
+  // Space on Exit activates Exit instead of turning the mic on.
+  await hud.getByRole('button', { name: /Exit voice mode/ }).focus();
+  await page.keyboard.press('Space');
+  await hud.waitFor({ state: 'detached' });
 });
 
 await browser.close();

@@ -26,9 +26,18 @@ export function PlanCard({ planId, variant = 'chat' }: { planId: string; variant
   const { data: plans, isLoading } = usePlans();
   const plan = plans?.find((p) => p.id === planId);
   if (isLoading) return null;
-  if (!plan) return <p className={cn('text-xs', variant === 'hud' ? 'text-cyan-600' : 'faint')}>This plan was removed.</p>;
+  if (!plan) return <p className={cn('text-xs', variant === 'hud' ? 'text-cyan-400/80' : 'faint')}>This plan was removed.</p>;
   return <PlanCardBody plan={plan} variant={variant} />;
 }
+
+/**
+ * The voice HUD is always dark and cyan, whatever the app theme, so its card uses its own
+ * buttons instead of the theme-following ones.
+ */
+const HUD_BTN = 'btn min-h-11 !px-3 !py-1.5 text-xs shadow-none sm:min-h-9';
+const HUD_PRIMARY = `${HUD_BTN} bg-cyan-300 text-cyan-950 hover:bg-cyan-200`;
+const HUD_GHOST = `${HUD_BTN} border border-cyan-400/50 bg-transparent text-cyan-100 hover:bg-cyan-400/10`;
+const HUD_AI = 'min-h-11 !border-cyan-400/50 !bg-cyan-400/10 !text-cyan-200 hover:!bg-cyan-400/20 sm:min-h-9';
 
 function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }) {
   const actions = usePlanActions();
@@ -46,7 +55,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
       aria-label={`Plan: ${plan.title}`}
       className={cn(
         'rounded-2xl border p-3.5 text-sm',
-        hud ? 'border-cyan-400/40 bg-cyan-950/60 font-mono text-cyan-50' : 'border-atlas/30 bg-surface shadow-card',
+        hud ? 'border-cyan-400/40 bg-cyan-950/40 font-mono text-cyan-50' : 'border-atlas/30 bg-surface shadow-card',
         plan.status === 'dismissed' && 'opacity-60',
       )}
     >
@@ -59,7 +68,12 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
           </p>
         </div>
         {!draft && (
-          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', plan.status === 'dismissed' ? 'bg-raised text-muted' : 'bg-success/10 text-success')}>
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
+              hud ? (plan.status === 'dismissed' ? 'bg-cyan-400/10 text-cyan-300' : 'bg-emerald-400/10 text-emerald-300') : plan.status === 'dismissed' ? 'bg-raised text-muted' : 'bg-success/10 text-success',
+            )}
+          >
             {plan.status === 'active' ? 'On your Planner' : plan.status === 'paused' ? 'Paused' : 'Dismissed'}
           </span>
         )}
@@ -77,16 +91,16 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {draft && (
           <>
-            <button className="btn-primary !px-3 !py-1.5 text-xs" onClick={() => setDialog('add')}>
+            <button className={hud ? HUD_PRIMARY : 'btn-primary !px-3 !py-1.5 text-xs'} onClick={() => setDialog('add')}>
               <CalendarPlus size={14} /> Add to Planner
             </button>
-            <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setDialog('edit')}>
+            <button className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} onClick={() => setDialog('edit')}>
               <Pencil size={13} /> Edit
             </button>
-            <AiButton size="sm" loading={regen.isPending} onClick={() => regen.mutate({ plan_id: plan.id }, { onSuccess: () => actions.refresh() })} hint="Write a different version of this plan">
+            <AiButton size="sm" className={hud ? HUD_AI : undefined} loading={regen.isPending} onClick={() => regen.mutate({ plan_id: plan.id }, { onSuccess: () => actions.refresh() })} hint="Write a different version of this plan">
               Regenerate
             </AiButton>
-            <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => run(actions.setStatus(plan, 'dismissed'))}>
+            <button className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} onClick={() => run(actions.setStatus(plan, 'dismissed'))}>
               <X size={13} /> Dismiss
             </button>
           </>
@@ -98,7 +112,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
           </Link>
         )}
         {plan.status === 'dismissed' && (
-          <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => run(actions.setStatus(plan, 'draft'))}>
+          <button className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} onClick={() => run(actions.setStatus(plan, 'draft'))}>
             <Undo2 size={13} /> Restore
           </button>
         )}
