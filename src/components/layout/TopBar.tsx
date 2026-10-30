@@ -22,7 +22,7 @@ export function TopBar() {
       </Link>
       <button
         onClick={() => openCapture()}
-        className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm text-muted transition hover:border-line-strong sm:flex md:max-w-md"
+        className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm text-muted transition-colors duration-fast hover:border-line-strong sm:flex md:max-w-md"
         data-tour="capture"
       >
         <Plus size={16} className="shrink-0 text-ink" aria-hidden />

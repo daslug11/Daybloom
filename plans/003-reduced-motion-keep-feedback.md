@@ -1,6 +1,6 @@
 # 003 — Reduced motion: drop movement, keep feedback
 
-- **Status**: TODO
+- **Status**: DONE (Phase 3)
 - **Commit**: 9799a50
 - **Severity**: MEDIUM
 - **Category**: Accessibility

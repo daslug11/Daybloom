@@ -2,16 +2,11 @@ import { ArrowRight, Lock, Mic } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { OrbGlyph } from '../../components/atlas/AtlasOrb';
-import { SyncRow } from '../../components/calendars/SyncToggle';
-import { TypeBadge } from '../../components/calendars/TypeBadge';
-import { TimerView } from '../../components/focus/TimerDisplay';
-import { GoalCard } from '../../components/goals/GoalCard';
-import { HabitCard } from '../../components/habits/HabitCard';
 import { NoteCard } from '../../components/notes/NoteCard';
 import { TaskItem } from '../../components/tasks/TaskItem';
 import { Card } from '../../components/ui/Card';
 import { addDays, dayIn } from '../../lib/dates';
-import type { Goal, Habit, Milestone, Note, Task } from '../../lib/types';
+import type { Note, Task } from '../../lib/types';
 import { PublicLayout } from './PublicLayout';
 
 // Sample data for the previews below. These are the same components the app uses, fed with example content.
@@ -53,13 +48,6 @@ const tasks = [
   task({ id: 't2', title: 'Book the restaurant', due_date: addDays(today, 1), tags: ['family'], source_note_id: 'n' }),
   task({ id: 't3', title: 'Renew car insurance', done: true, completed_at: iso }),
 ];
-const habit: Habit = { id: 'h', name: 'Read 20 minutes', emoji: '📚', goal_id: null, source_note_id: null, archived_at: null, sort: 0, created_at: iso };
-const habitDays = new Set(Array.from({ length: 84 }, (_, i) => addDays(today, -i)).filter((_, i) => i < 9 || (i * 7) % 5 < 3));
-const goal: Goal = { id: 'g', title: 'Read 24 books', emoji: '📚', target: 24, current: 9, unit: 'books', due_date: null, source_note_id: null, completed_at: null, sort: 0, created_at: iso };
-const milestones: Milestone[] = [
-  { id: 'm1', goal_id: 'g', title: 'Finish 6 by March', done: true, sort: 0 },
-  { id: 'm2', goal_id: 'g', title: 'Join a book club', done: false, sort: 1 },
-];
 
 function Feature({ id, eyebrow, title, children, preview, flip }: { id: string; eyebrow: string; title: string; children: ReactNode; preview: ReactNode; flip?: boolean }) {
   return (
@@ -77,6 +65,14 @@ function Feature({ id, eyebrow, title, children, preview, flip }: { id: string; 
     </section>
   );
 }
+
+const MORE: { id: string; name: string; title: string; body: string }[] = [
+  { id: 'habits', name: 'Habits', title: 'Small things, every day', body: 'Tick off a habit once a day and see your streak and a 12-week history grid. ✨ Suggest habits proposes a few that fit your goals.' },
+  { id: 'goals', name: 'Goals', title: 'Goals with a number you can move', body: 'A target like “Read 24 books” that you update as you go, with linked tasks and habits. ✨ Make a plan breaks it into milestones.' },
+  { id: 'calendars', name: 'Calendars', title: 'See your real schedule', body: 'Turn on sync for any iCal link (Google, Outlook, Apple and more) and its events appear in your Planner and dashboard. Read-only, refreshed every 10 minutes.' },
+  { id: 'focus', name: 'Focus timer', title: 'Work in focused blocks', body: '25 minutes of focus and 5 of rest, or your own lengths. Finished blocks are logged against the task you picked.' },
+  { id: 'review', name: 'Mood & Weekly Review', title: 'Look back, then adjust', body: 'A one-tap mood check-in and plain numbers for the last 7 days, each with a note on how it’s calculated. ✨ AI summary suggests three changes for next week.' },
+];
 
 const FAQ: { q: string; a: ReactNode }[] = [
   { q: 'Is Daybloom free?', a: 'Yes. Everything — notes, tasks, planner, habits, goals, calendars, focus timer, mood and weekly review — is free to use.' },
@@ -165,66 +161,21 @@ export default function Landing() {
           <p>✨ Plan my day suggests blocks for your open tasks in your free time. You accept or discard each one. ✨ Break it down splits a big task into steps.</p>
         </Feature>
 
-        <Feature id="habits" eyebrow="Habits" title="Small things, every day" preview={<HabitCard habit={habit} today={today} days={habitDays} streak={9} />}>
-          <p>Tick off a habit once a day. You see your current streak and a 12-week history grid — nothing more complicated than that.</p>
-          <p>✨ Suggest habits proposes a few that fit the goals you’ve set.</p>
-        </Feature>
-
-        <Feature id="goals" flip eyebrow="Goals" title="Goals with a number you can move" preview={<GoalCard goal={goal} milestones={milestones} openTasks={3} habits={1} />}>
-          <p>A goal has a target — “Read 24 books”, “Run 100 km” — and you update progress as you go. Link tasks and habits to it.</p>
-          <p>✨ Make a plan breaks a goal into milestones and first tasks you can edit before adding.</p>
-        </Feature>
-
-        <Feature
-          id="calendars"
-          eyebrow="Calendars"
-          title="See your real schedule"
-          preview={
-            <Card className="!p-0">
-              <div className="flex items-center gap-3 p-4 pb-2">
-                <span className="text-2xl">💼</span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold">Work calendar</p>
-                  <p className="faint truncate text-xs">calendar.google.com/…/basic.ics</p>
-                </div>
-                <TypeBadge type="google" />
+        <section id="more" aria-labelledby="more-title" className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+          <h2 id="more-title" className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
+            And the rest of your week
+          </h2>
+          <p className="muted mt-2 max-w-[60ch] text-base">Small tools that plug into the same tasks and calendar, so nothing lives in two places.</p>
+          <div className="mt-8 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+            {MORE.map((m) => (
+              <div key={m.id} id={m.id} className="border-t border-line pt-4">
+                <h3 className="font-semibold">{m.name}</h3>
+                <p className="mt-1 text-sm font-medium text-ink">{m.title}</p>
+                <p className="muted mt-2 text-sm leading-relaxed">{m.body}</p>
               </div>
-              <SyncRow enabled status={{ state: 'ok', count: 14, fetchedAt: new Date().toISOString() }} onToggle={() => {}} />
-            </Card>
-          }
-        >
-          <p>Keep all your calendar links in one place, grouped your way. Turn on sync for any iCal link (Google, Outlook, Apple, and more) and its events appear in your Planner and dashboard.</p>
-          <p>Sync is read-only and refreshes every 10 minutes.</p>
-        </Feature>
-
-        <Feature id="focus" flip eyebrow="Focus timer" title="Work in focused blocks" preview={<div className="flex justify-center"><TimerView mode="work" remaining={17 * 60 + 42} total={25 * 60} running taskTitle="Send the quarterly report" size={220} /></div>}>
-          <p>A Pomodoro timer: 25 minutes of focus, 5 of rest (or your own lengths). Pick a task and finished blocks are logged against it, so you see where your time went.</p>
-        </Feature>
-
-        <Feature
-          id="review"
-          eyebrow="Mood & Weekly Review"
-          title="Look back, then adjust"
-          preview={
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Tasks completed', value: '18', sub: '▲ 4 vs the 7 days before' },
-                { label: 'Habit consistency', value: '76%', sub: '16 of 21 habit-days' },
-                { label: 'Average mood', value: '3.9/5', sub: '🙂 from 6 check-ins' },
-                { label: 'Focus time', value: '6h 15m', sub: 'From finished blocks' },
-              ].map((t) => (
-                <Card key={t.label} className="!p-4">
-                  <p className="muted text-xs font-medium">{t.label}</p>
-                  <p className="mt-1 text-2xl font-extrabold tabular-nums">{t.value}</p>
-                  <p className="muted text-xs">{t.sub}</p>
-                </Card>
-              ))}
-            </div>
-          }
-        >
-          <p>A one-tap daily mood check-in and a weekly chart. The Weekly Review shows plain numbers for the last 7 days, each with a note on how it’s calculated.</p>
-          <p>✨ AI summary writes a short review with three specific suggestions for next week. ✨ Reflect looks for patterns in your mood notes.</p>
-        </Feature>
+            ))}
+          </div>
+        </section>
 
         <Feature
           id="atlas"
@@ -256,33 +207,31 @@ export default function Landing() {
       </div>
 
       <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
-        <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">How it works</h2>
-        <ol className="mt-8 grid gap-4 md:grid-cols-3">
+        <h2 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">How it works</h2>
+        <ol className="mt-8 grid gap-8 md:grid-cols-3">
           {[
             { n: 1, title: 'Capture', body: 'Dump everything into your Brain Dump — typed or spoken — without deciding what it is yet.' },
             { n: 2, title: 'Organise', body: 'Process your inbox into tasks, planner blocks, habits and goals. Let ✨ AI help when it’s a lot.' },
             { n: 3, title: 'Do & review', body: 'Work from your dashboard and Planner, focus with the timer, and look back each week.' },
           ].map((s) => (
-            <li key={s.n}>
-              <Card className="h-full">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-ink">{s.n}</span>
-                <h3 className="mt-3 font-bold">{s.title}</h3>
-                <p className="muted mt-1 text-sm">{s.body}</p>
-              </Card>
+            <li key={s.n} className="border-t border-line pt-4">
+              <span className="faint text-sm font-medium tabular-nums">Step {s.n}</span>
+              <h3 className="mt-1 font-semibold">{s.title}</h3>
+              <p className="muted mt-1 text-sm">{s.body}</p>
             </li>
           ))}
         </ol>
       </section>
 
       <section id="faq" className="mx-auto max-w-3xl px-4 py-14 sm:px-6">
-        <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">Questions</h2>
+        <h2 className="text-center text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">Questions</h2>
         <div className="mt-8 space-y-2">
           {FAQ.map((f) => (
             <details key={f.q} className="card group p-4">
               <summary className="cursor-pointer list-none font-semibold marker:hidden">
                 <span className="flex items-center justify-between gap-3">
                   {f.q}
-                  <span className="faint transition group-open:rotate-45" aria-hidden>
+                  <span className="faint transition-transform duration-fast ease-out group-open:rotate-45" aria-hidden>
                     +
                   </span>
                 </span>
@@ -294,7 +243,7 @@ export default function Landing() {
       </section>
 
       <section className="mx-auto max-w-6xl px-4 pb-20 text-center sm:px-6">
-        <h2 className="text-2xl font-extrabold tracking-tight">Ready to clear your head?</h2>
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Ready to clear your head?</h2>
         <Link to="/signup" className="btn-primary mt-5 !px-6 !py-3 text-base">
           Sign up free <ArrowRight size={17} />
         </Link>

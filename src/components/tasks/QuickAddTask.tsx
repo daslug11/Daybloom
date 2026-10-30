@@ -9,7 +9,7 @@ import { AiButton } from '../ui/Ai';
 import { TaskChips } from './TaskChips';
 
 /** Inline natural-language task entry with a live preview of what was understood. */
-export function QuickAddTask({ extra, placeholder, className, onAdded }: { extra?: Partial<NewTask>; placeholder?: string; className?: string; onAdded?: () => void }) {
+export function QuickAddTask({ extra, placeholder, className, onAdded, inset }: { extra?: Partial<NewTask>; placeholder?: string; className?: string; onAdded?: () => void; /** Sits inside another card: an input well, not a card. */ inset?: boolean }) {
   const [text, setText] = useState('');
   const [ai, setAi] = useState<{ title: string; due_date: string | null; due_time: string | null; priority: 'high' | 'medium' | 'low' | null; tags: string[]; estimate_min: number | null } | null>(null);
   const parsed = useMemo(() => parseQuickAdd(text), [text]);
@@ -32,9 +32,9 @@ export function QuickAddTask({ extra, placeholder, className, onAdded }: { extra
   };
 
   return (
-    <form onSubmit={submit} className={cn('card p-2', className)} data-tour="quick-add">
+    <form onSubmit={submit} className={cn(inset ? 'rounded-control border border-line bg-raised p-1.5' : 'card p-2', className)} data-tour="quick-add">
       <div className="flex items-center gap-2 px-1">
-        <ListPlus size={18} className="shrink-0 text-ink" aria-hidden />
+        <ListPlus size={18} className="shrink-0 text-muted" aria-hidden />
         <label htmlFor="quick-add-task" className="sr-only">
           Add a task
         </label>

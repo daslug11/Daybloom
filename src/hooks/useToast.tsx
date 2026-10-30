@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { uid } from '../lib/utils';
@@ -25,6 +25,7 @@ const DURATION = { plain: 5000, action: 8000 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const reduce = useReducedMotion();
   // Per toast: the running timer and how much time it has left (paused while hovered or focused).
   const timers = useRef(new Map<string, { handle: number; left: number; started: number }>());
   const paused = useRef(false);
@@ -93,9 +94,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <motion.div
               key={t.id}
               layout
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.95 }}
+              animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.95 }}
+              transition={reduce ? { duration: 0.15 } : undefined}
               className="toast pointer-events-auto"
             >
               <span className="min-w-0 flex-1">{t.message}</span>

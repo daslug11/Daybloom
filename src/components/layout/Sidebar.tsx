@@ -35,7 +35,7 @@ export function Sidebar() {
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
+      'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-fast',
       collapsed && 'justify-center px-0',
       isActive
         ? 'bg-ink/[0.06] text-ink ring-1 ring-ink/40'

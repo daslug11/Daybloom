@@ -207,7 +207,7 @@ export default function Calendars() {
         )}
         <button className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-ink hover:underline" onClick={() => setHelpOpen((v) => !v)} aria-expanded={helpOpen}>
           <HelpCircle size={15} /> How do I find my calendar’s secret ICS address?
-          <ChevronDown size={14} className={cn('transition', helpOpen && 'rotate-180')} />
+          <ChevronDown size={14} className={cn('transition-transform duration-fast ease-out', helpOpen && 'rotate-180')} />
         </button>
         {helpOpen && (
           <div className="mt-3 border-t border-line pt-3">
@@ -216,7 +216,8 @@ export default function Calendars() {
         )}
       </Card>
 
-      {list.length > 0 && (
+      {/* Search and filters only earn their space once there are enough calendars to need them. */}
+      {(list.length > 8 || groups.length >= 2 || filtering) && (
         <div className="mb-5 space-y-2">
           <div className="relative">
             <Search size={15} className="faint absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
@@ -320,7 +321,7 @@ export default function Calendars() {
               >
                 <div className="mb-2 flex items-center gap-2">
                   <button className="flex min-w-0 items-center gap-2 text-left" onClick={() => toggleCollapsed(id)} aria-expanded={!isCollapsed}>
-                    <ChevronDown size={18} className={cn('faint transition', isCollapsed && '-rotate-90')} />
+                    <ChevronDown size={18} className={cn('faint transition-transform duration-fast ease-out', isCollapsed && '-rotate-90')} />
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: group ? calendarColor(group.color) : 'rgb(var(--faint))' }} aria-hidden />
                     <h2 className="truncate text-base font-bold">{group ? group.name : 'Ungrouped'}</h2>
                     <span className="faint text-xs">{items.length}</span>

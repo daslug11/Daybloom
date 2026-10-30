@@ -42,7 +42,7 @@ export function MobileNav() {
               to={to}
               onClick={() => setMore(false)}
               className={({ isActive }) =>
-                cn('rounded-2xl border p-3 text-left transition', isActive ? 'border-ink/40 bg-ink/[0.06]' : 'border-line ')
+                cn('rounded-2xl border p-3 text-left transition-colors duration-fast', isActive ? 'border-ink/40 bg-ink/[0.06]' : 'border-line ')
               }
             >
               <Icon size={18} className="text-ink " aria-hidden />

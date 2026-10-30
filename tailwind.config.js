@@ -50,9 +50,12 @@ export default {
       transitionDuration: { press: '160ms', fast: '150ms', base: '200ms' },
       keyframes: {
         'fade-in': { from: { opacity: '0', transform: 'translateY(4px)' }, to: { opacity: '1', transform: 'none' } },
+        fade: { from: { opacity: '0' }, to: { opacity: '1' } },
       },
       animation: {
         'fade-in': 'fade-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both',
+        // Opacity only: for content that changes in place (inline errors) and for reduced motion.
+        fade: 'fade 150ms ease-out both',
       },
     },
   },

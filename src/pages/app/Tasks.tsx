@@ -87,7 +87,7 @@ export default function Tasks() {
               onClick={() => setExpanded((s) => (s.has(t.id) ? (s.delete(t.id), new Set(s)) : new Set(s).add(t.id)))}
               aria-expanded={isOpen}
             >
-              <ChevronDown size={12} className={cn('transition', !isOpen && '-rotate-90')} /> {isOpen ? 'Hide' : 'Show'} steps
+              <ChevronDown size={12} className={cn('transition-transform duration-fast ease-out', !isOpen && '-rotate-90')} /> {isOpen ? 'Hide' : 'Show'} steps
             </button>
             {isOpen && (
               <ul className="mt-1 space-y-1">
@@ -163,7 +163,7 @@ export default function Tasks() {
 
           <section aria-labelledby="sec-done">
             <button id="sec-done" className="flex items-center gap-2 text-sm font-bold" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
-              <ChevronDown size={15} className={cn('transition', !showDone && '-rotate-90')} /> Done
+              <ChevronDown size={15} className={cn('transition-transform duration-fast ease-out', !showDone && '-rotate-90')} /> Done
               <span className="faint text-xs font-normal">{done.length} in the last 60 days</span>
             </button>
             {showDone && <ul className="mt-2 space-y-1.5">{done.slice(0, 100).map((t) => renderTask(t))}</ul>}

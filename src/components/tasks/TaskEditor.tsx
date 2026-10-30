@@ -1,4 +1,4 @@
-import { Check, FileText, Plus, Timer, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, FileText, Plus, Timer, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGoals } from '../../hooks/data/goals';
@@ -38,16 +38,22 @@ export function TaskEditor({ task, onClose }: Props) {
   const [newStep, setNewStep] = useState('');
   const [proposed, setProposed] = useState<{ title: string; estimate_min: number | null; keep: boolean }[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Estimate, tags, goal, Planner block and notes sit behind "More details" unless one is already set.
+  const filledExtras = (t: Task | null) => (t ? [t.estimate_min, t.tags.length, t.goal_id, t.sched_date, t.details.trim()].filter(Boolean).length : 0);
+  const [more, setMore] = useState(() => filledExtras(task) > 0);
 
   useEffect(() => {
     setDraft(task);
     setProposed(null);
     setConfirmDelete(false);
+    setMore(filledExtras(task) > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
 
   if (!task || !draft) return null;
   const steps = tasks.filter((t) => t.parent_id === task.id).sort((a, b) => a.sort - b.sort);
   const note = task.source_note_id ? notes.find((n) => n.id === task.source_note_id) : null;
+  const extras = filledExtras(draft);
   const set = (patch: Partial<Task>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
   const save = () => {
@@ -74,7 +80,7 @@ export function TaskEditor({ task, onClose }: Props) {
           <input id="task-title" className="input text-base font-medium" value={draft.title} maxLength={300} onChange={(e) => set({ title: e.target.value })} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <label className="col-span-1">
             <span className="label">Due date</span>
             <input type="date" className="input" value={draft.due_date ?? ''} onChange={(e) => set({ due_date: e.target.value || null })} />
@@ -92,85 +98,12 @@ export function TaskEditor({ task, onClose }: Props) {
               <option value="low">Low</option>
             </select>
           </label>
-          <label>
-            <span className="label">Estimate (min)</span>
-            <input type="number" min={5} max={1440} step={5} className="input" value={draft.estimate_min ?? ''} onChange={(e) => set({ estimate_min: e.target.value ? Math.max(1, Math.min(1440, Number(e.target.value))) : null })} />
-          </label>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label>
-            <span className="label">Tags</span>
-            <input
-              className="input"
-              placeholder="work, errands"
-              defaultValue={draft.tags.join(', ')}
-              onBlur={(e) => set({ tags: [...new Set(e.target.value.split(',').map((t) => t.trim().replace(/^#/, '').toLowerCase()).filter(Boolean))].slice(0, 20) })}
-            />
-          </label>
-          <label>
-            <span className="label">Goal</span>
-            <select className="input" value={draft.goal_id ?? ''} onChange={(e) => set({ goal_id: e.target.value || null })}>
-              <option value="">Not linked</option>
-              {goals.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.emoji} {g.title}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="accent-ink" checked={draft.top_date === today} onChange={(e) => set({ top_date: e.target.checked ? today : null })} />
           ⭐ One of today’s top 3
         </label>
-
-        <div className="rounded-xl border border-line p-3">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" className="accent-ink" checked={scheduled} onChange={(e) => toggleSchedule(e.target.checked)} />
-            Block time for it in the Planner
-          </label>
-          {scheduled && (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <label>
-                <span className="label">Day</span>
-                <input type="date" className="input" value={draft.sched_date ?? ''} onChange={(e) => e.target.value && set({ sched_date: e.target.value })} />
-              </label>
-              <label>
-                <span className="label">Start</span>
-                <input
-                  type="time"
-                  step={900}
-                  className="input"
-                  value={formatMinutesShort(draft.sched_start ?? 540)}
-                  onChange={(e) => {
-                    if (!e.target.value) return;
-                    const start = Math.min(Math.round(minutesFromTime(e.target.value) / 15) * 15, 1425);
-                    set({ sched_start: start, sched_duration: Math.min(draft.sched_duration ?? 60, 1440 - start) });
-                  }}
-                />
-              </label>
-              <label>
-                <span className="label">Length</span>
-                <select className="input" value={draft.sched_duration ?? 60} onChange={(e) => set({ sched_duration: Math.min(Number(e.target.value), 1440 - (draft.sched_start ?? 0)) })}>
-                  {[15, 30, 45, 60, 90, 120, 180, 240].map((m) => (
-                    <option key={m} value={m}>
-                      {m < 60 ? `${m} min` : `${m / 60} h`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="label" htmlFor="task-details">
-            Notes
-          </label>
-          <textarea id="task-details" rows={3} maxLength={5000} className="input resize-y" value={draft.details} onChange={(e) => set({ details: e.target.value })} placeholder="Links, context, anything useful." />
-        </div>
 
         {/* Steps */}
         <div>
@@ -243,6 +176,89 @@ export function TaskEditor({ task, onClose }: Props) {
               <Plus size={15} />
             </button>
           </form>
+        </div>
+
+        <div className="border-t border-line pt-3">
+          <button type="button" className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink" onClick={() => setMore((v) => !v)} aria-expanded={more}>
+            <ChevronDown size={15} className={cn('transition-transform duration-fast', more && 'rotate-180')} aria-hidden /> More details
+            {!more && extras > 0 && <span className="faint font-normal">· {extras} set</span>}
+          </button>
+          {more && (
+            <div className="mt-3 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label>
+                <span className="label">Estimate (min)</span>
+                <input type="number" min={5} max={1440} step={5} className="input" value={draft.estimate_min ?? ''} onChange={(e) => set({ estimate_min: e.target.value ? Math.max(1, Math.min(1440, Number(e.target.value))) : null })} />
+              </label>
+              <label>
+                <span className="label">Tags</span>
+                <input
+                  className="input"
+                  placeholder="work, errands"
+                  defaultValue={draft.tags.join(', ')}
+                  onBlur={(e) => set({ tags: [...new Set(e.target.value.split(',').map((t) => t.trim().replace(/^#/, '').toLowerCase()).filter(Boolean))].slice(0, 20) })}
+                />
+              </label>
+              <label>
+                <span className="label">Goal</span>
+                <select className="input" value={draft.goal_id ?? ''} onChange={(e) => set({ goal_id: e.target.value || null })}>
+                  <option value="">Not linked</option>
+                  {goals.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.emoji} {g.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="rounded-control border border-line p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" className="accent-ink" checked={scheduled} onChange={(e) => toggleSchedule(e.target.checked)} />
+                Block time for it in the Planner
+              </label>
+              {scheduled && (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <label>
+                    <span className="label">Day</span>
+                    <input type="date" className="input" value={draft.sched_date ?? ''} onChange={(e) => e.target.value && set({ sched_date: e.target.value })} />
+                  </label>
+                  <label>
+                    <span className="label">Start</span>
+                    <input
+                      type="time"
+                      step={900}
+                      className="input"
+                      value={formatMinutesShort(draft.sched_start ?? 540)}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const start = Math.min(Math.round(minutesFromTime(e.target.value) / 15) * 15, 1425);
+                        set({ sched_start: start, sched_duration: Math.min(draft.sched_duration ?? 60, 1440 - start) });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span className="label">Length</span>
+                    <select className="input" value={draft.sched_duration ?? 60} onChange={(e) => set({ sched_duration: Math.min(Number(e.target.value), 1440 - (draft.sched_start ?? 0)) })}>
+                      {[15, 30, 45, 60, 90, 120, 180, 240].map((m) => (
+                        <option key={m} value={m}>
+                          {m < 60 ? `${m} min` : `${m / 60} h`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="label" htmlFor="task-details">
+                Notes
+              </label>
+              <textarea id="task-details" rows={3} maxLength={5000} className="input resize-y" value={draft.details} onChange={(e) => set({ details: e.target.value })} placeholder="Links, context, anything useful." />
+            </div>
+            </div>
+          )}
         </div>
 
         {note && (

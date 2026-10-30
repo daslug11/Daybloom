@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, ArrowRightLeft, ListTodo, MoreHorizontal, Pencil, Pin, PinOff, Sparkles, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRightLeft, ListTodo, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '../../lib/dates';
 import type { Note } from '../../lib/types';
@@ -49,7 +49,7 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
     <article
       id={`note-${note.id}`}
       data-note-id={note.id}
-      className={cn('card group p-4 transition', highlight && 'ring-2 ring-ink/40', note.pinned && 'border-ink/40')}
+      className={cn('card group p-4 transition-colors duration-fast', highlight && 'ring-2 ring-ink/40', note.pinned && 'border-ink/40')}
       aria-label={`Note from ${timeAgo(note.created_at)}`}
     >
       <div className="mb-2 flex items-center gap-2 text-xs">
@@ -118,7 +118,7 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
             </Menu>
           )}
           {onAi && (
-            <Menu label="AI actions" trigger={aiBusy ? <Sparkles size={15} className="animate-pulse text-ink" /> : <Sparkles size={15} />} align="left">
+            <Menu label="AI actions" trigger={aiBusy ? <Loader2 size={15} className="animate-spin text-ink" aria-label="AI is working" /> : <Sparkles size={15} />} align="left">
               {(close) => (
                 <>
                   <p className="faint px-2.5 pb-1 pt-1.5 text-xs">Each uses 1 of your daily ✨ AI actions.</p>

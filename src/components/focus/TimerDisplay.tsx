@@ -29,7 +29,7 @@ export function TimerView({ mode, remaining, total, running, taskTitle, size = 2
             role="tab"
             aria-selected={mode === m}
             onClick={() => onMode?.(m)}
-            className={cn('rounded-full px-4 py-1.5 text-sm font-semibold transition', mode === m ? 'bg-accent text-accent-ink' : 'muted')}
+            className={cn('rounded-full px-4 py-1.5 text-sm font-semibold transition-colors duration-fast', mode === m ? 'bg-accent text-accent-ink' : 'muted')}
           >
             {m === 'work' ? 'Focus' : 'Break'}
           </button>
@@ -49,7 +49,7 @@ export function TimerView({ mode, remaining, total, running, taskTitle, size = 2
         </button>
         <button
           onClick={running ? onPause : onStart}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-ink shadow-button transition hover:bg-accent/90"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-ink shadow-button transition-colors duration-fast hover:bg-accent/90"
           aria-label={running ? 'Pause timer' : 'Start timer'}
         >
           {running ? <Pause size={24} /> : <Play size={24} className="ml-0.5" />}

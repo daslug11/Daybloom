@@ -46,7 +46,7 @@ export function ContributionGrid({ today, level, onToggle, label, cell = 'h-3.5 
                 title={text}
                 aria-label={text}
                 aria-pressed={l > 0}
-                className={cn('rounded-[3px] transition', cell, SHADES[shade], onToggle && 'hover:ring-1 hover:ring-ink/40', key === today && 'ring-1 ring-ink/40')}
+                className={cn('rounded-[3px] transition-colors duration-fast', cell, SHADES[shade], onToggle && 'hover:ring-1 hover:ring-ink/40', key === today && 'ring-1 ring-ink/40')}
               />
             );
           })}

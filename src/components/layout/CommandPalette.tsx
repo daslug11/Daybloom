@@ -106,7 +106,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[12vh]">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden />
-      <div ref={panel} role="dialog" aria-modal="true" aria-label="Command palette" className="relative w-full max-w-xl animate-fade-in overflow-hidden rounded-card border border-line bg-overlay shadow-modal">
+      <div ref={panel} role="dialog" aria-modal="true" aria-label="Command palette" className="relative w-full max-w-xl overflow-hidden rounded-card border border-line bg-overlay shadow-modal">
         <div className="flex items-center gap-3 border-b border-line px-4">
           <Search size={18} className="text-ink" aria-hidden />
           <input

@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CALENDAR_EMOJIS, detectCalendarType, calendarTile, isGoogleEmbed, looksLikeFeed, validateCalendarUrl } from '../../lib/calendars';
@@ -97,26 +96,17 @@ export function CalendarModal({ open, initial, groups, defaultGroupId = null, on
             aria-describedby="cal-url-help"
             inputMode="url"
           />
-          <AnimatePresence initial={false}>
-            {showError ? (
-              <motion.p
-                key="err"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                id="cal-url-help"
-                className="mt-1.5 flex items-center gap-1.5 text-xs text-danger"
-              >
-                <AlertCircle size={13} /> {urlError}
-              </motion.p>
-            ) : (
-              <p id="cal-url-help" className="muted mt-1.5 text-xs">
-                {isGoogleEmbed(draft.url)
-                  ? '✨ Google embed link detected — you can preview it right in the card.'
-                  : 'Google, Outlook, iCloud, Notion, Calendly, .ics/webcal feeds — anything with a link.'}
-              </p>
-            )}
-          </AnimatePresence>
+          {showError ? (
+            <p id="cal-url-help" className="mt-1.5 flex animate-fade items-center gap-1.5 text-xs text-danger">
+              <AlertCircle size={13} /> {urlError}
+            </p>
+          ) : (
+            <p id="cal-url-help" className="muted mt-1.5 text-xs">
+              {isGoogleEmbed(draft.url)
+                ? '✨ Google embed link detected — you can preview it right in the card.'
+                : 'Google, Outlook, iCloud, Notion, Calendly, .ics/webcal feeds — anything with a link.'}
+            </p>
+          )}
         </div>
 
         <div className="rounded-2xl border border-line bg-surface p-3">

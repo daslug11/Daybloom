@@ -135,7 +135,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   return createPortal(
     <div ref={root} className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Atlas assistant">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
-      <aside className="relative flex h-full w-full max-w-md animate-fade-in flex-col border-l border-line bg-overlay shadow-modal">
+      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-overlay shadow-modal">
         <header className="flex items-center gap-3 border-b border-line px-4 py-3">
           <OrbGlyph size={28} active={!!sending} />
           <div className="min-w-0 flex-1">
