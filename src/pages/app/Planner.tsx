@@ -746,7 +746,7 @@ export default function Planner() {
           {selectedTask && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-ink/[0.06] px-4 py-2 text-xs">
               <span className="min-w-0">
-                Tap a time to schedule <strong className="break-words">“{selectedTask.title}”</strong>
+                Tap a time to schedule <strong>“{selectedTask.title}”</strong>
               </span>
               <span className="ml-auto flex items-center gap-3">
                 <button className="link" onClick={() => openScheduler(selectedTask)}>

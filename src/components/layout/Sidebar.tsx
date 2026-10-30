@@ -59,7 +59,7 @@ export function Sidebar() {
         {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} end={to === '/app'} className={linkClass} title={collapsed ? label : undefined} data-tour={`nav-${to.split('/').pop()}`}>
             <Icon size={18} className="shrink-0" aria-hidden />
-            {!collapsed && <span className="truncate">{label}</span>}
+            <span className={collapsed ? 'sr-only' : 'truncate'}>{label}</span>
             {to === '/app/brain-dump' && inbox !== 0 && (
               <span className={cn('badge', collapsed ? 'absolute right-1.5 top-1' : 'ml-auto')} title={inbox === null ? 'Inbox count couldn’t be loaded' : undefined}>
                 <span aria-hidden>{inbox ?? '—'}</span>
@@ -72,7 +72,7 @@ export function Sidebar() {
       <div className="flex flex-col gap-0.5 border-t border-line pt-3">
         <NavLink to="/app/settings" className={linkClass} title={collapsed ? 'Settings' : undefined}>
           <SettingsIcon size={18} aria-hidden />
-          {!collapsed && 'Settings'}
+          <span className={collapsed ? 'sr-only' : undefined}>Settings</span>
         </NavLink>
         <button onClick={toggle} className={linkClass({ isActive: false })} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           {collapsed ? <PanelLeftOpen size={18} aria-hidden /> : <PanelLeftClose size={18} aria-hidden />}

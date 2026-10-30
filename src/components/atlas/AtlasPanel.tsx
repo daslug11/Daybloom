@@ -64,8 +64,10 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   /** Whether the transcript was scrolled to (near) the bottom before the last update. */
   const pinned = useRef(true);
   const abort = useRef<AbortController | null>(null);
-  // How many saved messages existed when the current reply started; a refetch mid-reply must not show it twice.
-  const shownCount = useRef<number | null>(null);
+  // The newest saved message id when the current reply started. Saved messages after it are the
+  // reply being shown live, so a refetch mid-reply (or a shifted 50-message window) can't show it twice.
+  // -1 = history wasn't loaded yet: hide saved messages until the reply ends.
+  const shownUpTo = useRef<number | null>(null);
 
   const pending = useQuery({
     queryKey: ['atlas_pending', uid],
@@ -116,7 +118,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     const message = text.trim();
     if (!message || sending) return;
     setInput((current) => (current.trim() === message ? '' : current));
-    shownCount.current = history.data?.length ?? 0;
+    shownUpTo.current = history.data ? (history.data[history.data.length - 1]?.id ?? 0) : -1;
     pinned.current = true;
     setTurn({ message, state: 'streaming', text: '', actions: [] });
     setAnnounce('Atlas is thinking…');
@@ -154,7 +156,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     if (ctrl.signal.aborted) return stopped(ctrl);
     await qc.invalidateQueries({ queryKey: atlasKey(uid) });
     invalidate();
-    shownCount.current = null;
+    shownUpTo.current = null;
     setTurn(error ? { message, state: 'notice', text: '', actions: [], error } : null);
     setAnnounce(error ? '' : 'Atlas replied.');
   };
@@ -203,12 +205,13 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     }
     setConfirmClear(false);
     setTurn(null);
-    shownCount.current = null;
+    shownUpTo.current = null;
     qc.invalidateQueries({ queryKey: atlasKey(uid) });
   };
 
   const all = history.data ?? [];
-  const messages = turn && turn.state !== 'notice' && shownCount.current !== null ? all.slice(0, shownCount.current) : all;
+  const upTo = turn && turn.state !== 'notice' ? shownUpTo.current : null;
+  const messages = upTo === null ? all : all.filter((m) => upTo >= 0 && m.id <= upTo);
   const aiOff = status.data && (!status.data.enabled || status.data.remaining <= 0);
   const offMessage = status.data?.message ?? "You've used today's AI allowance. It resets at midnight UTC.";
   const empty = !history.isLoading && messages.length === 0 && !turn;

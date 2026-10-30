@@ -1449,6 +1449,78 @@ await flow('harden-a', browser, {}, async (page) => {
   assert((await rate.inputValue()) === '1.2', `speed snapped back to ${await rate.inputValue()}`);
 });
 
+// break-ui: worst-case data on every page, at phone and desktop width. Nothing may scroll sideways or crash.
+await flow('worst-case', browser, {}, async (page) => {
+  const user = await makeUser('X');
+  const uid = user.id;
+  const LONG = 'Supercalifragilisticexpialidocious'.repeat(5);
+  const URL_ = `https://example.com/${'very-long-path-segment-'.repeat(12)}?q=${'x'.repeat(60)}`;
+  const AR = 'مراجعة محاضرة الإحصاء قبل الامتحان يوم الخميس';
+  const EMOJI = '🎉🔥✨🧠📚🏃‍♀️👩🏽‍💻🇯🇵';
+  const today = new Date().toISOString().slice(0, 10);
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const ins = async (table, rows) => {
+    const { data, error } = await admin.from(table).insert(rows.map((r) => ({ user_id: uid, ...r })), { defaultToNull: false }).select('*');
+    if (error) throw new Error(`${table}: ${error.message}`);
+    return data;
+  };
+  await admin.from('profiles').update({ name: `Maximiliana-Alexandrina ${LONG}`.slice(0, 80) }).eq('id', uid);
+  const [goal] = await ins('goals', [
+    { title: `${LONG} ${EMOJI}`, emoji: '🏁', target: 1000000000, current: 123456789.5, unit: 'kilometres of running', due_date: day(400) },
+    { title: AR, emoji: '📚', target: 1, current: 0, unit: 'x' },
+  ]);
+  await ins('milestones', [{ goal_id: goal.id, title: LONG, done: false }]);
+  const notes = await ins('notes', [
+    { body: `${LONG}\n${URL_}\n- [ ] ${LONG}\n- [x] ${EMOJI}`, state: 'inbox', tags: [LONG.slice(0, 40).toLowerCase()] },
+    { body: AR, state: 'inbox' },
+    { body: 'a', state: 'inbox' },
+    ...Array.from({ length: 80 }, (_, i) => ({ body: `Note ${i} ${EMOJI}`, state: i % 3 ? 'inbox' : 'idea' })),
+  ]);
+  await ins('tasks', [
+    { title: LONG, priority: 'high', due_date: today, due_time: '09:00', top_date: today, tags: [LONG.slice(0, 30).toLowerCase(), 'a', 'b', 'c', 'd'], sched_date: today, sched_start: 9 * 60, sched_duration: 15, estimate_min: 1440, source_note_id: notes[0].id, goal_id: goal.id },
+    { title: AR, due_date: day(-400), priority: 'medium' },
+    { title: URL_.slice(0, 300), due_date: day(1) },
+    { title: 'x', top_date: today },
+    ...Array.from({ length: 200 }, (_, i) => ({ title: `Task ${i} ${i % 7 ? '' : EMOJI}`, due_date: day((i % 30) - 10), priority: ['high', 'medium', 'low', null][i % 4] })),
+  ]);
+  const habits = await ins('habits', [{ name: LONG.slice(0, 120), emoji: '🔥', goal_id: goal.id }, { name: AR, emoji: '📖' }, ...Array.from({ length: 12 }, (_, i) => ({ name: `Habit ${i}`, emoji: '💧' }))]);
+  await ins('habit_logs', Array.from({ length: 300 }, (_, i) => ({ habit_id: habits[0].id, day: day(-i) })));
+  await ins('moods', Array.from({ length: 60 }, (_, i) => ({ day: day(-i), score: (i % 5) + 1, note: i === 0 ? `${LONG} ${AR}` : '' })));
+  await ins('focus_sessions', Array.from({ length: 40 }, (_, i) => ({ started_at: new Date(Date.now() - i * 3600e3).toISOString(), minutes: 180 })));
+  const [grp] = await ins('calendar_groups', [{ name: LONG.slice(0, 60), color: 2 }]);
+  await ins('calendars', [{ name: `${LONG} ${EMOJI}`.slice(0, 80), url: URL_, emoji: '🗓️', color: 3, group_id: grp.id, pinned: true }, { name: AR, url: 'webcal://x.example/a.ics', emoji: '📅', color: 6 }]);
+  await logIn(page, user);
+  const pages = ['', '/brain-dump', '/tasks', '/planner', '/calendars', '/habits', '/goals', '/focus', '/mood', '/review', '/settings'];
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 860 }]) {
+    await page.setViewportSize(vp);
+    for (const path of pages) {
+      await page.goto(`${BASE}/app${path}`);
+      await page.getByRole('heading', { level: 1 }).waitFor();
+      await sleep(600);
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert(over <= 0, `/app${path} at ${vp.width}px scrolls sideways by ${over}px`);
+      // Text that spills past its own box where nothing clips or scrolls it.
+      const spill = await page.evaluate(() => {
+        const bad = [];
+        for (const el of document.querySelectorAll('main *')) {
+          if (!(el instanceof HTMLElement) || !el.offsetParent || el.children.length) continue;
+          if (el.scrollWidth <= el.clientWidth + 1) continue;
+          let a = el, clipped = false;
+          while (a && a !== document.body) {
+            const o = getComputedStyle(a);
+            if (/(hidden|auto|scroll|clip)/.test(o.overflowX) || o.textOverflow === 'ellipsis') { clipped = true; break; }
+            a = a.parentElement;
+          }
+          if (!clipped) bad.push(`${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 3).join('.')}: "${el.textContent.slice(0, 30)}"`);
+        }
+        return bad.slice(0, 5);
+      });
+      assert(spill.length === 0, `/app${path} at ${vp.width}px: text spills out of its box:\n    ${spill.join('\n    ')}`);
+      await page.screenshot({ path: `${OUT}/worst-case-${vp.width}${path.replace('/', '-') || '-dashboard'}.png`, fullPage: true });
+    }
+  }
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

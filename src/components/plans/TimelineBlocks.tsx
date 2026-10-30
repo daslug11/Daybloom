@@ -96,7 +96,7 @@ export function EventDetailsDialog({ event, calendar, onClose }: { event: Synced
         {event.location && (
           <div>
             <dt className="label">Where</dt>
-            <dd className="break-words">{event.location}</dd>
+            <dd>{event.location}</dd>
           </div>
         )}
         <div>

@@ -36,7 +36,7 @@ function inline(text: string, key: string): ReactNode[] {
     else if (m[7]) {
       out.push(
         <a key={k} href={m[7]} target="_blank" rel="noopener noreferrer nofollow" onClick={(e) => e.stopPropagation()}>
-          {m[7].replace(/^https?:\/\//, '').slice(0, 40)}
+          {clipUrl(m[7])}
         </a>,
       );
     }
@@ -113,13 +113,19 @@ export function Markdown({ text, className, onToggleCheck, maxLines }: Props) {
   flush();
   const truncated = maxLines != null && lines.length > maxLines;
   return (
-    <div className={cn('prose-note whitespace-pre-wrap break-words', className)}>
+    <div className={cn('prose-note whitespace-pre-wrap', className)}>
       {blocks.map((b, i) => (
         <Fragment key={i}>{b}</Fragment>
       ))}
       {truncated && <p className="faint text-xs">…</p>}
     </div>
   );
+}
+
+/** A bare link shown short but honestly: host and path, with an ellipsis when it's cut. */
+function clipUrl(url: string) {
+  const s = url.replace(/^https?:\/\//, '');
+  return s.length > 40 ? `${s.slice(0, 39)}…` : s;
 }
 
 /** Flips the checkbox on one line of a note. */

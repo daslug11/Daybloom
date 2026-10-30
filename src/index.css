@@ -89,6 +89,9 @@
     @apply min-h-dvh bg-canvas font-sans text-ink antialiased;
     font-feature-settings: 'cv11', 'ss01';
     caret-color: rgb(var(--ink));
+    /* A word or link longer than its box wraps instead of pushing the page sideways,
+       also inside flex rows (which `break-word` alone can't shrink). */
+    overflow-wrap: anywhere;
   }
   h1,
   h2,
@@ -97,6 +100,11 @@
   }
   p {
     text-wrap: pretty;
+  }
+  /* A grid without explicit columns gets one shrinkable column, so one long word can't widen it.
+     Zero specificity: any grid-cols-* utility still wins. */
+  :where(.grid) {
+    grid-template-columns: minmax(0, 1fr);
   }
   :focus-visible {
     @apply outline-none ring-2 ring-ink/70 ring-offset-2 ring-offset-canvas;
