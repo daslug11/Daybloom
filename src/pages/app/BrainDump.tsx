@@ -12,7 +12,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState, QueryState } from '../../components/ui/States';
 import { useGoals } from '../../hooks/data/goals';
 import { useHabits } from '../../hooks/data/habits';
-import { useAddNote, useDeleteNote, useNotes, useUpdateNote } from '../../hooks/data/notes';
+import { useAddNote, useNotes, useTrashNote, useUpdateNote } from '../../hooks/data/notes';
 import { useTasks } from '../../hooks/data/tasks';
 import { useAi, useAiStatus } from '../../hooks/useAi';
 import { useUserId } from '../../hooks/useAuth';
@@ -59,7 +59,7 @@ export default function BrainDump() {
   const { data: goals = [] } = useGoals();
   const addNote = useAddNote();
   const update = useUpdateNote();
-  const del = useDeleteNote();
+  const trash = useTrashNote();
   const toast = useToast();
   const ai = useAiStatus();
   const aiOff = !!ai.data && (!ai.data.enabled || ai.data.remaining <= 0);
@@ -177,9 +177,11 @@ export default function BrainDump() {
     }
   };
 
+  // Soft delete: the note is hidden now and deleted for real once the Undo window has passed,
+  // so Undo gives back the same note (id, date, pin, and its linked tasks, habits and goals).
   const remove = (n: Note) => {
-    del.mutate(n.id);
-    toast('Note deleted', { label: 'Undo', onClick: () => addNote.mutate({ body: n.body, state: n.state }) });
+    trash.remove(n);
+    toast('Note deleted', { label: 'Undo', onClick: () => void trash.restore(n.id) });
   };
 
   const runAi = (n: Note, action: NoteAiAction) => {
