@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { ChevronDown, Plus, RotateCcw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { HabitCard } from '../../components/habits/HabitCard';
 import { AiButton } from '../../components/ui/Ai';
@@ -7,11 +7,11 @@ import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState, QueryState } from '../../components/ui/States';
 import { useGoals } from '../../hooks/data/goals';
-import { streakIsCapped, useAddHabits, useDeleteHabit, useHabitLogs, useHabits, useToggleHabitLog, useUpdateHabit } from '../../hooks/data/habits';
+import { HISTORY_DAYS, streakIsCapped, useAddHabits, useArchivedHabits, useDeleteHabit, useHabitLogs, useHabits, useRestoreHabit, useToggleHabitLog, useUpdateHabit } from '../../hooks/data/habits';
 import { useAi } from '../../hooks/useAi';
 import { useToday } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
-import { dayIn, formatDay, streak } from '../../lib/dates';
+import { addDays, dayIn, formatDay, streak } from '../../lib/dates';
 import { STREAK_RULE, habitStartDay } from '../../lib/stats';
 import type { Habit } from '../../lib/types';
 
@@ -35,7 +35,16 @@ export default function Habits() {
   const del = useDeleteHabit();
   const toast = useToast();
   const suggest = useAi<{ habits: Suggested[] }>('suggest_habits');
-  const [editor, setEditor] = useState<Partial<Habit> | null>(null);
+  const archived = useArchivedHabits();
+  const restore = useRestoreHabit();
+  const [editor, setEditorState] = useState<Partial<Habit> | null>(null);
+  // The in-dialog "really delete?" step; reset whenever the dialog opens or closes.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const setEditor = (e: Partial<Habit> | null) => {
+    if (!e || e.id !== editor?.id) setConfirmDelete(false);
+    setEditorState(e);
+  };
+  const [showArchived, setShowArchived] = useState(false);
   // AI suggestions still to decide on, plus the names already added (so an emptied list says "Added N", not "No suggestions").
   const [suggestions, setSuggestions] = useState<{ items: Suggested[]; added: string[] } | null>(null);
 
@@ -132,6 +141,17 @@ export default function Habits() {
         </>
       )}
 
+      <ArchivedHabits
+        habits={archived.data ?? []}
+        open={showArchived}
+        onToggle={() => setShowArchived((v) => !v)}
+        onRestore={(h) => {
+          restore.mutate(h);
+          toast(`Restored ${h.emoji} ${h.name}, with its history.`);
+        }}
+        restoring={restore.isPending ? restore.variables?.id : undefined}
+      />
+
       {editor && (
         <Modal open onClose={() => setEditor(null)} title={editor.id ? 'Edit habit' : 'New habit'} description="Keep it small enough to do on a bad day.">
           <form
@@ -162,37 +182,53 @@ export default function Habits() {
                 </select>
               </label>
             )}
-            <div className="flex items-center gap-2">
-              {editor.id && (
-                <>
-                  <button
-                    type="button"
-                    className="btn-ghost !px-3"
-                    onClick={() => {
-                      update.mutate({ id: editor.id!, patch: { archived_at: new Date().toISOString() } });
-                      toast('Habit archived — its history is kept', { label: 'Undo', onClick: () => update.mutate({ id: editor.id!, patch: { archived_at: null } }) });
-                      setEditor(null);
-                    }}
-                  >
-                    Archive
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-danger !px-3"
-                    onClick={() => {
-                      if (!window.confirm(`Delete “${editor.name}” and all its history? This can’t be undone.`)) return;
-                      del.mutate(editor.id!);
-                      setEditor(null);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-              <button className="btn-primary ml-auto" disabled={!editor.name?.trim()}>
-                {editor.id ? 'Save' : 'Add habit'}
-              </button>
-            </div>
+            {editor.id && confirmDelete ? (
+              <DeleteConfirm
+                name={`${editor.emoji ?? ''} ${editor.name ?? ''}`.trim()}
+                ticked={[...(byHabit.get(editor.id) ?? [])].filter((d) => d > addDays(today, -HISTORY_DAYS)).length}
+                streakDays={streak(byHabit.get(editor.id) ?? new Set<string>(), today)}
+                onCancel={() => setConfirmDelete(false)}
+                onArchive={() => {
+                  const id = editor.id!;
+                  update.mutate({ id, patch: { archived_at: new Date().toISOString() } });
+                  toast('Habit archived — its history is kept', { label: 'Undo', onClick: () => update.mutate({ id, patch: { archived_at: null } }) });
+                  setEditor(null);
+                }}
+                onDelete={() => {
+                  del.mutate(editor.id!);
+                  toast(`Deleted ${editor.name} and its history.`);
+                  setEditor(null);
+                }}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                {editor.id && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost !px-3"
+                      onClick={() => {
+                        update.mutate({ id: editor.id!, patch: { archived_at: new Date().toISOString() } });
+                        toast('Habit archived — its history is kept', { label: 'Undo', onClick: () => update.mutate({ id: editor.id!, patch: { archived_at: null } }) });
+                        setEditor(null);
+                      }}
+                    >
+                      Archive
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-danger !px-3"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      Delete…
+                    </button>
+                  </>
+                )}
+                <button className="btn-primary ml-auto" disabled={!editor.name?.trim()}>
+                  {editor.id ? 'Save' : 'Add habit'}
+                </button>
+              </div>
+            )}
           </form>
         </Modal>
       )}
@@ -242,6 +278,75 @@ export default function Habits() {
         </Modal>
       )}
     </div>
+  );
+}
+
+/** The last step before deleting: says exactly what history goes with it, and offers Archive instead. */
+function DeleteConfirm({ name, ticked, streakDays, onCancel, onArchive, onDelete }: { name: string; ticked: number; streakDays: number; onCancel: () => void; onArchive: () => void; onDelete: () => void }) {
+  const lost = [
+    ticked ? `${ticked} ticked day${ticked === 1 ? '' : 's'} from the last ${HISTORY_DAYS} days` : '',
+    streakDays ? `your ${streakDays}-day streak` : '',
+  ].filter(Boolean);
+  return (
+    <div role="group" aria-labelledby="habit-delete-title" className="space-y-3 rounded-control border border-danger/30 bg-danger/[0.06] p-3">
+      <p id="habit-delete-title" className="text-sm font-semibold">
+        Delete “{name}” for good?
+      </p>
+      <p className="text-sm [text-wrap:pretty]">
+        This deletes the habit and every day you’ve ticked for it{lost.length ? `, including ${lost.join(' and ')}` : ''}. It can’t be undone. Archive it instead to hide it and keep the history.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="btn-ghost !px-3" onClick={onCancel} autoFocus>
+          Keep it
+        </button>
+        <button type="button" className="btn-ghost !px-3" onClick={onArchive}>
+          Archive instead
+        </button>
+        <button type="button" className="btn-danger ml-auto !px-3" onClick={onDelete}>
+          Delete habit and history
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Archived habits: hidden from the list and the dashboard, history kept, one tap to bring back. */
+function ArchivedHabits({ habits, open, onToggle, onRestore, restoring }: { habits: Habit[]; open: boolean; onToggle: () => void; onRestore: (h: Habit) => void; restoring?: string }) {
+  if (!habits.length) return null;
+  return (
+    <section className="mt-6" aria-labelledby="archived-habits-toggle">
+      <h2>
+        <button
+          id="archived-habits-toggle"
+          type="button"
+          className="hit flex items-center gap-1.5 rounded-control text-sm font-semibold text-muted hover:text-ink"
+          aria-expanded={open}
+          aria-controls="archived-habits"
+          onClick={onToggle}
+        >
+          <ChevronDown size={15} aria-hidden className={open ? '' : '-rotate-90'} />
+          Archived ({habits.length})
+        </button>
+      </h2>
+      {open && (
+        <ul id="archived-habits" className="mt-2 divide-y divide-line rounded-card border border-line bg-surface">
+          {habits.map((h) => (
+            <li key={h.id} className="flex items-center gap-3 px-4 py-2.5">
+              <span className="text-lg" aria-hidden>
+                {h.emoji}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{h.name}</p>
+                {h.archived_at && <p className="faint text-xs">Archived {new Date(h.archived_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · history kept</p>}
+              </div>
+              <button type="button" className="btn-ghost !px-3 !py-1.5" onClick={() => onRestore(h)} disabled={restoring === h.id} aria-label={`Restore ${h.name}`}>
+                <RotateCcw size={14} aria-hidden /> Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

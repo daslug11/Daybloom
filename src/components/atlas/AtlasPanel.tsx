@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Check, Mic, Send, Trash2, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Check, Loader2, Mic, RotateCcw, Send, Square, Trash2, X } from 'lucide-react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { atlasKey, useAtlasMessages } from '../../hooks/data/atlas';
 import { useAiStatus, useAiStatusUpdater } from '../../hooks/useAi';
@@ -20,7 +20,17 @@ import { OrbGlyph, takePointerOpen } from './AtlasOrb';
 
 const SUGGESTIONS = ["What's on today?", 'Add a task to call the bank tomorrow at 10', 'Process my inbox', 'Make me a 4-week workout plan'];
 
-interface Live {
+/**
+ * The message being sent and Atlas's reply to it, until the saved history takes over.
+ * - streaming: the reply is arriving.
+ * - stopped: the user pressed Stop; the partial reply stays until the next message.
+ * - notSent: the request never reached Atlas (network, limit, pause); the message is kept with Retry.
+ * - failed: the connection dropped mid-reply; what arrived stays, with the error.
+ * - notice: the reply finished but reported an error; only the error is shown (history holds the rest).
+ */
+interface Turn {
+  message: string;
+  state: 'streaming' | 'stopped' | 'notSent' | 'failed' | 'notice';
   text: string;
   actions: AtlasAction[];
   error?: string;
@@ -41,13 +51,23 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   const invalidate = useInvalidateUserData();
   const toast = useToast();
   const [input, setInput] = useState(prefill);
-  const [sending, setSending] = useState<string | null>(null);
-  const [live, setLive] = useState<Live | null>(null);
+  const [turn, setTurn] = useState<Turn | null>(null);
+  /** What the sr-only status says: "Atlas is thinking…" while a reply streams, then one short summary. */
+  const [announce, setAnnounce] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  /** The pending Delete/Keep being sent to the server; both its buttons are disabled meanwhile. */
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const sending = turn?.state === 'streaming';
   const scroller = useRef<HTMLDivElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  /** Whether the transcript was scrolled to (near) the bottom before the last update. */
+  const pinned = useRef(true);
   const abort = useRef<AbortController | null>(null);
-  // How many saved messages existed when the current reply started; a refetch mid-reply must not show it twice.
-  const shownCount = useRef<number | null>(null);
+  // The newest saved message id when the current reply started. Saved messages after it are the
+  // reply being shown live, so a refetch mid-reply (or a shifted 50-message window) can't show it twice.
+  // -1 = history wasn't loaded yet: hide saved messages until the reply ends.
+  const shownUpTo = useRef<number | null>(null);
 
   const pending = useQuery({
     queryKey: ['atlas_pending', uid],
@@ -77,44 +97,81 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   // Closing the panel stops a reply that is still streaming.
   useEffect(() => () => abort.current?.abort(), []);
 
-  useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [history.data, live, sending, pending.data]);
+  // Follow new content only when the reader is already at the bottom; someone scrolled up to
+  // re-read history isn't yanked down by every streamed word.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [history.data, turn, pending.data]);
+
+  // The composer grows with its text (up to its max height) instead of scrolling a single row.
+  useLayoutEffect(() => {
+    const el = textarea.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [input]);
+
+  const patch = (fn: (t: Turn) => Partial<Turn>) => setTurn((t) => (t ? { ...t, ...fn(t) } : t));
 
   const send = async (text: string) => {
     const message = text.trim();
     if (!message || sending) return;
-    setInput('');
-    shownCount.current = history.data?.length ?? 0;
-    setSending(message);
-    setLive({ text: '', actions: [] });
-    abort.current = new AbortController();
+    setInput((current) => (current.trim() === message ? '' : current));
+    shownUpTo.current = history.data ? (history.data[history.data.length - 1]?.id ?? 0) : -1;
+    pinned.current = true;
+    setTurn({ message, state: 'streaming', text: '', actions: [] });
+    setAnnounce('Atlas is thinking…');
+    const ctrl = new AbortController();
+    abort.current = ctrl;
+    let error: string | undefined;
     try {
-      for await (const ev of atlasStream(message, 'chat', abort.current.signal)) {
-        if (ev.t === 'text') setLive((l) => ({ ...l!, text: l!.text + ev.v }));
+      for await (const ev of atlasStream(message, 'chat', ctrl.signal)) {
+        if (ev.t === 'text') patch((t) => ({ text: t.text + ev.v }));
         else if (ev.t === 'action') {
-          setLive((l) => ({ ...l!, actions: [...l!.actions, { tool: ev.tool, summary: ev.summary, ok: ev.ok, plan_id: ev.plan_id }] }));
+          patch((t) => ({ actions: [...t.actions, { tool: ev.tool, summary: ev.summary, ok: ev.ok, plan_id: ev.plan_id }] }));
           if (ev.plan_id) invalidate();
-        }
-        else if (ev.t === 'confirm') qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
-        else if (ev.t === 'error') setLive((l) => ({ ...l!, error: ev.message }));
-        else if (ev.t === 'done') updateStatus(ev.remaining);
+        } else if (ev.t === 'confirm') qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
+        else if (ev.t === 'error') {
+          error = ev.message;
+          patch(() => ({ error: ev.message }));
+        } else if (ev.t === 'done') updateStatus(ev.remaining);
       }
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Atlas is unavailable right now.';
-      setLive({ text: '', actions: [], error: msg });
-      if (err instanceof ApiError && err.data.reason === 'daily_limit') updateStatus(0);
-      if (err instanceof ApiError && String(err.data.reason ?? '').startsWith('paused')) updateStatus(null, { enabled: false, paused: true, message: err.message });
-      setSending(null);
-      shownCount.current = null;
+      if (ctrl.signal.aborted) return stopped(ctrl);
+      if (err instanceof ApiError) {
+        // Turned away before Atlas saw it: keep the message so it can be retried or edited.
+        if (err.data.reason === 'daily_limit') updateStatus(0);
+        if (String(err.data.reason ?? '').startsWith('paused')) updateStatus(null, { enabled: false, paused: true, message: err.message });
+        patch(() => ({ state: 'notSent', text: '', actions: [], error: err.message }));
+        setAnnounce('Message not sent.');
+      } else {
+        // The connection dropped mid-reply. The message reached Atlas, so it isn't offered for retry.
+        patch(() => ({ state: 'failed', error: 'The connection dropped before Atlas finished. Atlas may still have made the changes it started.' }));
+        setAnnounce('');
+        invalidate();
+      }
       return;
     }
+    if (ctrl.signal.aborted) return stopped(ctrl);
     await qc.invalidateQueries({ queryKey: atlasKey(uid) });
     invalidate();
-    shownCount.current = null;
-    setSending(null);
-    setLive(null);
+    shownUpTo.current = null;
+    setTurn(error ? { message, state: 'notice', text: '', actions: [], error } : null);
+    setAnnounce(error ? '' : 'Atlas replied.');
   };
+
+  /** After Stop: keep what arrived, and refresh anything Atlas may already have changed. */
+  const stopped = (ctrl: AbortController) => {
+    if (abort.current !== ctrl) return;
+    patch(() => ({ state: 'stopped' }));
+    setAnnounce('Stopped.');
+    invalidate();
+    // The reply's "done" (with the new allowance) never arrives, so ask the server.
+    updateStatus(null);
+  };
+
+  const stop = () => abort.current?.abort();
 
   useEffect(() => {
     if (prefill) send(prefill);
@@ -122,26 +179,42 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   }, []);
 
   const decide = async (p: Pending, approve: boolean) => {
+    if (deciding) return;
+    setDeciding(p.id);
     try {
       await apiFetch('/api/atlas', { action: 'confirm', id: p.id, approve });
+      // Keep the buttons disabled until the card is gone, so it can't be decided twice.
+      await qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
       invalidate();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'That did not work.');
-      qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
+      await qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
+    } finally {
+      setDeciding(null);
     }
   };
 
   const clearHistory = async () => {
-    await supabase.from('atlas_messages').delete().eq('user_id', uid);
+    if (clearing) return;
+    setClearing(true);
+    const { error } = await supabase.from('atlas_messages').delete().eq('user_id', uid);
+    setClearing(false);
+    if (error) {
+      toast("Couldn't clear the conversation. Please try again.");
+      return;
+    }
     setConfirmClear(false);
+    setTurn(null);
+    shownUpTo.current = null;
     qc.invalidateQueries({ queryKey: atlasKey(uid) });
   };
 
   const all = history.data ?? [];
-  const messages = live && shownCount.current !== null ? all.slice(0, shownCount.current) : all;
+  const upTo = turn && turn.state !== 'notice' ? shownUpTo.current : null;
+  const messages = upTo === null ? all : all.filter((m) => upTo >= 0 && m.id <= upTo);
   const aiOff = status.data && (!status.data.enabled || status.data.remaining <= 0);
   const offMessage = status.data?.message ?? "You've used today's AI allowance. It resets at midnight UTC.";
-  const empty = !history.isLoading && messages.length === 0 && !sending;
+  const empty = !history.isLoading && messages.length === 0 && !turn;
   const name = profile?.name || 'there';
 
   return createPortal(
@@ -170,16 +243,29 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
         {confirmClear && (
           <div className="flex items-center gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm">
             <span className="flex-1">Clear your whole conversation with Atlas?</span>
-            <button className="btn-danger !px-3 !py-1.5" onClick={clearHistory}>
+            <button className="btn-danger !px-3 !py-1.5" onClick={clearHistory} disabled={clearing} aria-busy={clearing || undefined}>
+              {clearing && <Loader2 size={14} className="animate-spin" aria-hidden />}
               Clear
             </button>
-            <button className="btn-ghost !px-3 !py-1.5" onClick={() => setConfirmClear(false)}>
+            <button className="btn-ghost !px-3 !py-1.5" onClick={() => setConfirmClear(false)} disabled={clearing}>
               Keep
             </button>
           </div>
         )}
 
-        <div ref={scroller} className="flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
+        {/* Announces the state of a reply once, never token by token; errors use their own role="alert". */}
+        <p className="sr-only" role="status">
+          {announce}
+        </p>
+
+        <div
+          ref={scroller}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          }}
+        >
           {history.isLoading && <p className="muted text-sm">Loading conversation…</p>}
           {empty && (
             <div className="py-6 text-center">
@@ -204,23 +290,58 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
           {messages.map((m) => (
             <Bubble key={m.id} role={m.role} text={m.content} actions={m.actions} />
           ))}
-          {sending && <Bubble role="user" text={sending} actions={[]} />}
-          {live && (live.text || live.actions.length || live.error) ? (
-            <Bubble role="assistant" text={live.text} actions={live.actions} error={live.error} streaming={!!sending} />
-          ) : sending ? (
-            <p className="muted flex items-center gap-2 text-sm" role="status">
-              <OrbGlyph size={16} active /> Atlas is thinking…
+          {turn?.state === 'notSent' ? (
+            <div>
+              <Bubble role="user" text={turn.message} actions={NO_ACTIONS} />
+              <div className="mt-1 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs">
+                <span className="font-semibold text-danger">Not sent</span>
+                <button type="button" className="link inline-flex min-h-8 items-center gap-1" onClick={() => send(turn.message)} disabled={!!aiOff} aria-label="Retry sending">
+                  <RotateCcw size={12} aria-hidden /> Retry
+                </button>
+                <button
+                  type="button"
+                  className="link min-h-8"
+                  aria-label="Edit message"
+                  onClick={() => {
+                    setInput(turn.message);
+                    setTurn(null);
+                    textarea.current?.focus();
+                  }}
+                >
+                  Edit
+                </button>
+              </div>
+              <p role="alert" className="mt-1.5 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+                {turn.error}
+              </p>
+            </div>
+          ) : turn?.state === 'notice' ? (
+            <p role="alert" className="mr-6 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+              {turn.error}
             </p>
+          ) : turn ? (
+            <>
+              <Bubble role="user" text={turn.message} actions={NO_ACTIONS} />
+              {turn.text || turn.actions.length || turn.error ? (
+                <Bubble role="assistant" text={turn.text} actions={turn.actions} error={turn.error} streaming={sending} />
+              ) : sending ? (
+                <p className="muted flex items-center gap-2 text-sm" aria-hidden>
+                  <OrbGlyph size={16} active /> Atlas is thinking…
+                </p>
+              ) : null}
+              {turn.state === 'stopped' && <p className="faint text-xs">Stopped. Atlas keeps any change it had already made.</p>}
+            </>
           ) : null}
           {(pending.data ?? []).map((p) => (
-            <div key={p.id} className="rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm">
-              <p className="font-medium">{p.summary}?</p>
+            <div key={p.id} className="rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm" aria-busy={deciding === p.id || undefined}>
+              <p className="font-medium [overflow-wrap:anywhere]">{p.summary}?</p>
               <p className="muted mt-0.5 text-xs">Atlas is asking first. This can't be undone.</p>
               <div className="mt-2 flex gap-2">
-                <button className="btn-danger !px-3 !py-1.5" onClick={() => decide(p, true)}>
+                <button className="btn-danger !px-3 !py-1.5" onClick={() => decide(p, true)} disabled={!!deciding}>
+                  {deciding === p.id && <Loader2 size={14} className="animate-spin" aria-hidden />}
                   Delete
                 </button>
-                <button className="btn-ghost !px-3 !py-1.5" onClick={() => decide(p, false)}>
+                <button className="btn-ghost !px-3 !py-1.5" onClick={() => decide(p, false)} disabled={!!deciding}>
                   Keep
                 </button>
               </div>
@@ -241,6 +362,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
               Message Atlas
             </label>
             <textarea
+              ref={textarea}
               id="atlas-input"
               // On touch screens, opening the panel shouldn't throw the keyboard over the conversation.
               autoFocus={typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches}
@@ -256,11 +378,18 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
               }}
               placeholder={aiOff ? 'AI is unavailable right now' : 'Ask Atlas…'}
               disabled={!!aiOff}
-              className="input max-h-32 resize-none"
+              dir="auto"
+              className="input max-h-32 resize-none overflow-y-auto"
             />
-            <button type="submit" className="btn-primary !px-3" disabled={!input.trim() || !!sending || !!aiOff} aria-label="Send">
-              <Send size={16} />
-            </button>
+            {sending ? (
+              <button type="button" className="btn-ghost !px-3" onClick={stop} aria-label="Stop" title="Stop the reply">
+                <Square size={14} className="fill-current" aria-hidden />
+              </button>
+            ) : (
+              <button type="submit" className="btn-primary !px-3" disabled={!input.trim() || !!aiOff} aria-label="Send">
+                <Send size={16} aria-hidden />
+              </button>
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between">
             <AiAllowance />
@@ -273,19 +402,27 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   );
 }
 
-function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'assistant'; text: string; actions: AtlasAction[]; error?: string; streaming?: boolean }) {
+const NO_ACTIONS: AtlasAction[] = [];
+
+/**
+ * One message. Memoised: while a reply streams the panel re-renders per token, and re-parsing
+ * the Markdown of every saved message each time made long conversations stutter.
+ */
+const Bubble = memo(function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'assistant'; text: string; actions: AtlasAction[]; error?: string; streaming?: boolean }) {
   if (role === 'user') {
     return (
       <div className="ml-10 rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-sm text-accent-ink">
-        <p className="whitespace-pre-wrap break-words">{text}</p>
+        <p dir="auto" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {text}
+        </p>
       </div>
     );
   }
   const shownActions = actions.filter((a) => a.tool !== 'confirm');
   return (
-    <div className="mr-6">
+    <div className="mr-6 min-w-0">
       {text && (
-        <div className="rounded-2xl rounded-bl-md bg-raised px-3.5 py-2.5">
+        <div dir="auto" className="min-w-0 rounded-2xl rounded-bl-md bg-raised px-3.5 py-2.5 [overflow-wrap:anywhere]">
           <Markdown text={text} />
           {streaming && <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-atlas align-middle" aria-hidden />}
         </div>
@@ -295,7 +432,7 @@ function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'ass
           {shownActions.map((a, i) => (
             <li key={i} className={cn('flex items-start gap-1.5 text-xs', a.ok ? 'text-success' : 'text-danger')}>
               {a.ok ? <Check size={13} className="mt-0.5 shrink-0" aria-hidden /> : <AlertCircle size={13} className="mt-0.5 shrink-0" aria-hidden />}
-              <span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
                 {!a.ok && <span className="font-semibold">Didn't work: </span>}
                 {a.summary}
               </span>
@@ -317,4 +454,4 @@ function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'ass
       )}
     </div>
   );
-}
+});

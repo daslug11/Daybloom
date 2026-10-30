@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLogFocus } from './data/focus';
+import { useUserId } from './useAuth';
 import { useToast } from './useToast';
 
 export type TimerMode = 'work' | 'rest';
@@ -51,6 +52,33 @@ function loadPrefs() {
   }
 }
 
+/** A block in progress, saved so a reload or a discarded tab picks it up where it was. Per user. */
+const stateKey = (uid: string) => `daybloom:timer:${uid}`;
+interface SavedBlock {
+  v: 1;
+  mode: TimerMode;
+  running: boolean;
+  /** Seconds left when paused. While running, `endAt` is the source of truth. */
+  remaining: number;
+  endAt: number | null;
+  banked: number;
+  runFrom: number | null;
+  startedAt: string | null;
+  taskId: string | null;
+}
+
+function loadBlock(uid: string): SavedBlock | null {
+  if (!uid) return null;
+  try {
+    const b = JSON.parse(localStorage.getItem(stateKey(uid)) ?? 'null') as SavedBlock | null;
+    if (!b || b.v !== 1 || (b.mode !== 'work' && b.mode !== 'rest') || !Number.isFinite(b.remaining)) return null;
+    if (b.running && !Number.isFinite(b.endAt)) return null;
+    return b;
+  } catch {
+    return null;
+  }
+}
+
 export function useTimer() {
   const ctx = useContext(TimerContext);
   if (!ctx) throw new Error('useTimer must be used inside <TimerProvider>');
@@ -65,25 +93,42 @@ const toMinutes = (seconds: number) => Math.round(seconds / 60);
  * "Log", or (split) when you switch task mid-block — linked to the task chosen at the time.
  */
 export function TimerProvider({ children }: { children: ReactNode }) {
+  const uid = useUserId();
+  // A block saved by an earlier page load (read once).
+  const [saved] = useState(() => loadBlock(uid));
   const [{ work, rest }, setPrefs] = useState(loadPrefs);
-  const [mode, setModeState] = useState<TimerMode>('work');
-  const [running, setRunning] = useState(false);
-  const [taskId, setTaskIdState] = useState<string | null>(null);
+  const [mode, setModeState] = useState<TimerMode>(saved?.mode ?? 'work');
+  const [running, setRunning] = useState(!!saved?.running);
+  const [taskId, setTaskIdState] = useState<string | null>(saved?.taskId ?? null);
   const [fullscreen, setFullscreen] = useState(false);
   const [stopping, setStopping] = useState<StopAction | null>(null);
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(!!saved);
   const total = (mode === 'work' ? work : rest) * 60;
-  const [remaining, setRemaining] = useState(total);
-  const endAt = useRef<number | null>(null);
+  const [remaining, setRemaining] = useState(() => (saved ? (saved.running && saved.endAt ? Math.max(0, Math.round((saved.endAt - Date.now()) / 1000)) : saved.remaining) : total));
+  const endAt = useRef<number | null>(saved?.running ? saved.endAt : null);
   // Real running time in the current focus block: banked on pause, plus the live run.
-  const banked = useRef(0);
-  const runFrom = useRef<number | null>(null);
-  const startedAt = useRef<string | null>(null);
+  const banked = useRef(saved?.banked ?? 0);
+  const runFrom = useRef<number | null>(saved?.running ? saved.runFrom : null);
+  const startedAt = useRef<string | null>(saved?.startedAt ?? null);
   const logFocus = useLogFocus();
   const toast = useToast();
   const inProgress = running || started;
 
-  const elapsedMs = () => banked.current + (runFrom.current !== null ? Date.now() - runFrom.current : 0);
+  // A run never counts past the block's end (e.g. the tab was closed and the block ended meanwhile).
+  const elapsedMs = () => banked.current + (runFrom.current !== null ? Math.max(0, Math.min(Date.now(), endAt.current ?? Infinity) - runFrom.current) : 0);
+
+  // Save the block in progress (on every start, pause, mode or task change; not every tick).
+  const pausedRemaining = running ? -1 : remaining;
+  useEffect(() => {
+    if (!uid) return;
+    try {
+      if (!started && !running) return localStorage.removeItem(stateKey(uid));
+      const block: SavedBlock = { v: 1, mode, running, remaining, endAt: endAt.current, banked: banked.current, runFrom: runFrom.current, startedAt: startedAt.current, taskId };
+      localStorage.setItem(stateKey(uid), JSON.stringify(block));
+    } catch {
+      /* private mode: the timer still works, it just won't survive a reload */
+    }
+  }, [uid, mode, running, started, taskId, pausedRemaining]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!started) setRemaining(total);

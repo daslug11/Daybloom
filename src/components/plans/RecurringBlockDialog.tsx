@@ -6,6 +6,7 @@ import { useToast } from '../../hooks/useToast';
 import { addDays } from '../../lib/dates';
 import { formatMinutesShort } from '../../lib/planner';
 import { Modal } from '../ui/Modal';
+import { WeeksInput } from './WeeksInput';
 
 const DURATIONS = Array.from({ length: 16 }, (_, i) => (i + 1) * 15);
 
@@ -27,7 +28,19 @@ export function RecurringBlockDialog({ onClose, initialDay }: { onClose: () => v
   const [saving, setSaving] = useState(false);
 
   const end = endMode === 'weeks' ? planEndDate(from, weeks) : until;
-  const valid = !!title.trim() && days.length > 0 && start + duration <= 1440 && end >= from && end <= addDays(from, 366);
+  // Why "Add repeating block" is unavailable, in words (shown beside the button).
+  const reason = !title.trim()
+    ? 'Add a title first.'
+    : !days.length
+      ? 'Pick at least one day.'
+      : start + duration > 1440
+        ? 'The block must end by midnight.'
+        : end < from
+          ? 'The end date is before the start.'
+          : end > addDays(from, 366)
+            ? 'A repeating block can last up to a year.'
+            : null;
+  const valid = !reason;
 
   const save = async () => {
     if (!valid) return;
@@ -106,7 +119,7 @@ export function RecurringBlockDialog({ onClose, initialDay }: { onClose: () => v
           <legend className="label">Ends</legend>
           <label className="flex items-center gap-2">
             <input type="radio" name="end" checked={endMode === 'weeks'} onChange={() => setEndMode('weeks')} className="accent-ink" /> After
-            <input className="input !w-20 !py-1" type="number" min={1} max={52} value={weeks} onChange={(e) => setWeeks(Math.min(52, Math.max(1, Number(e.target.value) || 1)))} disabled={endMode !== 'weeks'} aria-label="Number of weeks" />
+            <WeeksInput className="!w-20 !py-1" value={weeks} onChange={setWeeks} max={52} disabled={endMode !== 'weeks'} aria-label="Number of weeks" />
             weeks
           </label>
           <label className="flex items-center gap-2">
@@ -114,11 +127,16 @@ export function RecurringBlockDialog({ onClose, initialDay }: { onClose: () => v
             <input className="input !w-44 !py-1" type="date" min={from} value={until} onChange={(e) => e.target.value && setUntil(e.target.value)} disabled={endMode !== 'date'} aria-label="End date" />
           </label>
         </fieldset>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {reason && (
+            <p id="recurring-block-reason" className="faint mr-auto text-sm">
+              {reason}
+            </p>
+          )}
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" disabled={!valid || saving}>
+          <button className="btn-primary" disabled={!valid || saving} aria-describedby={reason ? 'recurring-block-reason' : undefined}>
             Add repeating block
           </button>
         </div>

@@ -150,6 +150,10 @@ export function usePlanActions() {
 
   /** Check a session off (or back on). Also logs the linked habit and moves the linked goal. */
   async function setDone(o: Occurrence, done: boolean, plan?: Plan) {
+    // Idempotent: if the session is already in that state (a double tap, a stale screen), nothing
+    // else changes, so the linked goal can't be counted twice.
+    const { data: existing } = await supabase.from('series_occurrences').select('done_at').eq('series_id', o.series_id).eq('day', o.day).maybeSingle();
+    if (!!existing?.done_at === done) return refresh();
     must(
       await supabase
         .from('series_occurrences')
@@ -188,17 +192,32 @@ export function usePlanActions() {
       await refresh();
     },
 
-    /** Remove a plan. With `deleteFuture`, its blocks from today on are deleted too; past sessions stay as history. */
+    /**
+     * Remove a plan. With `deleteFuture`, its blocks from today on are deleted too; past sessions
+     * stay as history, and so does a session already checked off today.
+     */
     async removePlan(plan: Plan, deleteFuture: boolean) {
       if (deleteFuture) {
         const t = today();
         const series = must(await supabase.from('block_series').select('id, start_date').eq('plan_id', plan.id)) as { id: string; start_date: string }[];
-        const future = series.filter((s) => s.start_date >= t).map((s) => s.id);
-        const ongoing = series.filter((s) => s.start_date < t).map((s) => s.id);
+        const ids = series.map((s) => s.id);
+        const doneToday = new Set(
+          ids.length
+            ? (must(await supabase.from('series_occurrences').select('series_id').in('series_id', ids).eq('day', t).not('done_at', 'is', null)) as { series_id: string }[]).map((r) => r.series_id)
+            : [],
+        );
+        // A series with today's session done ends today (keeping it); others end yesterday, or go entirely if they hadn't started.
+        const future = series.filter((s) => s.start_date >= t && !doneToday.has(s.id)).map((s) => s.id);
+        const endToday = series.filter((s) => doneToday.has(s.id)).map((s) => s.id);
+        const endYesterday = series.filter((s) => s.start_date < t && !doneToday.has(s.id)).map((s) => s.id);
         if (future.length) must(await supabase.from('block_series').delete().in('id', future).select('id'));
-        if (ongoing.length) {
-          must(await supabase.from('block_series').update({ end_date: addDays(t, -1) }).in('id', ongoing).select('id'));
-          await supabase.from('series_occurrences').delete().in('series_id', ongoing).gte('day', t);
+        if (endToday.length) {
+          must(await supabase.from('block_series').update({ end_date: t }).in('id', endToday).select('id'));
+          await supabase.from('series_occurrences').delete().in('series_id', endToday).gt('day', t);
+        }
+        if (endYesterday.length) {
+          must(await supabase.from('block_series').update({ end_date: addDays(t, -1) }).in('id', endYesterday).select('id'));
+          await supabase.from('series_occurrences').delete().in('series_id', endYesterday).gte('day', t);
         }
       }
       must(await supabase.from('plans').delete().eq('id', plan.id).select('id'));

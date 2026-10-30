@@ -11,7 +11,7 @@ import { cn } from '../../lib/utils';
  * The time is when the feeds were really fetched: the server reuses a feed for up to 10 minutes,
  * so checking again inside that window says so instead of claiming "just now".
  */
-export function SyncStatusPill({ className }: { className?: string }) {
+export function SyncStatusPill({ className, live = true }: { className?: string; /** false where the page has its own live region for sync errors (Calendars). */ live?: boolean }) {
   const { syncing, lastSync, events, errorCount, requestError, syncedCalendars, sync } = useCalendarSync();
   const toast = useToast();
   useNow(30_000);
@@ -31,8 +31,8 @@ export function SyncStatusPill({ className }: { className?: string }) {
   const bad = !!requestError || errorCount > 0;
   return (
     <div
-      role="status"
-      aria-live="polite"
+      role={live ? 'status' : undefined}
+      aria-live={live ? 'polite' : undefined}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1 text-xs font-medium',
         bad ? 'border-danger/30 bg-danger/10' : 'border-line bg-surface',

@@ -88,7 +88,7 @@ export function CalendarCard(p: Props) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <h3 className="truncate font-semibold">{c.name}</h3>
+              <h3 className="truncate font-semibold" dir="auto">{c.name}</h3>
               {c.pinned && <Star size={13} className="shrink-0 fill-warning text-warning" aria-label="Pinned" />}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -99,7 +99,7 @@ export function CalendarCard(p: Props) {
         </div>
 
         <div className="relative">
-          <SyncRow enabled={!!c.sync} status={p.syncStatus} onToggle={p.onToggleSync} />
+          <SyncRow id={c.id} name={c.name} enabled={!!c.sync} status={p.syncStatus} onToggle={p.onToggleSync} />
         </div>
 
         <div className="relative mt-auto flex flex-wrap items-center gap-0.5 border-t border-line px-3 py-1.5">

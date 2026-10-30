@@ -6,16 +6,19 @@ import { OccurrenceDialog } from '../../components/plans/OccurrenceDialog';
 import { PlansSection } from '../../components/plans/PlansSection';
 import { RecurringBlockDialog } from '../../components/plans/RecurringBlockDialog';
 import { ScheduleDialog } from '../../components/plans/ScheduleDialog';
-import { BLOCK_HELP_ID, EventBlock, laneStyle, PX_PER_MIN, RepeatBlock, SLOT, TaskBlock, TimePill } from '../../components/plans/TimelineBlocks';
+import { BLOCK_HELP_ID, EventBlock, EventDetailsDialog, laneStyle, PX_PER_MIN, RepeatBlock, SLOT, TaskBlock, TimePill } from '../../components/plans/TimelineBlocks';
+import { draftKey, loadSession, saveSession } from '../../components/capture/sessionDraft';
 import { QuickAddTask } from '../../components/tasks/QuickAddTask';
 import { TaskChips } from '../../components/tasks/TaskChips';
 import { AiButton } from '../../components/ui/Ai';
 import { PageHeader } from '../../components/ui/PageHeader';
+import type { SyncedEvent } from '../../../server/calendar/types';
 import type { Occurrence } from '../../../server/data/recurrence';
 import { useCalendars } from '../../hooks/data/calendars';
 import { usePlanActions, usePlans, useRecurring, useSeries } from '../../hooks/data/plans';
 import { useTasks, useToggleTask, useUpdateTask } from '../../hooks/data/tasks';
 import { useAi } from '../../hooks/useAi';
+import { useUserId } from '../../hooks/useAuth';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useToday } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
@@ -130,14 +133,37 @@ export default function Planner() {
   const [scheduling, setScheduling] = useState<{ task: Task; initial: Block; scheduled: boolean } | null>(null);
   const [movingRepeat, setMovingRepeat] = useState<{ occ: Occurrence; start: number; duration: number } | null>(null);
   const [announcement, setAnnouncement] = useState('');
-  const [ghosts, setGhosts] = useState<Ghost[]>([]);
   const [openOcc, setOpenOcc] = useState<Occurrence | null>(null);
+  const [openEvent, setOpenEvent] = useState<SyncedEvent | null>(null);
+  /** Repeating-block check-offs in flight: a second tap waits, so a linked goal is never counted twice. */
+  const [doneBusy, setDoneBusy] = useState<Set<string>>(() => new Set());
+  const doneBusyRef = useRef(new Set<string>());
   const [newRepeat, setNewRepeat] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const columnRefs = useRef(new Map<string, HTMLDivElement>());
   const days = view === 'week' ? weekOf(cursor) : [cursor];
+
+  // ✨ suggestions survive a reload (this tab only), stored per visible range ("2026-10-26…2026-11-01").
+  // Only the range on screen is shown and counted, and suggestions for tasks that have since been
+  // scheduled, completed or deleted drop out.
+  const uid = useUserId();
+  const ghostKey = draftKey(`planner-ghosts:${days[0]}…${days[days.length - 1]}`, uid);
+  const [ghostState, setGhostState] = useState<{ key: string; list: Ghost[] }>(() => ({ key: ghostKey, list: loadSession<Ghost[]>(ghostKey) ?? [] }));
+  if (ghostState.key !== ghostKey) setGhostState({ key: ghostKey, list: loadSession<Ghost[]>(ghostKey) ?? [] });
+  const setGhosts = useCallback((next: Ghost[] | ((list: Ghost[]) => Ghost[])) => {
+    setGhostState((st) => {
+      const list = typeof next === 'function' ? next(st.list) : next;
+      saveSession(st.key, list.length ? list : null);
+      return { key: st.key, list };
+    });
+  }, []);
+  const ghosts = useMemo(() => {
+    const open = new Set(tasks.filter((t) => !t.done && !t.sched_date).map((t) => t.id));
+    return (ghostState.key === ghostKey ? ghostState.list : []).filter((g) => open.has(g.task_id) && days.includes(g.date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghostState, ghostKey, tasks, days.join()]);
   const calById = useMemo(() => new Map(calendars.map((c) => [c.id, c])), [calendars]);
   const recurring = useRecurring(days[0], days[days.length - 1]);
   const { data: plans = [] } = usePlans();
@@ -505,18 +531,48 @@ export default function Planner() {
 
   // ---- ✨ plan my day / week ----
   const runPlan = () => {
+    // Saved under the range it was asked for, even if the view has moved on by the time it answers.
+    const key = ghostKey;
     const opts = {
       onSuccess: (r: { result: { blocks: Ghost[] } }) => {
-        setGhosts(r.result.blocks.map((b) => ({ ...b, start: b.start, duration: b.duration })));
+        const list = r.result.blocks.map((b) => ({ ...b, start: b.start, duration: b.duration }));
+        saveSession(key, list.length ? list : null);
+        setGhostState((st) => (st.key === key ? { key, list } : st));
         if (!r.result.blocks.length) toast('No free slots or suitable tasks to plan.');
       },
     };
     if (view === 'day') planDay.mutate({ date: cursor }, opts);
     else planWeek.mutate({ date: cursor }, opts);
   };
+  const sameGhost = (a: Ghost, b: Ghost) => a.task_id === b.task_id && a.date === b.date && a.start === b.start;
   const acceptGhost = (g: Ghost) => {
     schedule(g.task_id, { date: g.date, start: g.start, duration: g.duration });
-    setGhosts((list) => list.filter((x) => x !== g));
+    setGhosts((list) => list.filter((x) => !sameGhost(x, g)));
+  };
+  /** Dismissing one suggestion, or discarding them all, can be undone (they cost an ✨ action). */
+  const dismissGhosts = (gone: Ghost[]) => {
+    if (!gone.length) return;
+    setGhosts((list) => list.filter((x) => !gone.some((g) => sameGhost(x, g))));
+    const message = gone.length === 1 ? `Dismissed the suggestion for “${gone[0].title}”` : `Discarded ${gone.length} suggestions`;
+    toast(message, { label: 'Undo', onClick: () => setGhosts((list) => [...list.filter((x) => !gone.some((g) => sameGhost(x, g))), ...gone]) });
+  };
+  const toggleRepeatDone = (occ: Occurrence) => {
+    const k = repeatKey(occ);
+    // The ref catches a second tap in the same frame, before React has re-rendered.
+    if (doneBusyRef.current.has(k)) return;
+    doneBusyRef.current.add(k);
+    setDoneBusy((st) => new Set(st).add(k));
+    planActions
+      .setDone(occ, !occ.done, plans.find((p) => p.id === occ.plan_id))
+      .catch(() => toast('That change could not be saved.'))
+      .finally(() => {
+        doneBusyRef.current.delete(k);
+        setDoneBusy((st) => {
+          const n = new Set(st);
+          n.delete(k);
+          return n;
+        });
+      });
   };
 
   const shift = (dir: number) => setCursor((c) => addDaysKey(c, dir * (view === 'week' ? 7 : 1)));
@@ -622,9 +678,30 @@ export default function Planner() {
 
         <div ref={timelineRef} className="card min-w-0 scroll-mt-20 !p-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
-            <div className="flex rounded-xl border border-line p-0.5" role="tablist" aria-label="View">
+            <div
+              className="flex rounded-xl border border-line p-0.5"
+              role="tablist"
+              aria-label="View"
+              onKeyDown={(e) => {
+                // APG tabs: the arrows, Home and End switch view; focus follows.
+                const to = e.key === 'ArrowLeft' || e.key === 'Home' ? 'day' : e.key === 'ArrowRight' || e.key === 'End' ? 'week' : null;
+                if (!to) return;
+                e.preventDefault();
+                setView(to);
+                document.getElementById(`planner-tab-${to}`)?.focus();
+              }}
+            >
               {(['day', 'week'] as const).map((v) => (
-                <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold capitalize', view === v ? 'bg-accent text-accent-ink' : 'muted')}>
+                <button
+                  key={v}
+                  id={`planner-tab-${v}`}
+                  role="tab"
+                  aria-selected={view === v}
+                  aria-controls="planner-timeline"
+                  tabIndex={view === v ? 0 : -1}
+                  onClick={() => setView(v)}
+                  className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold capitalize', view === v ? 'bg-accent text-accent-ink' : 'muted')}
+                >
                   {v}
                 </button>
               ))}
@@ -654,14 +731,14 @@ export default function Planner() {
               <button
                 className="btn-primary ml-auto !px-3 !py-1"
                 onClick={() => {
-                  ghosts.forEach((g) => schedule(g.task_id, g));
+                  ghosts.forEach((g) => schedule(g.task_id, { date: g.date, start: g.start, duration: g.duration }));
                   toast(`Scheduled ${ghosts.length} block${ghosts.length === 1 ? '' : 's'}`);
-                  setGhosts([]);
+                  setGhosts((list) => list.filter((x) => !ghosts.some((g) => sameGhost(x, g))));
                 }}
               >
                 Accept all
               </button>
-              <button className="btn-ghost !px-3 !py-1" onClick={() => setGhosts([])}>
+              <button className="btn-ghost !px-3 !py-1" onClick={() => dismissGhosts(ghosts)}>
                 Discard
               </button>
             </div>
@@ -669,7 +746,7 @@ export default function Planner() {
           {selectedTask && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-ink/[0.06] px-4 py-2 text-xs">
               <span className="min-w-0">
-                Tap a time to schedule <strong className="break-words">“{selectedTask.title}”</strong>
+                Tap a time to schedule <strong>“{selectedTask.title}”</strong>
               </span>
               <span className="ml-auto flex items-center gap-3">
                 <button className="link" onClick={() => openScheduler(selectedTask)}>
@@ -682,7 +759,7 @@ export default function Planner() {
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          <div id="planner-timeline" role="tabpanel" aria-labelledby={`planner-tab-${view}`} className="overflow-x-auto">
             <div className={cn(view === 'week' && 'min-w-[760px]')}>
               <div className="flex border-b border-line">
                 <div className="w-14 shrink-0" />
@@ -705,9 +782,18 @@ export default function Planner() {
                       {allDay.map((e) => {
                         const c = CALENDAR_COLORS[calById.get(e.calendarId)?.color ?? 1] ?? CALENDAR_COLORS[1];
                         return (
-                          <div key={e.id} className="striped mt-1 flex items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ '--stripe': `${c.hex}55`, borderColor: `${c.hex}99` } as React.CSSProperties} title={`${e.title} (all day, synced)`}>
-                            <Lock size={9} className="shrink-0 opacity-60" aria-hidden /> {e.title}
-                          </div>
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => setOpenEvent(e)}
+                            aria-haspopup="dialog"
+                            aria-label={`All-day calendar event: ${e.title} (synced, read-only)`}
+                            className="striped mt-1 flex w-full items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-left text-xs font-semibold"
+                            style={{ '--stripe': `${c.hex}55`, borderColor: `${c.hex}99` } as React.CSSProperties}
+                            title={`${e.title} (all day, synced)`}
+                          >
+                            <Lock size={9} className="shrink-0 opacity-60" aria-hidden /> <span className="truncate">{e.title}</span>
+                          </button>
                         );
                       })}
                     </div>
@@ -762,7 +848,7 @@ export default function Planner() {
                           />
                         )}
                         {dayEvents.map((de) => (
-                          <EventBlock key={de.event.id} de={de} lane={lanes.get(`e:${de.event.id}`)} calendar={calById.get(de.event.calendarId)} />
+                          <EventBlock key={de.event.id} de={de} lane={lanes.get(`e:${de.event.id}`)} calendar={calById.get(de.event.calendarId)} onOpen={() => setOpenEvent(de.event)} />
                         ))}
                         {dayRepeats.map(({ occ, block }) => (
                           <RepeatBlock
@@ -774,7 +860,8 @@ export default function Planner() {
                             onMoveStart={(e) => startDrag(e, { kind: 'repeat', id: repeatKey(occ), occ }, { date: occ.day, start: occ.start, duration: occ.duration }, 'move')}
                             onResizeStart={(e) => startDrag(e, { kind: 'repeat', id: repeatKey(occ), occ }, { date: occ.day, start: occ.start, duration: occ.duration }, 'resize')}
                             onOpen={afterClick(() => setOpenOcc(occ))}
-                            onToggleDone={() => planActions.setDone(occ, !occ.done, plans.find((p) => p.id === occ.plan_id)).catch(() => toast('That change could not be saved.'))}
+                            doneBusy={doneBusy.has(repeatKey(occ))}
+                            onToggleDone={() => toggleRepeatDone(occ)}
                           />
                         ))}
                         {dayTasks.map(({ task, block }) => (
@@ -822,7 +909,7 @@ export default function Planner() {
                               </button>
                               <button
                                 className="relative -my-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-raised"
-                                onClick={() => setGhosts((l) => l.filter((x) => x !== g))}
+                                onClick={() => dismissGhosts([g])}
                                 aria-label={`Dismiss suggestion for ${g.title}`}
                               >
                                 <X size={13} />
@@ -921,6 +1008,7 @@ export default function Planner() {
           }}
         />
       )}
+      {openEvent && <EventDetailsDialog event={openEvent} calendar={calById.get(openEvent.calendarId)} onClose={() => setOpenEvent(null)} />}
       {newRepeat && <RecurringBlockDialog onClose={() => setNewRepeat(false)} initialDay={cursor} />}
     </div>
   );

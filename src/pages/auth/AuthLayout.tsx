@@ -39,6 +39,51 @@ export function FormError({ message }: { message: string }) {
   );
 }
 
+/** A message under one field, tied to it with aria-describedby (see fieldProps). */
+export function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} className="mt-1.5 text-xs font-medium text-danger">
+      {message}
+    </p>
+  );
+}
+
+/** Per-field messages, keyed by the input's id. An empty string means the field is fine. */
+export type FieldErrors = Partial<Record<string, string>>;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** '' when the email looks usable, otherwise what to fix. */
+export function emailProblem(email: string): string {
+  const v = email.trim();
+  if (!v) return 'Enter your email address.';
+  if (!EMAIL_RE.test(v)) return 'That doesn’t look like an email address. Check for typos.';
+  return '';
+}
+
+/** aria-invalid and aria-describedby for an input whose FieldError has the id `${id}-error`. */
+export function fieldProps(id: string, errors: FieldErrors, hintId?: string) {
+  const err = errors[id];
+  const describedBy = [err ? `${id}-error` : '', hintId ?? ''].filter(Boolean).join(' ');
+  return { 'aria-invalid': err ? true : undefined, 'aria-describedby': describedBy || undefined } as const;
+}
+
+/** True when at least one field has a message. */
+export const hasErrors = (errors: FieldErrors) => Object.values(errors).some(Boolean);
+
+/**
+ * Moves focus to the first field (in DOM order) that has an error. Waits a frame so the
+ * message and aria-describedby are in the DOM before a screen reader announces the field.
+ */
+export function focusFirstInvalid(form: HTMLFormElement | null, errors: FieldErrors) {
+  if (!form) return;
+  requestAnimationFrame(() => {
+    const first = [...form.querySelectorAll<HTMLElement>('input, textarea, select')].find((el) => el.id && errors[el.id]);
+    first?.focus();
+  });
+}
+
 /** A neutral confirmation (not an error), announced politely. */
 export function FormNotice({ message }: { message: string }) {
   if (!message) return null;

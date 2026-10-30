@@ -424,7 +424,7 @@ await flow('pages-smoke', browser, {}, async (page) => {
 await flow('magic-link-and-email-change', browser, {}, async (page) => {
   const user = await makeUser('Jo');
   await page.goto(`${BASE}/login`);
-  await page.getByRole('tab', { name: 'Email me a link' }).click();
+  await page.getByRole('button', { name: 'Email me a link' }).click();
   await page.getByLabel('Email').fill(user.email);
   await page.getByRole('button', { name: 'Send me a sign-in link' }).click();
   await page.getByText('Check your email').waitFor();
@@ -508,8 +508,9 @@ await flow('admin', browser, {}, async (page) => {
   await page.getByLabel('User email').fill(target.email);
   await page.getByRole('button', { name: 'Find' }).click();
   await page.getByPlaceholder(/Default/).fill('3');
-  await page.getByLabel('Block AI').check();
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('switch', { name: 'Block AI' }).click();
+  // Turning the block on relabels Save so the consequence is explicit.
+  await page.getByRole('button', { name: 'Block user' }).click();
   await page.getByText(/Saved for/).waitFor();
   const { data: o } = await admin.from('ai_overrides').select('*').eq('user_id', target.id).single();
   assert(o.daily_limit === 3 && o.blocked, `override not saved: ${JSON.stringify(o)}`);
@@ -987,6 +988,536 @@ await flow('mobile-touch', browser, { viewport: { width: 390, height: 844 }, isM
     await page.getByRole('heading', { level: 1 }).waitFor();
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert(over <= 0, `/app${path} scrolls sideways by ${over}px`);
+  }
+});
+
+
+// break-ui pass on the Atlas panel: worst-case history, plan card and composer, at phone and desktop widths.
+await flow('atlas-worst-case', browser, {}, async (page) => {
+  const user = await makeUser('Aleksandra', { name: 'Aleksandra Wiśniewska-Kowalczyk' });
+  const longUrl = `https://northwind-industries-holdings.example.com/shared/documents/${'q3-planning-retrospective-final-v12-'.repeat(8)}`.slice(0, 300);
+  const sessionTitles = ['Leg day: squats, lunges and Bulgarian split squats', 'Upper body push', 'Long run along the canal', 'Mobility', 'Intervals', 'Rest & stretch', 'Swim technique drills'];
+  const { data: plan, error: planErr } = await admin
+    .from('plans')
+    .insert({
+      user_id: user.id,
+      title: 'Twelve-week half-marathon build with strength, mobility and recovery sessions around a busy lecture timetable'.padEnd(120, '!').slice(0, 120),
+      summary: 'Seven sessions a week, built around your lectures and part-time shifts, easing off before exams.',
+      weeks: 12,
+      sessions: sessionTitles.map((title, i) => ({
+        day: i + 1,
+        start: 6 * 60 + i * 37,
+        duration: 45 + i * 10,
+        title,
+        details: i === 0 ? 'warm up 10 min then 4×8 each side, rest 90 s https://example.com/very/long/exercise/video/link/that/does/not/break/anywhere-at-all' : '',
+      })),
+    })
+    .select('id')
+    .single();
+  if (planErr) throw planErr;
+  const heavy = [
+    '# Your week at a glance',
+    '## Priorities',
+    '1. **Finish the lab report** — due *Thursday*',
+    '2. `npm run build` keeps failing; try `rm -rf node_modules && npm ci --prefer-offline --no-audit --no-fund`',
+    '- [ ] email Dr. Okonkwo-Hargreaves about the extension',
+    '- [x] book the library room',
+    '',
+    '| Day | Morning | Afternoon | Evening | Notes |',
+    '| --- | --- | --- | --- | --- |',
+    ...Array.from({ length: 12 }, (_, i) => `| Day ${i + 1} | Lecture: Introduction to Thermodynamics ${i} | Lab ${i} | Shift at the café 18:00–22:00 | ${'bring-the-safety-goggles-and-lab-coat-'.repeat(2)} |`),
+    '',
+    '```',
+    'const schedule=weeks.flatMap((w)=>w.days.map((d)=>({...d,start:d.start+offset}))).filter(Boolean).sort((a,b)=>a.start-b.start);',
+    `const url = "${longUrl}";`,
+    '```',
+    `Read more: ${longUrl}`,
+    `[${'The full reading list for Organic Chemistry '.repeat(3)}](${longUrl})`,
+  ].join('\n');
+  const special = [
+    { role: 'user', content: 'Plan my revision for exams and add the reading list. '.repeat(40).slice(0, 2000) },
+    { role: 'assistant', content: `Here is the link you asked for: ${longUrl}` },
+    { role: 'user', content: longUrl },
+    { role: 'assistant', content: heavy },
+    { role: 'user', content: '🎉🔥💪🏽👩🏾‍💻🧑‍🤝‍🧑🏳️‍🌈 '.repeat(30) + '\n' + '👨‍👩‍👧‍👦'.repeat(60) },
+    { role: 'assistant', content: 'مرحبا! لقد أضفت المهمة "مراجعة الفصل الثالث من كتاب الكيمياء العضوية" إلى قائمتك ليوم الخميس. هل تريد أن أحجز لها وقتًا في المخطط؟' },
+    { role: 'user', content: 'أضف مهمة: الاتصال بالبنك غدًا الساعة العاشرة' },
+    {
+      role: 'assistant',
+      content: 'Here is your plan.',
+      actions: [
+        { tool: 'add_task', summary: `Added task “${'Read chapter 4 of Organic Chemistry: Structure and Function '.repeat(3)}${longUrl}”`, ok: true },
+        { tool: 'complete_task', summary: 'Could not find “T999”', ok: false },
+        { tool: 'create_plan', summary: 'Drafted a plan', ok: true, plan_id: plan.id },
+      ],
+    },
+  ];
+  const filler = Array.from({ length: 200 - special.length }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: i % 2 ? `Done — reply number ${i}.` : `Message number ${i}` }));
+  const { error: histErr } = await admin.from('atlas_messages').insert([...filler, ...special].map((m) => ({ user_id: user.id, actions: [], ...m })));
+  if (histErr) throw histErr;
+
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
+  await panel.getByRole('region', { name: /^Plan:/ }).waitFor({ timeout: 10000 });
+  await panel.getByText(/^مرحبا!/).waitFor();
+
+  // Nothing in the panel sticks out sideways, and the page never scrolls sideways.
+  const overflow = () =>
+    page.evaluate(() => {
+      const aside = document.querySelector('[role=dialog][aria-label="Atlas assistant"] aside');
+      const box = aside.getBoundingClientRect();
+      const scroller = aside.querySelector('.overflow-y-auto');
+      const out = [...aside.querySelectorAll('*')]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1);
+        })
+        .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} (${Math.round(el.getBoundingClientRect().right - box.right)}px)`);
+      return { page: document.documentElement.scrollWidth - window.innerWidth, scroller: scroller.scrollWidth - scroller.clientWidth, out: out.slice(0, 8) };
+    });
+  for (const [w, h] of [[1280, 860], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await sleep(300);
+    const o = await overflow();
+    assert(o.page <= 0 && o.scroller <= 0 && !o.out.length, `overflow at ${w}px: page ${o.page}px, transcript ${o.scroller}px, ${o.out.join(', ')}`);
+    await shot(page, `atlas-worst-case-${w}`);
+  }
+  for (const [name, target] of [['markdown', panel.getByRole('heading', { name: 'Your week at a glance' })], ['rtl', panel.getByText(/^مرحبا!/)], ['long-message', panel.getByText(/^Plan my revision/)]]) {
+    await target.scrollIntoViewIfNeeded();
+    await shot(page, `atlas-worst-case-390-${name}`);
+  }
+  // RTL replies read right to left.
+  assert((await panel.getByText(/^مرحبا!/).evaluate((el) => getComputedStyle(el).direction)) === 'rtl', 'Arabic reply not laid out right to left');
+  // The transcript is not a live region; one sr-only status speaks for it.
+  assert((await panel.locator('[aria-live]').count()) === 0, 'an element in the Atlas panel still has aria-live');
+
+  // A 2,000-character message grows the composer (to its cap), and a failed send keeps it.
+  const input = panel.getByLabel('Message Atlas');
+  const long = 'Please move my thermodynamics revision to the mornings and keep evenings free for shifts. '.repeat(30).slice(0, 2000);
+  await input.fill(long);
+  const hgt = await input.evaluate((el) => el.getBoundingClientRect().height);
+  assert(hgt > 60 && hgt <= 130, `composer height ${hgt}px for a long message`);
+  await page.route('**/api/atlas', (route) =>
+    route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'Easy there — try again in 30s.', reason: 'rate_limit', retryAfter: 30 }) }),
+  );
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByText('Not sent', { exact: true }).waitFor();
+  await panel.getByRole('alert').getByText(/Easy there/).waitFor();
+  assert(await panel.getByText(long.slice(0, 120)).first().isVisible(), 'failed message not kept in the transcript');
+  assert((await input.inputValue()) === '', 'composer not cleared after sending');
+  await panel.getByRole('button', { name: 'Edit message' }).click();
+  assert((await input.inputValue()) === long, 'Edit did not restore the failed message');
+  await page.unroute('**/api/atlas');
+
+  // Offline (fetch rejects, no console noise from an aborted route): Retry resends the kept message.
+  await page.evaluate(() => {
+    const real = window.fetch;
+    window.__atlas = { mode: 'offline', aborted: false, sent: 0, calls: 0 };
+    window.fetch = (url, init) => {
+      if (!String(url).includes('/api/atlas') || !String(init?.body ?? '').includes('"chat"')) return real(url, init);
+      window.__atlas.calls++;
+      if (window.__atlas.mode === 'offline') return Promise.reject(new TypeError('Failed to fetch'));
+      const enc = new TextEncoder();
+      const body = new ReadableStream({
+        start(c) {
+          const id = setInterval(() => {
+            c.enqueue(enc.encode(JSON.stringify({ t: 'text', v: `word${window.__atlas.sent++} ` }) + '\n'));
+          }, 40);
+          init.signal?.addEventListener('abort', () => {
+            window.__atlas.aborted = true;
+            clearInterval(id);
+            c.error(new DOMException('Aborted', 'AbortError'));
+          });
+        },
+      });
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'application/x-ndjson' } }));
+    };
+  });
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByRole('alert').getByText(/Can't reach Atlas/).waitFor();
+  assert((await input.inputValue()) === '', 'composer not cleared after sending');
+  await panel.getByRole('button', { name: 'Retry sending' }).click();
+  await eventually(async () => (await page.evaluate(() => window.__atlas.calls)) === 2, 'Retry did not resend');
+  await panel.getByText('Not sent', { exact: true }).waitFor();
+  await panel.getByRole('button', { name: 'Edit message' }).click();
+  await input.fill('');
+
+  // Stop: Send becomes Stop while a reply streams; Stop aborts the request and keeps what arrived.
+  await page.evaluate(() => (window.__atlas.mode = 'slow'));
+  await input.fill('Write me a long essay');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await panel.getByText(/word5 /).waitFor();
+  assert((await panel.getByRole('status').first().innerText()).includes('Atlas is thinking'), 'no thinking announcement');
+  await panel.getByRole('button', { name: 'Stop' }).click();
+  await panel.getByText(/^Stopped\. Atlas keeps/).waitFor();
+  const sentAtStop = await page.evaluate(() => window.__atlas.sent);
+  await sleep(400);
+  const state = await page.evaluate(() => window.__atlas);
+  assert(state.aborted, 'Stop did not abort the request');
+  assert(state.sent === sentAtStop, 'the stream kept going after Stop');
+  await panel.getByRole('button', { name: 'Send' }).waitFor();
+  assert(await panel.getByText('Write me a long essay').isVisible(), 'stopped message disappeared');
+  await shot(page, 'atlas-worst-case-stopped');
+});
+
+// Voice HUD screen-reader output: "Voice mode ready" once, then the whole reply once (speech output off), never per token.
+await flow('voice-hud-announce', browser, { reducedMotion: 'reduce' }, async (page) => {
+  const user = await makeUser('Sol', { voice: { speak: false } });
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  const sr = hud.locator('p.sr-only[role=status]');
+  await sr.getByText('Voice mode ready.').waitFor({ timeout: 10000 });
+  assert((await hud.locator('[aria-live]').count()) === 0, 'an element in the voice HUD still has aria-live');
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  await hud.getByLabel('Type to Atlas').fill("what's on today");
+  await page.keyboard.press('Enter');
+  await sr.getByText(/^Atlas: Here's your day, Sol/).waitFor({ timeout: 15000 });
+});
+
+// Phase 7 harden (Brain Dump, Planner & Plans, Calendars).
+await flow('harden-b', browser, { timezoneId: 'UTC' }, async (page) => {
+  const user = await makeUser('Hal');
+  const today = new Date().toISOString().slice(0, 10);
+  const plusDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const twoDaysAgo = new Date(Date.now() - 2 * 864e5).toISOString();
+  const { data: note } = await admin.from('notes').insert({ user_id: user.id, body: 'Plan the study group', pinned: true, created_at: twoDaysAgo }).select('*').single();
+  const { data: task } = await admin.from('tasks').insert({ user_id: user.id, title: 'Book a room', source_note_id: note.id }).select('id').single();
+  await admin.from('notes').insert({ user_id: user.id, body: 'Throwaway thought' });
+  await logIn(page, user);
+
+  // brain-dump-9: Undo after delete gives back the same note (id, date, pin) and keeps the task's link.
+  await page.goto(`${BASE}/app/brain-dump`);
+  const card = page.locator(`#note-${note.id}`);
+  await card.getByText('→ 1 task').waitFor();
+  await card.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete note' }).click();
+  await card.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await card.getByText('→ 1 task').waitFor();
+  await sleep(11_000); // past the delete window: nothing must be deleted
+  const { data: back } = await admin.from('notes').select('id, pinned, created_at').eq('id', note.id).maybeSingle();
+  assert(back && back.pinned && Date.parse(back.created_at) === Date.parse(twoDaysAgo), `note not restored as itself: ${JSON.stringify(back)}`);
+  const { data: link } = await admin.from('tasks').select('source_note_id').eq('id', task.id).single();
+  assert(link.source_note_id === note.id, 'task lost its link to the note');
+  // Without Undo, the delete goes through once the window has passed.
+  const other = page.locator('article', { hasText: 'Throwaway thought' });
+  await other.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete note' }).click();
+  await other.waitFor({ state: 'detached' });
+  await eventually(async () => !(await admin.from('notes').select('id').eq('user_id', user.id).eq('body', 'Throwaway thought')).data.length, 'deleted note was never removed', 15_000);
+
+  // brain-dump-10: view tabs follow the APG pattern.
+  const inbox = page.getByRole('tab', { name: /Inbox/ });
+  await inbox.focus();
+  await page.keyboard.press('ArrowRight');
+  const ideas = page.getByRole('tab', { name: /Ideas/ });
+  await eventually(async () => (await ideas.getAttribute('aria-selected')) === 'true', 'ArrowRight did not select Ideas');
+  assert(await ideas.evaluate((el) => el === document.activeElement), 'focus did not follow the selected tab');
+  await page.keyboard.press('End');
+  await eventually(async () => (await page.getByRole('tab', { name: /Archive/ }).getAttribute('aria-selected')) === 'true', 'End did not select Archive');
+  await page.keyboard.press('Home');
+  await eventually(async () => (await inbox.getAttribute('aria-selected')) === 'true', 'Home did not select Inbox');
+  const stops = await page.locator('[role=tab][tabindex="0"]').count();
+  assert(stops === 1, `${stops} tabs in the Tab order (roving tabindex expects 1)`);
+  const panelId = await inbox.getAttribute('aria-controls');
+  assert(panelId && (await page.locator(`#${panelId}[role=tabpanel]`).count()) === 1, 'tabs do not control a tabpanel');
+
+  // planner-plans-11: a double tap on a repeating block's checkbox counts the linked goal once.
+  const { data: goal } = await admin.from('goals').insert({ user_id: user.id, title: 'Run 10 times', target: 10, current: 0, unit: 'sessions' }).select('id').single();
+  const { data: plan } = await admin
+    .from('plans')
+    .insert({ user_id: user.id, title: 'Running', weeks: 2, start_date: today, status: 'active', added_at: new Date().toISOString(), goal_id: goal.id, sessions: [] })
+    .select('id')
+    .single();
+  await admin.from('block_series').insert({ user_id: user.id, plan_id: plan.id, title: 'Easy run', days: [1, 2, 3, 4, 5, 6, 7], start_min: 600, duration_min: 60, start_date: today, end_date: plusDays(13) });
+  const calA = (await admin.from('calendars').insert({ user_id: user.id, name: 'Lectures', url: 'https://example.com/lectures.ics', sync: true }).select('id').single()).data.id;
+  const calB = (await admin.from('calendars').insert({ user_id: user.id, name: 'Club', url: 'https://example.com/club.ics', sync: true }).select('id').single()).data.id;
+  // Synced feeds come from a stubbed sync endpoint: one works, one fails.
+  await page.route('**/api/calendar-sync', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          { id: calA, ok: true, cached: false, fetchedAt: new Date().toISOString(), events: [{ id: 'ev-1', calendarId: calA, title: 'Stats lecture', start: `${today}T14:00:00.000Z`, end: `${today}T15:00:00.000Z`, allDay: false, location: 'Room 2' }] },
+          { id: calB, ok: false, cached: false, fetchedAt: new Date().toISOString(), events: [], error: 'The feed answered 404 Not Found.' },
+        ],
+      }),
+    }),
+  );
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('tab', { name: 'day' }).click();
+  const check = page.getByRole('button', { name: 'Mark “Easy run” done' });
+  await check.waitFor();
+  await check.evaluate((el) => {
+    el.click();
+    el.click();
+  });
+  await page.getByRole('button', { name: 'Mark “Easy run” not done' }).waitFor();
+  await sleep(1500);
+  const { data: g } = await admin.from('goals').select('current').eq('id', goal.id).single();
+  assert(Number(g.current) === 1, `double tap moved the goal to ${g.current}`);
+
+  // planner-plans-10: synced events are focusable, read-only buttons with a details dialog.
+  const event = page.getByRole('button', { name: /Calendar event: Stats lecture/ });
+  await event.focus();
+  assert(await event.evaluate((el) => el === document.activeElement), 'calendar event cannot take focus');
+  await page.keyboard.press('Enter');
+  const details = page.getByRole('dialog', { name: 'Stats lecture' });
+  await details.getByText('Synced and read-only').waitFor();
+  await details.getByText('Room 2').waitFor();
+  await page.keyboard.press('Escape');
+  await details.waitFor({ state: 'detached' });
+  assert(await event.evaluate((el) => el === document.activeElement), 'focus did not return to the event');
+  const nested = await page.evaluate(() => [...document.querySelectorAll('button button, a button, button a')].length);
+  assert(nested === 0, `${nested} interactive elements nested inside another`);
+
+  // calendars-10/11: the heading holds the group toggle; a feed error is announced by one live region only.
+  await page.goto(`${BASE}/app/calendars`);
+  await page.getByText('The feed answered 404 Not Found.').first().waitFor();
+  const alerts = await page.locator('[role=alert], [aria-live]').filter({ hasText: '404 Not Found' }).count();
+  assert(alerts === 1, `feed error is in ${alerts} live regions`);
+  assert((await page.locator('h2 > button[aria-expanded]').count()) >= 1, 'group toggle is not inside its heading');
+  assert((await page.locator('button[aria-expanded] h2').count()) === 0, 'a heading is still nested in a button');
+  const described = await page.locator('[role=group][aria-describedby^="sync-error-"]').count();
+  assert(described === 1, `failed card's sync row is not described by its error (${described})`);
+  await shot(page, 'harden-b-calendars');
+
+  // planner-plans-9: ✨ suggestions survive a reload, and Discard can be undone.
+  await admin.from('tasks').insert({ user_id: user.id, title: 'Draft the lab report', estimate_min: 60 });
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('tab', { name: 'week' }).click();
+  await page.getByRole('button', { name: /Plan my week/ }).click();
+  await page.getByText(/suggested block/).waitFor({ timeout: 15000 });
+  await page.reload();
+  await page.getByText(/suggested block/).waitFor();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByText(/suggested block/).waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByText(/suggested block/).waitFor();
+});
+
+await flow('harden-a', browser, {}, async (page) => {
+  const activeId = () => page.evaluate(() => document.activeElement?.id ?? '');
+  // Log in: the sign-in method is a pair of toggle buttons (not tabs), operable from the keyboard.
+  await page.goto(`${BASE}/login`);
+  const method = page.getByRole('group', { name: 'Sign-in method' });
+  const pwBtn = method.getByRole('button', { name: 'Password', exact: true });
+  const linkBtn = method.getByRole('button', { name: 'Email me a link' });
+  assert((await page.getByRole('tab').count()) === 0, 'login still uses role=tab');
+  assert((await pwBtn.getAttribute('aria-pressed')) === 'true', 'Password not pressed by default');
+  await pwBtn.focus();
+  await page.keyboard.press('Tab');
+  assert(await linkBtn.evaluate((el) => el === document.activeElement), 'Tab did not reach "Email me a link"');
+  await page.keyboard.press('Enter');
+  assert((await linkBtn.getAttribute('aria-pressed')) === 'true', 'Enter did not switch to the link method');
+  await page.getByRole('button', { name: 'Send me a sign-in link' }).waitFor();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Space');
+  assert((await pwBtn.getAttribute('aria-pressed')) === 'true', 'Space did not switch back to Password');
+  // Submitting empty: inline errors tied to the fields, focus on the first invalid one.
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.getByText('Enter your email address.').waitFor();
+  await eventually(async () => (await activeId()) === 'email', 'focus did not move to the email field');
+  const email = page.getByLabel('Email');
+  assert((await email.getAttribute('aria-invalid')) === 'true', 'email not marked invalid');
+  assert((await email.getAttribute('aria-describedby')) === 'email-error', 'email error not described');
+  const user = await makeUser('Hardy');
+  await email.fill(user.email);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.getByText('Enter your password.').waitFor();
+  await eventually(async () => (await activeId()) === 'password', 'focus did not move to the password field');
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByRole('button', { name: /^Log in/ }).click();
+  await page.waitForURL(/\/app/);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+
+  // Command palette: options are not tab stops, sections are groups, arrows move the active option.
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.waitFor();
+  const input = palette.getByRole('combobox');
+  assert(await page.locator('[role=option]').evaluateAll((els) => els.length > 0 && els.every((e) => e.tabIndex === -1 && e.tagName !== 'BUTTON')), 'palette options are tab stops');
+  assert((await palette.locator('[role=listbox] > [role=group]').count()) >= 3, 'palette sections are not groups');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  assert((await input.getAttribute('aria-activedescendant')) === 'palette-2', 'ArrowDown did not move the active option');
+  assert((await palette.locator('#palette-2').getAttribute('aria-selected')) === 'true', 'active option not selected');
+  await page.keyboard.press('ArrowUp');
+  assert((await input.getAttribute('aria-activedescendant')) === 'palette-1', 'ArrowUp did not move back');
+  await page.keyboard.press('Tab');
+  assert(await input.evaluate((el) => el === document.activeElement), 'Tab left the palette input');
+  // Arrow down to Settings and run it with Enter.
+  for (let i = 0; i < 30; i++) {
+    const id = await input.getAttribute('aria-activedescendant');
+    if ((await palette.locator(`#${id}`).innerText()).trim() === 'Settings') break;
+    await page.keyboard.press('ArrowDown');
+  }
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/\/app\/settings/);
+  await palette.waitFor({ state: 'detached' });
+
+  // Mood picker: one tab stop; arrows, Home and End move and choose.
+  await page.goto(`${BASE}/app/mood`);
+  const radios = page.getByRole('radiogroup', { name: 'How are you feeling today?' }).getByRole('radio');
+  await radios.first().waitFor();
+  assert((await radios.evaluateAll((els) => els.filter((e) => e.tabIndex === 0).length)) === 1, 'mood picker should have one tab stop');
+  await radios.first().focus();
+  await page.keyboard.press('ArrowRight');
+  const checked = (n) => eventually(async () => (await radios.nth(n).getAttribute('aria-checked')) === 'true', `mood ${n + 1} not chosen`);
+  await checked(1);
+  assert(await radios.nth(1).evaluate((el) => el === document.activeElement), 'ArrowRight did not move focus');
+  await page.keyboard.press('End');
+  await checked(4);
+  await page.keyboard.press('Home');
+  await checked(0);
+  await page.keyboard.press('ArrowLeft');
+  await checked(4);
+  assert(await radios.nth(4).evaluate((el) => el === document.activeElement), 'ArrowLeft from the first did not wrap focus');
+  await eventually(async () => (await admin.from('moods').select('score').eq('user_id', user.id).maybeSingle()).data?.score === 5, 'mood not saved as 5');
+  // The note saves while typing and says so.
+  await page.getByLabel('A word about today (optional)').fill('Good run this morning');
+  await page.getByRole('status').filter({ hasText: 'Saved' }).waitFor();
+  await eventually(async () => (await admin.from('moods').select('note').eq('user_id', user.id).maybeSingle()).data?.note === 'Good run this morning', 'mood note not saved');
+
+  // Focus timer survives a reload, and a pill in the top bar links back to it from other pages.
+  await page.goto(`${BASE}/app/focus`);
+  await page.getByRole('button', { name: 'Start timer' }).click();
+  await page.getByRole('button', { name: 'Pause timer' }).waitFor();
+  assert(!(await page.getByTestId('timer-pill').isVisible()), 'timer pill shown on /focus');
+  await page.reload();
+  await page.getByRole('button', { name: 'Pause timer' }).waitFor({ timeout: 10000 });
+  await page.goto(`${BASE}/app/tasks`);
+  const pill = page.getByRole('link', { name: /^Focus timer, \d\d:\d\d left\. Open Focus$/ });
+  await pill.waitFor();
+  await pill.click();
+  await page.waitForURL(/\/app\/focus/);
+  await page.getByRole('button', { name: 'Pause timer' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Start timer' }).waitFor();
+  await page.getByText('Paused', { exact: true }).first().waitFor();
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByRole('link', { name: /^Focus timer, .* paused\. Open Focus$/ }).waitFor();
+  await page.goto(`${BASE}/app/focus`);
+  await page.getByRole('button', { name: 'Reset timer' }).click();
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByRole('heading', { level: 1 }).waitFor();
+  assert((await page.getByTestId('timer-pill').count()) === 0, 'timer pill still shown after reset');
+
+  // Habits: archive, then restore from "Archived (n)"; delete asks inside the dialog, naming the history.
+  const { data: h } = await admin.from('habits').insert({ user_id: user.id, name: 'Stretch', emoji: '🧘' }).select('id').single();
+  await admin.from('habit_logs').insert({ user_id: user.id, habit_id: h.id, day: new Date().toISOString().slice(0, 10) });
+  await page.goto(`${BASE}/app/habits`);
+  await page.getByRole('button', { name: 'Edit Stretch' }).click();
+  await page.getByRole('dialog', { name: 'Edit habit' }).getByRole('button', { name: 'Delete…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Edit habit' });
+  await dlg.getByText(/Delete “🧘 Stretch” for good\?/).waitFor();
+  await dlg.getByText(/1 ticked day from the last 120 days/).waitFor();
+  assert(await dlg.getByRole('button', { name: 'Keep it' }).evaluate((el) => el === document.activeElement), 'Keep it not focused');
+  await dlg.getByRole('button', { name: 'Archive instead' }).click();
+  await dlg.waitFor({ state: 'detached' });
+  const archivedToggle = page.getByRole('button', { name: 'Archived (1)' });
+  await archivedToggle.click();
+  assert((await archivedToggle.getAttribute('aria-expanded')) === 'true', 'archived section not expanded');
+  await page.getByRole('button', { name: 'Restore Stretch' }).click();
+  await page.getByRole('button', { name: 'Edit Stretch' }).waitFor();
+  await eventually(async () => (await admin.from('habits').select('archived_at').eq('id', h.id).single()).data?.archived_at === null, 'habit not restored');
+  await page.getByRole('button', { name: /^Archived/ }).waitFor({ state: 'detached' });
+  const { count } = await admin.from('habit_logs').select('day', { count: 'exact', head: true }).eq('habit_id', h.id);
+  assert(count === 1, 'history lost on archive/restore');
+
+  // Settings: export reports what it exported; the password field reveals and checks length inline;
+  // a voice slider saves once after it settles and doesn't snap back.
+  await page.goto(`${BASE}/app/settings`);
+  await page.getByRole('button', { name: 'Download JSON' }).click();
+  await page.getByText(/^Exported \d+ items? to daybloom-export-/).waitFor();
+  const pass = page.getByPlaceholder('New password');
+  await pass.fill('short');
+  await page.getByText('3 more characters needed.').waitFor();
+  await page.getByRole('button', { name: 'Show password' }).click();
+  assert((await pass.getAttribute('type')) === 'text', 'password not revealed');
+  await page.getByRole('button', { name: 'Update' }).click();
+  await page.getByText('Use at least 8 characters (you have 5).').waitFor();
+  assert((await pass.getAttribute('aria-invalid')) === 'true', 'short password not marked invalid');
+  const rate = page.getByLabel(/^Speed/);
+  await rate.focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
+  await eventually(async () => (await admin.from('profiles').select('voice').eq('id', user.id).single()).data?.voice?.rate === 1.2, 'speed not saved as 1.2');
+  await sleep(800);
+  assert((await rate.inputValue()) === '1.2', `speed snapped back to ${await rate.inputValue()}`);
+});
+
+// break-ui: worst-case data on every page, at phone and desktop width. Nothing may scroll sideways or crash.
+await flow('worst-case', browser, {}, async (page) => {
+  const user = await makeUser('X');
+  const uid = user.id;
+  const LONG = 'Supercalifragilisticexpialidocious'.repeat(5);
+  const URL_ = `https://example.com/${'very-long-path-segment-'.repeat(12)}?q=${'x'.repeat(60)}`;
+  const AR = 'مراجعة محاضرة الإحصاء قبل الامتحان يوم الخميس';
+  const EMOJI = '🎉🔥✨🧠📚🏃‍♀️👩🏽‍💻🇯🇵';
+  const today = new Date().toISOString().slice(0, 10);
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const ins = async (table, rows) => {
+    const { data, error } = await admin.from(table).insert(rows.map((r) => ({ user_id: uid, ...r })), { defaultToNull: false }).select('*');
+    if (error) throw new Error(`${table}: ${error.message}`);
+    return data;
+  };
+  await admin.from('profiles').update({ name: `Maximiliana-Alexandrina ${LONG}`.slice(0, 80) }).eq('id', uid);
+  const [goal] = await ins('goals', [
+    { title: `${LONG} ${EMOJI}`, emoji: '🏁', target: 1000000000, current: 123456789.5, unit: 'kilometres of running', due_date: day(400) },
+    { title: AR, emoji: '📚', target: 1, current: 0, unit: 'x' },
+  ]);
+  await ins('milestones', [{ goal_id: goal.id, title: LONG, done: false }]);
+  const notes = await ins('notes', [
+    { body: `${LONG}\n${URL_}\n- [ ] ${LONG}\n- [x] ${EMOJI}`, state: 'inbox', tags: [LONG.slice(0, 40).toLowerCase()] },
+    { body: AR, state: 'inbox' },
+    { body: 'a', state: 'inbox' },
+    ...Array.from({ length: 80 }, (_, i) => ({ body: `Note ${i} ${EMOJI}`, state: i % 3 ? 'inbox' : 'idea' })),
+  ]);
+  await ins('tasks', [
+    { title: LONG, priority: 'high', due_date: today, due_time: '09:00', top_date: today, tags: [LONG.slice(0, 30).toLowerCase(), 'a', 'b', 'c', 'd'], sched_date: today, sched_start: 9 * 60, sched_duration: 15, estimate_min: 1440, source_note_id: notes[0].id, goal_id: goal.id },
+    { title: AR, due_date: day(-400), priority: 'medium' },
+    { title: URL_.slice(0, 300), due_date: day(1) },
+    { title: 'x', top_date: today },
+    ...Array.from({ length: 200 }, (_, i) => ({ title: `Task ${i} ${i % 7 ? '' : EMOJI}`, due_date: day((i % 30) - 10), priority: ['high', 'medium', 'low', null][i % 4] })),
+  ]);
+  const habits = await ins('habits', [{ name: LONG.slice(0, 120), emoji: '🔥', goal_id: goal.id }, { name: AR, emoji: '📖' }, ...Array.from({ length: 12 }, (_, i) => ({ name: `Habit ${i}`, emoji: '💧' }))]);
+  await ins('habit_logs', Array.from({ length: 300 }, (_, i) => ({ habit_id: habits[0].id, day: day(-i) })));
+  await ins('moods', Array.from({ length: 60 }, (_, i) => ({ day: day(-i), score: (i % 5) + 1, note: i === 0 ? `${LONG} ${AR}` : '' })));
+  await ins('focus_sessions', Array.from({ length: 40 }, (_, i) => ({ started_at: new Date(Date.now() - i * 3600e3).toISOString(), minutes: 180 })));
+  const [grp] = await ins('calendar_groups', [{ name: LONG.slice(0, 60), color: 2 }]);
+  await ins('calendars', [{ name: `${LONG} ${EMOJI}`.slice(0, 80), url: URL_, emoji: '🗓️', color: 3, group_id: grp.id, pinned: true }, { name: AR, url: 'webcal://x.example/a.ics', emoji: '📅', color: 6 }]);
+  await logIn(page, user);
+  const pages = ['', '/brain-dump', '/tasks', '/planner', '/calendars', '/habits', '/goals', '/focus', '/mood', '/review', '/settings'];
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 860 }]) {
+    await page.setViewportSize(vp);
+    for (const path of pages) {
+      await page.goto(`${BASE}/app${path}`);
+      await page.getByRole('heading', { level: 1 }).waitFor();
+      await sleep(600);
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert(over <= 0, `/app${path} at ${vp.width}px scrolls sideways by ${over}px`);
+      // Text that spills past its own box where nothing clips or scrolls it.
+      const spill = await page.evaluate(() => {
+        const bad = [];
+        for (const el of document.querySelectorAll('main *')) {
+          if (!(el instanceof HTMLElement) || !el.offsetParent || el.children.length) continue;
+          if (el.scrollWidth <= el.clientWidth + 1) continue;
+          let a = el, clipped = false;
+          while (a && a !== document.body) {
+            const o = getComputedStyle(a);
+            if (/(hidden|auto|scroll|clip)/.test(o.overflowX) || o.textOverflow === 'ellipsis') { clipped = true; break; }
+            a = a.parentElement;
+          }
+          if (!clipped) bad.push(`${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 3).join('.')}: "${el.textContent.slice(0, 30)}"`);
+        }
+        return bad.slice(0, 5);
+      });
+      assert(spill.length === 0, `/app${path} at ${vp.width}px: text spills out of its box:\n    ${spill.join('\n    ')}`);
+      await page.screenshot({ path: `${OUT}/worst-case-${vp.width}${path.replace('/', '-') || '-dashboard'}.png`, fullPage: true });
+    }
   }
 });
 

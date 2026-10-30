@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SITE_URL } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, FormError, SendAgain } from './AuthLayout';
+import { AuthLayout, authMessage, emailProblem, FieldError, fieldProps, focusFirstInvalid, FormError, hasErrors, SendAgain, type FieldErrors } from './AuthLayout';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -11,12 +11,19 @@ export default function SignUp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sentTo, setSentTo] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password.length < 8) return setError('Use at least 8 characters for your password.');
-    if (!agree) return setError('Please agree to the Terms and Privacy Policy.');
+    const errs: FieldErrors = {
+      email: emailProblem(email),
+      password: !password ? 'Choose a password.' : password.length < 8 ? `Use at least 8 characters (you have ${password.length}).` : '',
+      agree: agree ? '' : 'Please agree to the Terms and Privacy Policy to continue.',
+    };
+    setFieldErrors(errs);
+    if (hasErrors(errs)) return focusFirstInvalid(formRef.current, errs);
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: `${SITE_URL}/auth/callback` } });
     setBusy(false);
@@ -51,38 +58,43 @@ export default function SignUp() {
         </>
       }
     >
-      <form onSubmit={submit} className="space-y-4" noValidate>
+      <form ref={formRef} onSubmit={submit} className="space-y-4" noValidate>
         <div>
           <label className="label" htmlFor="email">
             Email
           </label>
-          <input id="email" type="email" autoComplete="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input id="email" type="email" autoComplete="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} {...fieldProps('email', fieldErrors)} />
+          <FieldError id="email-error" message={fieldErrors.email} />
         </div>
         <div>
           <label className="label" htmlFor="password">
             Password
           </label>
-          <input id="password" type="password" autoComplete="new-password" required minLength={8} className="input" value={password} onChange={(e) => setPassword(e.target.value)} aria-describedby="pw-help" />
+          <input id="password" type="password" autoComplete="new-password" required minLength={8} className="input" value={password} onChange={(e) => setPassword(e.target.value)} {...fieldProps('password', fieldErrors, 'pw-help')} />
+          <FieldError id="password-error" message={fieldErrors.password} />
           <p id="pw-help" className="faint mt-1 text-xs">
             At least 8 characters.
           </p>
         </div>
-        <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 accent-ink" />
-          <span>
-            I agree to the{' '}
-            <Link to="/terms" className="link" target="_blank">
-              Terms
-            </Link>{' '}
-            and{' '}
-            <Link to="/privacy" className="link" target="_blank">
-              Privacy Policy
-            </Link>
-            .
-          </span>
-        </label>
+        <div>
+          <label className="flex items-start gap-2 text-sm">
+            <input id="agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 accent-ink" {...fieldProps('agree', fieldErrors)} />
+            <span>
+              I agree to the{' '}
+              <Link to="/terms" className="link" target="_blank">
+                Terms
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="link" target="_blank">
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
+          <FieldError id="agree-error" message={fieldErrors.agree} />
+        </div>
         <FormError message={error} />
-        <button className="btn-primary w-full" disabled={busy || !email || !password}>
+        <button className="btn-primary w-full" disabled={busy}>
           {busy ? 'Creating your account…' : 'Sign up free'}
         </button>
       </form>

@@ -80,6 +80,10 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
   /** A plan Atlas drafted during this voice session, shown as a card on screen. */
   const [planId, setPlanId] = useState<string | null>(null);
   const [showKeyboard, setShowKeyboard] = useState(!speechInputSupported());
+  /** Wake-phrase listening stopped after a real error (mic blocked, no mic, offline) until the orb is tapped. */
+  const [wakePaused, setWakePaused] = useState(false);
+  /** The screen-reader status: "Voice mode ready", a notice, or a finished reply. Never per character or token. */
+  const [announce, setAnnounce] = useState('');
 
   const root = useRef<HTMLDivElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
@@ -135,6 +139,7 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
   const finishBoot = useCallback(() => {
     window.setTimeout(() => {
       bootedOnce = true;
+      setAnnounce((a) => a || 'Voice mode ready.');
       if (phaseRef.current === 'booting') go('idle');
     }, fastBoot ? 450 : 350);
   }, [fastBoot, go]);
@@ -190,6 +195,7 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
       setHeard(text);
       setReply('');
       setNotice('');
+      setAnnounce('');
       setLatency(null);
       go('thinking');
       const sent = performance.now();
@@ -219,7 +225,10 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: atlasKey(uid) });
       invalidate();
       if (run !== runId.current) return;
-      if (full && voice.speak !== false && speechOutputSupported()) {
+      const aloud = !!full && voice.speak !== false && speechOutputSupported();
+      // Read the reply once, when it's complete, unless it is about to be spoken aloud anyway.
+      if (full && !aloud) setAnnounce(`Atlas: ${full}`);
+      if (aloud) {
         go('speaking');
         await speak(full, voice, { onBoundary: () => (boundaryPulse.current = 1) });
       }
@@ -244,10 +253,24 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
     endRecognizer();
     setNotice('');
     setHeard('');
+    setWakePaused(false);
     let finalText = '';
     const wake = !!voice.wakeWord;
     const token = {};
     recToken.current = token;
+    // Wake mode restarts recognition whenever the browser ends it (silence, a routine abort). A
+    // session that ends almost at once is retried with backoff instead of in a tight loop.
+    let startedAt = Date.now();
+    let quickEnds = 0;
+    const restart = () => {
+      quickEnds = Date.now() - startedAt < 3000 ? quickEnds + 1 : 0;
+      const wait = quickEnds ? Math.min(8000, 250 * 2 ** (quickEnds - 1)) : 0;
+      window.setTimeout(() => {
+        if (recToken.current !== token || phaseRef.current !== 'listening') return;
+        startedAt = Date.now();
+        rec?.start();
+      }, wait);
+    };
     const rec = createRecognizer({
       continuous: wake,
       onText: (t, isFinal) => {
@@ -268,7 +291,7 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
           return;
         }
         if (phaseRef.current === 'listening' && wake) {
-          rec?.start(); // keep waiting for the wake phrase
+          restart(); // keep waiting for the wake phrase
           return;
         }
         endRecognizer();
@@ -276,10 +299,11 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
       },
       onError: (msg, code) => {
         if (recToken.current !== token) return;
-        // Silence is normal while waiting for "Hey Atlas"; onEnd restarts recognition.
+        // Silence is normal while waiting for "Hey Atlas"; onEnd restarts recognition. ('aborted' never gets here.)
         if (wake && code === 'no-speech') return;
         endRecognizer();
         setNotice(wake ? `${msg} Wake phrase paused — tap the orb to resume.` : msg);
+        if (wake) setWakePaused(true);
         go('idle');
       },
     });
@@ -358,7 +382,13 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
     if (showKeyboard && keyboardToggled.current) typedInput.current?.focus();
   }, [showKeyboard]);
 
-  const status = phase === 'listening' && voice.wakeWord ? 'Say “Hey Atlas”' : phase === 'idle' && aiOff ? 'AI unavailable' : PHASE_LABEL[phase];
+  // Notices (errors, "confirm in the panel") are announced once each.
+  useEffect(() => {
+    if (notice) setAnnounce(notice);
+  }, [notice]);
+
+  const status =
+    phase === 'listening' && voice.wakeWord ? 'Say “Hey Atlas”' : phase === 'idle' && aiOff ? 'AI unavailable' : phase === 'idle' && wakePaused ? 'Wake phrase paused' : PHASE_LABEL[phase];
   const hint = voice.wakeWord ? 'Say “Hey Atlas”, then your request.' : touch ? 'Tap the orb, then speak.' : 'Tap the orb or press Space, then speak.';
   const orbLabel = phase === 'listening' ? 'Stop listening' : phase === 'thinking' ? 'Cancel request' : 'Talk to Atlas (Space)';
   const orbInactive = phase === 'booting' || (aiOff && phase !== 'listening' && phase !== 'thinking');
@@ -401,6 +431,9 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
       aria-label="Atlas voice mode"
     >
       <style>{HUD_CSS}</style>
+      <p className="sr-only" role="status">
+        {announce}
+      </p>
       <div className="hud-grid pointer-events-none absolute inset-0" aria-hidden />
       <div className="hud-scan pointer-events-none absolute inset-0" aria-hidden />
       {phase === 'booting' && !fastBoot && <div className="hud-boot-sweep pointer-events-none absolute inset-x-0" aria-hidden />}
@@ -452,12 +485,13 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
             <span className="hud-led h-1.5 w-1.5 rounded-full" aria-hidden />
             <span>{status}</span>
             {phase === 'thinking' && (
-              <span className="tracking-[0.2em] text-cyan-400/80">
+              // Ticks ten times a second: shown, never announced.
+              <span className="tracking-[0.2em] text-cyan-400/80" aria-hidden>
                 · <Elapsed />
               </span>
             )}
             {phase === 'idle' && latency != null && (
-              <span className="hidden tracking-[0.2em] text-cyan-400/80 sm:inline" title="Time to Atlas's first word">
+              <span className="hidden tracking-[0.2em] text-cyan-400/80 sm:inline" title="Time to Atlas's first word" aria-hidden>
                 · first word {latency.toFixed(1)} s
               </span>
             )}
@@ -473,8 +507,6 @@ export default function VoiceHud({ onClose }: { onClose: () => void }) {
           ref={transcript}
           className="hud-transcript w-full max-w-2xl overflow-y-auto overscroll-contain px-2 text-center text-sm font-light leading-relaxed"
           style={{ maxHeight: 'min(26vh, 14rem)', minHeight: '4.5rem' }}
-          aria-live="polite"
-          aria-busy={phase === 'thinking'}
         >
           {phase === 'booting' ? (
             <BootLine line={bootLine} msPerChar={fastBoot ? 0 : MS_PER_CHAR} onDone={finishBoot} />
