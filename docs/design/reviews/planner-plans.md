@@ -173,4 +173,259 @@ Decision points with >4 options:
 - Ghost suggestions from a different week stay in `ghosts` state after navigating, so the banner count ("✨ 3 suggested blocks") can include blocks you can't see.
 - `Planner#plans` deep link scrolls after a fixed 400 ms timeout (`Planner.tsx:120`), so on slow loads it can fire before the section exists.
 
-<!-- AUDIT-PLACEHOLDER -->
+## Audit
+
+### Audit Health Score
+
+| # | Dimension | Score | Key Finding |
+|---|-----------|-------|-------------|
+| 1 | Accessibility | 2 | You can't place, move or resize a block by keyboard (WCAG 2.1.1, Level A). Dialog focus jumps every 15 s. Cyan blocks have 3.1–3.7:1 text and dark-theme `faint` text is 3.9:1 (1.4.3). The ghost Accept/Dismiss pair and 14px block controls fail 2.5.8. |
+| 2 | Performance | 3 | `setInteraction` fires on every pointermove and re-renders the whole Planner, including `PlansSection` → `expandSeries`, plus lane layout for all 7 columns. `.striped` adds `backdrop-filter: blur(6px)` per event over a `backdrop-blur-xl` card. It's fine with demo data, but will drop frames with a busy week. |
+| 3 | Theming | 2 | The light and dark themes are both complete, but colour is hard-coded: violet/pink/cyan/teal utilities, `dark:bg-[#13111f]` (`Modal.tsx:63`), an rgba glow (`Planner.tsx:519`), and inline hex from `CALENDAR_COLORS`. Only `--hour-line`/`--slot-line` are tokens. |
+| 4 | Responsive Design | 2 | Touch drag takes over page scroll on task blocks and commits on release (verified). Nested inner scrollers and FAB overlap make it worse. Week view keeps `min-w-[760px]` with horizontal scroll (acceptable, since day view is the phone default). |
+| 5 | Implementation Integrity | 2 | Several verified issues: the Modal focus bug affects every dialog on the surface, `pointercancel` commits, interactive elements are nested, the legend contradicts the block colours, and manual repeats are cyan against the Atlas Colour Rule. The logic layer (`recurrence.ts`, conflict detection, honest progress) is coherent and product-specific. |
+| **Total** | | **11/20** | **Acceptable** |
+
+**Implementation Integrity verdict: fail (narrowly).** The data logic is product-specific and honest. The presentation layer has drifted from DESIGN.md, and the shared Modal has a focus defect that damages user input on this surface.
+
+### Detector findings
+
+The `planner` and `planner-plans` scans are the same page DOM (the second is scrolled to `#plans`), so their counts are identical. Per page: dark-desktop **64**, dark-phone **50**, light-desktop **29**, light-phone **17**. That's 160 unique findings, or 320 across both screen names.
+
+| Rule | dark-desktop | dark-phone | light-desktop | light-phone | Verdict |
+|---|---|---|---|---|---|
+| low-contrast | 34 | 27 | 9 | 3 | **Real, mostly.** Hour labels `div.faint.absolute` ×23 at 3.9:1 (#64748b on #14131b, dark only). Tip line and legend at 3.9:1. Quick-add placeholder at 3.4:1. White text on cyan repeating blocks at 3.7:1 and their time line at 3.1:1 (**both themes**). `btn-primary` gradient end (#437df5) at 3.8:1. Light "Medium" chip at 4.46:1 (shared `TaskChips`). **False positive:** dark-phone hour label "3.3:1 on #f9c8fd (layer on h1.gradient-text)" is an overlap artefact from the sticky header. Avatar 3.9:1 is in the shell, not this surface. |
+| ai-color-palette | 8 | 5 | 8 | 5 | **Mixed.** Cyan gradient on the three workout-plan repeating blocks: the *hue* is a **false positive** (they are Atlas plan blocks, and cyan is reserved for Atlas). The *gradient* and its contrast are real, and the same cyan on a *manual* repeating block would be a true violation. The orb's `span.absolute.inset-[18%]` is a **false positive** (Atlas). The violet task-block gradient (`div.group.absolute`, also in the source scan at `Planner.tsx:660`) is real. The detector called the rose→fuchsia high-priority block "purple/violet"; either way it's off-direction. Logo and avatar (shell) are real but out of scope, and already slated for removal. |
+| dark-glow | 4 | 4 | 0 | 0 | `btn-primary` violet glow on quick-add Add and on "Add to Planner" is real and slated for removal. FAB `#4c1d95` glow is shell (real, out of scope). Orb `#164e63` glow is a **false positive** (Atlas). **Missed by the detector:** the pink now-line glow `shadow-[0_0_8px_1px_rgba(236,72,153,0.7)]` (`Planner.tsx:519`). |
+| tiny-text (11px) | 4 | 4 | 4 | 4 | Real: tip line (`Planner.tsx:333`), legend (`533`), block titles (`630`, `684`). |
+| undersized-ui-text (10px) | 4 | 1 | 4 | 1 | Real: block time ranges "7:00 AM – 7:45 AM" (`636`, `686`). The detector didn't count the 10px hour labels (`429`) or all-day chips (`415`), which are also real. |
+| gradient-text | 2 | 1 | 2 | 1 | Real: the `h1` "Planner" (`PageHeader`) and the sidebar brand. Slated for removal per DESIGN.md. |
+| nested-cards | 6 | 5 | 0 | 0 | Real but minor: bordered Unscheduled task cards inside the `glass` card (`Planner.tsx:316–317`). Not reported in light because the inner cards there are near-white. |
+| repeating-stripes-gradient | 1 | 1 | 1 | 1 | **False positive.** The `repeating-linear-gradient` is the functional 15-minute and hour grid (`Planner.tsx:459`) and the locked-event stripes (`.striped`), which carry meaning ("synced, read-only"). |
+| overused-font | 1 | 1 | 1 | 1 | **False positive.** One sans is correct for Operate surfaces (operate.md: "One family is often right"). |
+| straggler | 0 | 1 | 0 | 1 | Real, trivial: "exam." widow in the draft plan summary (`PlanCard.tsx:256`). Fix with `text-wrap: pretty`. |
+| side-tab (source, `Planner.tsx:415`) | n/a | | | | **False positive.** The 3px left border on all-day chips encodes calendar identity (a meaning-colour), not decoration. |
+
+**What the detector caught that the critique missed:** exact contrast numbers for white on cyan (3.1–3.7:1 in both themes), the 3.4:1 quick-add placeholder, and the 3.8:1 gradient end on `btn-primary`.
+
+**What the detector missed:**
+- the Modal focus steal, the touch drag hijack, `pointercancel` committing a move, and keyboard inaccessibility;
+- the nested interactive `RepeatBlock`, the role-less `EventBlock` label, and touch-target sizes;
+- the now-line glow and the legend/colour mismatch.
+
+### Findings by severity
+
+**[P1] Modal re-focuses on every parent render (focus steal)**
+- **Location:** `src/components/ui/Modal.tsx:21–50` (deps `[open, onClose]`). Triggered via `src/pages/app/Planner.tsx:79` (`useToday(15_000)`), `560`, `563`, `src/components/plans/PlanCard.tsx:296–297`, `PlansSection.tsx:178`.
+- **Category:** Accessibility / Implementation Integrity
+- **Impact:** Every 15 s focus jumps to the trigger and then to the first input, and typing goes into the wrong field. Verified live: "XYZ" typed into Details landed in Title.
+- **WCAG:** 2.4.3 Focus Order, 3.2.1/3.2.2 (unexpected change of context)
+- **Recommendation:** Store `onClose` in a ref and run the effect on `[open]` only. Initial focus should prefer `[autofocus]` and then text fields over checkboxes.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] No keyboard path to schedule, move or resize**
+- **Location:** `Planner.tsx:179–186` (click-only column placement), `446–461` (non-focusable columns), `657–699` (`TaskBlock` has no tabIndex or role), `695` (pointer-only resize).
+- **Category:** Accessibility
+- **Impact:** The core Planner task can't be done without a pointer.
+- **WCAG:** 2.1.1 Keyboard (A), 2.5.7 Dragging Movements (AA) for resize
+- **Recommendation:** Add a Schedule popover (date, time, duration) for a selected task. Make blocks focusable, with arrow-key nudge and resize and live-region announcements.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Touch drag takes over scroll and commits on cancel**
+- **Location:** `Planner.tsx:663–665` (`touch-none`, move on pointerdown), `211` (3px threshold), `226–237` (`pointercancel` → commit). No Escape handler.
+- **Category:** Responsive
+- **Impact:** Scrolling the day view on a phone reschedules tasks.
+- **Evidence:** A synthesized CDP touch swipe in Chromium at 390×844 entered drag mode; the page didn't scroll, and on release the app sent `PATCH /rest/v1/tasks` (blocked by the probe). Not tested on a physical iOS or Android device.
+- **Recommendation:** Use a long-press to lift on touch and `touch-action: pan-y` until lifted. Cancel on `pointercancel` and Escape. Show an Undo toast after a move.
+- **Suggested command:** `mobile-native`
+
+**[P1] Text contrast below AA on repeating blocks and faint text**
+- **Location:**
+  - `Planner.tsx:613` with `635`: white and `text-white/85` on cyan-600→teal-600, 3.7:1 and 3.1:1, both themes;
+  - `429`: hour labels, `faint` 3.9:1 in dark;
+  - `333`, `533`: tip and legend at 3.9:1;
+  - `QuickAddTask` placeholder at 3.4:1;
+  - `index.css:66`: `.faint` is `text-slate-500` in dark.
+- **Category:** Accessibility
+- **Impact:** Times and labels in the grid are hard to read at 10–11px.
+- **WCAG:** 1.4.3 Contrast (Minimum)
+- **Recommendation:** Make `faint` in dark at least slate-400 (#94a3b8, ~7:1). Use solid block fills with ≥4.5:1 text, or dark text on light fills. Remove `/85` opacity on block text.
+- **Suggested command:** `/impeccable colorize`
+
+**[P1] Colour system contradicts DESIGN.md direction and the Atlas Colour Rule**
+- **Location:**
+  - `Planner.tsx:613` (cyan for *every* repeating block, manual ones included);
+  - `660` with `TaskChips.tsx:7–20` (violet, rose/fuchsia and amber/orange gradients for tasks);
+  - `519–521` (pink now-line with glow);
+  - `341`, `410`, `318`, `285`, `293` (violet tabs, today pill, selection, drop zone);
+  - `496`, `502`, `513` (violet ghosts and drop ghost);
+  - `535–547` (legend says tasks are violet).
+- **Category:** Implementation Integrity / Theming
+- **Impact:** Colour has no stable meaning, "now" collides with "high priority", and Atlas's reserved cyan is diluted.
+- **Recommendation:**
+  - Neutral solid task blocks with a priority edge.
+  - Cyan only for `occ.plan_id` blocks and ✨ ghosts.
+  - Neutral near-white selection.
+  - A single-colour now-line with no glow.
+  - A legend generated from the same tokens.
+- **Suggested command:** `/impeccable colorize`
+
+**[P1] Undersized touch targets on the timeline and in Plans**
+- **Location:**
+  - `Planner.tsx:625`, `679` (block checkbox 14×14);
+  - `691` (unschedule 15×15);
+  - `502–507` (ghost Accept/Dismiss about 15×15, 4px apart);
+  - `695` (8px resize strip);
+  - `PlansSection.tsx:160` (16×16 check-offs at ~24px row pitch), `147–153` (28px chevrons).
+- **Category:** Responsive / Accessibility
+- **Impact:** Mis-taps between Accept and Dismiss on a suggestion, between complete and drag, and between resize and move.
+- **WCAG:** 2.5.8 Target Size (Minimum) fails for the adjacent ghost Accept/Dismiss pair. The others pass only by the spacing exception.
+- **Recommendation:**
+  - Expand hit areas to ≥24px (ideally 44px on touch) with pseudo-element padding.
+  - Make plan check-off rows full-row labels.
+  - On phones, show ghost actions in a bottom bar for the selected suggestion.
+- **Suggested command:** `mobile-native`
+
+**[P2] Nested interactive content and unlabelled synced events**
+- **Location:** `Planner.tsx:608–628` (`role="button"` div containing a `<button>`), `579–584` (`aria-label` on a role-less div, not focusable).
+- **Category:** Accessibility
+- **Impact:** Screen readers announce the repeating block and its checkbox unpredictably. Synced events are skipped entirely.
+- **WCAG:** 4.1.2 Name, Role, Value; 1.3.1
+- **Recommendation:** Make the block a container with two sibling buttons (open, done). Give events `role="img"` or a focusable `<button>` that opens a read-only detail.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] Drag precision and pointer-move cost**
+- **Location:** `Planner.tsx:204–208` (auto-scroll only on pointermove, fixed 12px), `224` (state per move), `155` vs `182` (drop centres the block, tap anchors its start), `684–689` (no time readout when compact), `695` (8px resize strip).
+- **Category:** Performance / Implementation Integrity
+- **Impact:** Auto-scroll stalls when the pointer rests at an edge. You can't see the time when moving short blocks. Drag and tap land 30 min apart. The whole page re-renders per move event.
+- **Recommendation:**
+  - rAF-driven, depth-proportional auto-scroll.
+  - Only commit state when the snapped preview changes.
+  - A floating time pill on the preview.
+  - One anchor rule for drop and tap.
+  - A larger resize handle.
+- **Suggested command:** `emil-design-eng`
+
+**[P2] Phone layout: timeline buried, nested scrollers, FAB overlap**
+- **Location:** `Planner.tsx:283–335` (Unscheduled first, with `max-h-56` inner scroll), `425` (`max-h-[68vh]` inner scroll), global FAB/orb over `358` "Plan my day" and `PlanCard.tsx:275` "Regenerate".
+- **Category:** Responsive
+- **Impact:** Today's schedule is about 1.6 screens down, and two scroll containers compete for the thumb.
+- **Recommendation:** Timeline first on phones, Unscheduled in a sheet, page-level scroll with a sticky day header, and bottom padding for the FAB stack.
+- **Suggested command:** `/impeccable adapt`
+
+**[P2] Missing undo for destructive or irreversible actions; AI suggestions are lost**
+- **Location:**
+  - `Planner.tsx:487–490` (unschedule), `378` (Discard), `103` (ghosts in component state only);
+  - `OccurrenceDialog.tsx:126` (delete this one);
+  - `PlanCard.tsx:278` (Dismiss, which has no toast and no Restore on the Planner).
+- **Category:** Implementation Integrity
+- **Impact:** One mis-tap loses a scheduled time or a session. A reload throws away suggestions that used part of the daily ✨ allowance.
+- **Recommendation:** Show an Undo toast for each, and keep ghosts in `sessionStorage` keyed by date range.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] A goal can be counted twice from the Planner**
+- **Location:** `Planner.tsx:471–473` (no pending guard on the `RepeatBlock` checkbox) and `src/hooks/data/plans.ts:163–169` (`current ± 1` read-modify-write).
+- **Category:** Implementation Integrity
+- **Impact:** A double tap marks done twice and adds +2 to the linked goal. That breaks the "honest numbers" commitment.
+- **Recommendation:** Disable the checkbox while it saves, as `PlansSection` already does. Better, compute goal progress from the count of done occurrences instead of incrementing it.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] Inconsistent dialog patterns**
+- **Location:** `OccurrenceDialog.tsx:133` (`window.confirm`), `52` (the Done checkbox closes the dialog), `99–137` (duplicate "This one only" and "All … sessions" labels for save and delete). Repeating blocks can't be dragged (`Planner.tsx:603–643`), despite the header copy at `272`.
+- **Category:** Implementation Integrity
+- **Impact:** Two confirmation styles, buttons that are ambiguous out of context, and a surprise close.
+- **Recommendation:**
+  - Use Modal confirm.
+  - Labels "Save for this session" / "Save for all sessions" and "Delete this session" / "Delete all sessions".
+  - Keep the dialog open on Done.
+  - Allow dragging a repeating block, followed by a this-one/all prompt.
+- **Suggested command:** `/impeccable clarify`
+
+**[P2] 10–11px functional text in the grid**
+- **Location:** `Planner.tsx:409`, `415`, `429`, `585–590`, `630–636`, `684–686`, `509`, `333`, `533`.
+- **Category:** Accessibility / Theming
+- **Impact:** Times are the information that matters most here, and they're set at 10px.
+- **Recommendation:** Use a 12px minimum for block titles and times and 11px for hour labels, with `tabular-nums`. Let short blocks show the time in a tooltip or popover instead of shrinking it.
+- **Suggested command:** `/impeccable typeset`
+
+**[P3] Number inputs clamp on every keystroke; vague or absent validation messages**
+- **Location:** `PlanEditor.tsx:62`, `126`; `RecurringBlockDialog.tsx:251`, `263`.
+- **Category:** Implementation Integrity
+- **Recommendation:** Clamp on blur. Mark the offending session with `aria-invalid` and say which one. Explain why "Add repeating block" is disabled.
+- **Suggested command:** `/impeccable harden`
+
+**[P3] "Remove plan and upcoming blocks" erases today's check-off**
+- **Location:** `src/hooks/data/plans.ts:200–201` (`end_date = today − 1`, deletes rows `gte today`).
+- **Category:** Implementation Integrity
+- **Recommendation:** Keep today if it's already done, or say "from tomorrow" in the dialog copy.
+- **Suggested command:** `/impeccable harden`
+
+**[P3] Smooth scroll and spinner ignore reduced motion intent**
+- **Location:** `Planner.tsx:120` (`scrollIntoView({behavior:'smooth'})` overrides the CSS `scroll-behavior` rule), and `index.css:32–40` (the global 0.01ms kill freezes the `animate-spin` loader on "Plan my day").
+- **Category:** Accessibility
+- **Recommendation:** Pick the scroll behaviour from `matchMedia('(prefers-reduced-motion: reduce)')`. Under reduced motion, replace the spinner with a static "Planning…" label instead of freezing it.
+- **Suggested command:** `/impeccable animate`
+
+**[P3] Locale inconsistency in plan session lines**
+- **Location:** `server/data/recurrence.ts:142–151` (`time12`, used by `PlanCard.tsx:261`) vs `src/lib/planner.ts:27` (locale-aware).
+- **Category:** Implementation Integrity
+- **Recommendation:** Format with the locale in the client-side card. Keep `time12` for Atlas text.
+- **Suggested command:** `/impeccable clarify`
+
+**[P3] Cards inside a card in Unscheduled**
+- **Location:** `Planner.tsx:316–317` inside `285`.
+- **Category:** Theming
+- **Recommendation:** Use list rows separated by hairlines, with a tactile hover and pressed state, instead of bordered cards inside a glass card.
+- **Suggested command:** `/impeccable distill`
+
+### Positive findings
+
+- **Pure, shared, testable date logic** (`server/data/recurrence.ts`): exceptions as rows, ISO weekdays, `findFreeSlot` bounded to waking hours, `planProgress` that excludes skipped sessions. Keep this separation.
+- **Dialog basics are right:** a portal, `aria-modal`, Escape to close, a Tab trap, and focus returned on close (`Modal.tsx`). Only the effect dependencies are wrong.
+- **Every icon button on the surface has a specific `aria-label`.** Examples: "Unschedule 'Finish the stats problem set'", "Done: Leg day on Mon, Oct 26", "Open Thursday, October 29 in day view". Day/Week use `role="tab"` with `aria-selected`.
+- **Optimistic check-offs with a pending guard** in `PlansSection.tsx:78–115`, and an all-or-nothing rollback in `addToPlanner` (`plans.ts:143–146`) so a failed add leaves nothing half-written ("Nothing was changed — please try again").
+- **Visible focus rings** on every tab stop measured (global `:focus-visible` ring), and the view choice is remembered per device with a guarded `localStorage`.
+- **The AI is clearly optional and metered:** "Plan my week" shows its cost in the tooltip ("Uses 1 of your N AI actions left today"), and you have to accept suggestions before anything changes.
+
+## Motion on this surface
+
+| What | Where | Trigger | Duration / easing | Earns its place? |
+|---|---|---|---|---|
+| Now-line slides down | `Planner.tsx:518` `transition-[top] duration-1000 ease-linear` | `useToday(15_000)` tick | 1000ms linear | **Yes**, it's quiet and continuous. The pink glow on it (`519`) does not; remove it. |
+| Unscheduled card highlight while dragging a block over it | `Planner.tsx:285` `transition` (Tailwind default 150ms ease) | pointer enters sidebar | 150ms | Yes: state feedback. Should use a neutral colour instead of violet. |
+| Block pickup / move / resize | `Planner.tsx:663–671` | pointer drag | Instant (no transition on `top`/`height`) | Instant tracking is correct. **Missing:** a ~120ms lift (shadow + `scale(1.02)`) on pickup and a settle on drop, which would deliver the "tactile" brief. |
+| Lane reflow of neighbouring blocks during drag | `layoutLanes` per render (`Planner.tsx:439–444`) | each pointermove | Instant jump | No. Neighbours jumping lanes mid-drag is noise. Freeze lanes for the dragged block until drop. |
+| Edge auto-scroll | `Planner.tsx:204–208` | pointermove in a 40px edge band | 12px per event, no easing | Needed, but implemented crudely (see P2). Make it rAF-driven and proportional. |
+| Dialog entrance | `Modal.tsx:63` `animate-fade-in` (`tailwind.config.js:12–15`) | open | 250ms ease-out, 4px rise | Yes, though 250ms is at the upper end. On phones it's a bottom sheet that only fades; a 200ms slide-up would match the sheet shape. No exit animation (acceptable). |
+| Plan progress bar fill | `PlansSection.tsx:136` `transition-all` | check-off | 150ms default | Yes, but animate `transform: scaleX` instead of `width` and limit it to that property. |
+| Pressed buttons | `index.css:73–75` `.btn active:scale-[0.97]` | press | 150ms | Yes: tactile and quick. Keep it. |
+| ✨ loading spinner | `Ai.tsx` `Loader2 animate-spin` | Plan my day/week pending | Continuous | Yes, it shows state. Under reduced motion it freezes (global kill), so it needs a static text alternative. |
+| Smooth scroll to `#plans` | `Planner.tsx:120` | arriving via `Planner#plans` | Browser smooth scroll | Earns its place for orientation, but ignores reduced motion and depends on a fixed 400ms timeout. |
+| Hover colour changes (icon buttons, chips, ghost dismiss, block ring) | `index.css` `.icon-btn`, `.chip-*`; `Planner.tsx:505`, `613` | hover | 150ms | Fine. No hover equivalent on touch, which is acceptable. |
+| Ghost suggestions appear | `Planner.tsx:493–511` | ✨ result | None (instant) | A 150ms fade-in would help you see what just arrived. Optional. |
+
+## Machine-readable summary
+
+```json
+{"surface":"planner-plans","critique_total":24,"critique_max":40,"na_heuristics":[],"audit_total":11,
+ "issues":[
+  {"id":"planner-plans-1","severity":"P1","title":"Dialogs steal focus every 15 s; typed text lands in the wrong field","fix":"Keep onClose in a ref and run Modal's focus effect on [open] only; initial focus prefers [autofocus] then text fields over checkboxes","command":"/impeccable harden","files":["src/components/ui/Modal.tsx:21","src/pages/app/Planner.tsx:79","src/pages/app/Planner.tsx:560","src/components/plans/PlanCard.tsx:296"],"source":"critique"},
+  {"id":"planner-plans-2","severity":"P1","title":"Touch swipe on a task block drags and reschedules it instead of scrolling; pointercancel commits","fix":"Long-press to lift on touch, touch-action pan-y until lifted, cancel on pointercancel/Escape, Undo toast after moves","command":"mobile-native","files":["src/pages/app/Planner.tsx:663","src/pages/app/Planner.tsx:211","src/pages/app/Planner.tsx:226"],"source":"both"},
+  {"id":"planner-plans-3","severity":"P1","title":"No keyboard way to schedule, move or resize blocks (WCAG 2.1.1, 2.5.7)","fix":"Schedule popover (date/time/duration) for a selected task; focusable blocks with arrow-key nudge, Shift+arrow resize and live-region announcements","command":"/impeccable harden","files":["src/pages/app/Planner.tsx:179","src/pages/app/Planner.tsx:446","src/pages/app/Planner.tsx:657"],"source":"both"},
+  {"id":"planner-plans-4","severity":"P1","title":"Colour contradicts direction: cyan on manual repeats, multi-hue gradient tasks, pink glowing now-line, violet selection; legend mismatches","fix":"Neutral solid task blocks with priority edge; cyan only for plan-linked blocks and AI ghosts; neutral near-white selection; single-colour now-line without glow; legend from tokens","command":"/impeccable colorize","files":["src/pages/app/Planner.tsx:613","src/pages/app/Planner.tsx:660","src/pages/app/Planner.tsx:519","src/pages/app/Planner.tsx:341","src/pages/app/Planner.tsx:535","src/components/tasks/TaskChips.tsx:7"],"source":"both"},
+  {"id":"planner-plans-5","severity":"P1","title":"Text contrast below AA: cyan block text 3.1-3.7:1, dark faint hour labels/tip/legend 3.9:1, placeholder 3.4:1","fix":"Raise dark .faint to slate-400; solid block fills with >=4.5:1 text and no /85 opacity","command":"/impeccable colorize","files":["src/pages/app/Planner.tsx:613","src/pages/app/Planner.tsx:635","src/pages/app/Planner.tsx:429","src/index.css:66"],"source":"audit"},
+  {"id":"planner-plans-6","severity":"P1","title":"Undersized touch targets: 14px block checkbox, 15px unschedule, adjacent ~15px ghost Accept/Dismiss, 8px resize strip, 16px plan check-offs","fix":"Expand hit areas to >=24px (44px on touch) via pseudo-element padding; full-row check-off labels; bottom action bar for selected ghost on phones","command":"mobile-native","files":["src/pages/app/Planner.tsx:502","src/pages/app/Planner.tsx:679","src/pages/app/Planner.tsx:691","src/pages/app/Planner.tsx:695","src/components/plans/PlansSection.tsx:160"],"source":"both"},
+  {"id":"planner-plans-7","severity":"P2","title":"Drag precision: pointermove-only fixed-step auto-scroll, no time readout on compact blocks, drop vs tap anchor differ by half a block, tiny resize zone, re-render per move","fix":"rAF depth-proportional auto-scroll; floating time pill; one anchor rule; larger resize handle; update state only when snapped preview changes; pickup lift","command":"emil-design-eng","files":["src/pages/app/Planner.tsx:204","src/pages/app/Planner.tsx:155","src/pages/app/Planner.tsx:182","src/pages/app/Planner.tsx:224","src/pages/app/Planner.tsx:695"],"source":"critique"},
+  {"id":"planner-plans-8","severity":"P2","title":"Phone layout buries the timeline below Unscheduled, nests two scrollers, FAB/orb cover Plan my day and Regenerate","fix":"Timeline first on phones, Unscheduled as a sheet, page-level scroll with sticky day header, bottom padding for the FAB stack","command":"/impeccable adapt","files":["src/pages/app/Planner.tsx:283","src/pages/app/Planner.tsx:294","src/pages/app/Planner.tsx:425"],"source":"critique"},
+  {"id":"planner-plans-9","severity":"P2","title":"No undo for unschedule, discard suggestions, delete-this-session, dismiss draft; AI ghost suggestions lost on reload","fix":"Undo toasts for each; persist ghosts in sessionStorage keyed by range","command":"/impeccable harden","files":["src/pages/app/Planner.tsx:487","src/pages/app/Planner.tsx:378","src/pages/app/Planner.tsx:103","src/components/plans/OccurrenceDialog.tsx:126","src/components/plans/PlanCard.tsx:278"],"source":"critique"},
+  {"id":"planner-plans-10","severity":"P2","title":"Nested interactive RepeatBlock; synced events have aria-label on a role-less, unfocusable div","fix":"Sibling open/done buttons inside a plain container; events as focusable read-only buttons or role=img","command":"/impeccable harden","files":["src/pages/app/Planner.tsx:608","src/pages/app/Planner.tsx:579"],"source":"audit"},
+  {"id":"planner-plans-11","severity":"P2","title":"Rapid double-tap on a repeating block checkbox can double-count the linked goal","fix":"Pending guard on the Planner checkbox; derive goal progress from done occurrences instead of +/-1","command":"/impeccable harden","files":["src/pages/app/Planner.tsx:471","src/hooks/data/plans.ts:163"],"source":"critique"},
+  {"id":"planner-plans-12","severity":"P2","title":"Inconsistent dialogs: window.confirm vs Modal, duplicate button labels, Done closes dialog, repeating blocks not draggable","fix":"Modal confirm; explicit labels (Save for this session / all sessions, Delete this session / all sessions); keep dialog open on Done; allow dragging repeats with a this/all prompt","command":"/impeccable clarify","files":["src/components/plans/OccurrenceDialog.tsx:133","src/components/plans/OccurrenceDialog.tsx:52","src/components/plans/OccurrenceDialog.tsx:99","src/pages/app/Planner.tsx:603"],"source":"critique"},
+  {"id":"planner-plans-13","severity":"P2","title":"10-11px functional text for block times, titles, hour labels and legend","fix":"12px minimum for block title/time, 11px hour labels with tabular-nums; short blocks reveal time on focus/hover instead of shrinking","command":"/impeccable typeset","files":["src/pages/app/Planner.tsx:429","src/pages/app/Planner.tsx:636","src/pages/app/Planner.tsx:686","src/pages/app/Planner.tsx:533"],"source":"both"},
+  {"id":"planner-plans-14","severity":"P3","title":"Weeks inputs clamp per keystroke; plan editor error is premature and unspecific; disabled Add repeating block gives no reason","fix":"Clamp on blur; aria-invalid on the offending session with a named message; explain disabled state","command":"/impeccable harden","files":["src/components/plans/PlanEditor.tsx:62","src/components/plans/PlanEditor.tsx:126","src/components/plans/RecurringBlockDialog.tsx:251"],"source":"critique"},
+  {"id":"planner-plans-15","severity":"P3","title":"Remove plan and upcoming blocks deletes today's already-checked session","fix":"Keep today's done session or say 'from tomorrow' in the dialog","command":"/impeccable harden","files":["src/hooks/data/plans.ts:200"],"source":"critique"},
+  {"id":"planner-plans-16","severity":"P3","title":"Smooth scroll to #plans ignores reduced motion; reduced-motion kill freezes the Plan my day spinner","fix":"Choose scroll behavior from matchMedia; static 'Planning…' label under reduced motion","command":"/impeccable animate","files":["src/pages/app/Planner.tsx:120","src/index.css:32"],"source":"audit"},
+  {"id":"planner-plans-17","severity":"P3","title":"Plan session lines use hard-coded 12-hour time while the grid is locale-aware","fix":"Locale-format session times in PlanCard; keep time12 for Atlas text","command":"/impeccable clarify","files":["server/data/recurrence.ts:142","src/components/plans/PlanCard.tsx:261"],"source":"critique"},
+  {"id":"planner-plans-18","severity":"P3","title":"Unscheduled task cards nested inside a glass card","fix":"Hairline-separated list rows with tactile hover/pressed states","command":"/impeccable distill","files":["src/pages/app/Planner.tsx:316"],"source":"audit"}
+ ]}
+```
