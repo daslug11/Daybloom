@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoalCard } from '../../components/goals/GoalCard';
 import { AiButton } from '../../components/ui/Ai';
@@ -14,8 +14,21 @@ import { useAi } from '../../hooks/useAi';
 import { useToast } from '../../hooks/useToast';
 import { celebrate } from '../../lib/confetti';
 import type { Goal } from '../../lib/types';
+import { uid } from '../../lib/utils';
 
 const EMOJIS = ['🎯', '📚', '🏃', '💰', '✈️', '🚀', '🎨', '💻', '🏋️', '🧘', '🌱', '🏆', '🎸', '✍️', '🏠', '❤️'];
+
+/** A milestone row in the goal dialog. Nothing is saved until the dialog's Save. */
+interface MilestoneDraft {
+  key: string;
+  id?: string;
+  title: string;
+}
+
+type Editor = Partial<Goal> & { targetText?: string; currentText?: string; ms: MilestoneDraft[] };
+
+/** How long a deleted goal can be brought back before it's really deleted (a little over the toast's 8s). */
+const UNDO_MS = 10_000;
 
 interface PlanResult {
   milestones: { title: string; tasks: { title: string; due_date: string | null }[] }[];
@@ -36,11 +49,58 @@ export default function Goals() {
   const plan = useAi<PlanResult>('goal_plan');
   const toast = useToast();
   const navigate = useNavigate();
-  const [editor, setEditor] = useState<(Partial<Goal> & { targetText?: string; currentText?: string }) | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  // Goals deleted in the last few seconds: hidden now, deleted for real when the Undo window ends.
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const pending = useRef(new Map<string, number>());
   const [planFor, setPlanFor] = useState<{ goal: Goal; result: PlanResult } | null>(null);
   const [planning, setPlanning] = useState<string | null>(null);
 
-  const list = goals.data ?? [];
+  // Leaving the page commits any delete still waiting for its Undo window.
+  const commitDelete = useRef(del.mutate);
+  commitDelete.current = del.mutate;
+  useEffect(() => {
+    const timers = pending.current;
+    return () => {
+      for (const [id, t] of timers) {
+        window.clearTimeout(t);
+        commitDelete.current(id);
+      }
+      timers.clear();
+    };
+  }, []);
+
+  const unhide = (id: string) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      next.delete(id);
+      return next;
+    });
+
+  const removeGoal = (g: Pick<Goal, 'id' | 'title'>) => {
+    setHidden((h) => new Set(h).add(g.id));
+    pending.current.set(
+      g.id,
+      window.setTimeout(() => {
+        pending.current.delete(g.id);
+        del.mutate(g.id);
+        unhide(g.id);
+      }, UNDO_MS),
+    );
+    toast(`Deleted “${g.title}” and its milestones. Linked tasks and habits are kept.`, {
+      label: 'Undo',
+      onClick: () => {
+        const t = pending.current.get(g.id);
+        if (t === undefined) return toast('Too late to undo — that goal was already deleted.');
+        window.clearTimeout(t);
+        pending.current.delete(g.id);
+        unhide(g.id);
+      },
+    });
+  };
+
+  const newGoal = (): Editor => ({ emoji: '🎯', targetText: '10', currentText: '0', ms: [] });
+  const list = (goals.data ?? []).filter((g) => !hidden.has(g.id));
   const active = list.filter((g) => !g.completed_at);
   const completed = list.filter((g) => g.completed_at);
 
@@ -60,8 +120,26 @@ export default function Goals() {
     const current = Number(editor.currentText ?? editor.current ?? 0);
     if (!(target > 0)) return toast('The target must be a number above 0.');
     const data = { title: editor.title.trim(), emoji: editor.emoji ?? '🎯', target, current: Math.max(0, current || 0), unit: (editor.unit ?? '').trim(), due_date: editor.due_date || null };
-    if (editor.id) update.mutate({ id: editor.id, patch: { ...data, completed_at: data.current >= target ? editor.completed_at ?? new Date().toISOString() : null } });
-    else addGoal.mutate(data);
+    const drafts = editor.ms.map((m) => ({ ...m, title: m.title.trim() }));
+    const fresh = drafts.filter((m) => !m.id && m.title);
+    if (editor.id) {
+      const goalId = editor.id;
+      update.mutate({ id: goalId, patch: { ...data, completed_at: data.current >= target ? editor.completed_at ?? new Date().toISOString() : null } });
+      // Apply the staged milestone changes: removals, renames (a blank name keeps the old one), additions.
+      const existing = milestones.filter((m) => m.goal_id === goalId);
+      for (const m of existing) {
+        const d = drafts.find((x) => x.id === m.id);
+        if (!d) deleteMilestone.mutate(m.id);
+        else if (d.title && d.title !== m.title) updateMilestone.mutate({ id: m.id, patch: { title: d.title } });
+      }
+      if (fresh.length) addMilestones.mutate(fresh.map((m) => ({ goal_id: goalId, title: m.title })));
+    } else {
+      addGoal.mutate(data, {
+        onSuccess: (g) => {
+          if (fresh.length) addMilestones.mutate(fresh.map((m) => ({ goal_id: g.id, title: m.title })));
+        },
+      });
+    }
     setEditor(null);
   };
 
@@ -83,7 +161,14 @@ export default function Goals() {
       openTasks={tasks.filter((t) => t.goal_id === g.id && !t.done).length}
       habits={habits.filter((h) => h.goal_id === g.id).length}
       onBump={(d) => setProgress(g, Number(g.current) + d)}
-      onEdit={() => setEditor({ ...g, targetText: String(g.target), currentText: String(g.current) })}
+      onEdit={() =>
+        setEditor({
+          ...g,
+          targetText: String(g.target),
+          currentText: String(g.current),
+          ms: milestones.filter((m) => m.goal_id === g.id).map((m) => ({ key: m.id, id: m.id, title: m.title })),
+        })
+      }
       onToggleMilestone={(m) => updateMilestone.mutate({ id: m.id, patch: { done: !m.done } })}
       actions={
         !g.completed_at && (
@@ -109,14 +194,14 @@ export default function Goals() {
         title="Goals"
         description="Things you want to achieve, with a number to track — “Read 24 books”. Update progress as you go, and break big goals into milestones and tasks."
         actions={
-          <button className="btn-primary" onClick={() => setEditor({ emoji: '🎯', targetText: '10', currentText: '0' })}>
+          <button className="btn-primary" onClick={() => setEditor(newGoal())}>
             <Plus size={16} /> New goal
           </button>
         }
       />
       <QueryState isLoading={goals.isLoading} error={goals.error} onRetry={() => goals.refetch()} />
       {goals.data && list.length === 0 && (
-        <EmptyState emoji="🎯" title="No goals yet" action={<button className="btn-primary" onClick={() => setEditor({ emoji: '🎯', targetText: '10', currentText: '0' })}>Set your first goal</button>}>
+        <EmptyState emoji="🎯" title="No goals yet" action={<button className="btn-primary" onClick={() => setEditor(newGoal())}>Set your first goal</button>}>
           A goal here is something measurable: a number you’re working towards, like “Run 100 km” or “Save 2,000”. ✨ Make a plan can break it into milestones.
         </EmptyState>
       )}
@@ -134,7 +219,7 @@ export default function Goals() {
       )}
 
       {editor && (
-        <Modal open onClose={() => setEditor(null)} title={editor.id ? 'Edit goal' : 'New goal'} description="Shown as “Title target unit” — e.g. “Read 24 books”.">
+        <Modal open onClose={() => setEditor(null)} title={editor.id ? 'Edit goal' : 'New goal'} description="Name it, then set the number you’re aiming for. Progress shows as “3 of 24 books”.">
           <form
             className="space-y-4"
             onSubmit={(e) => {
@@ -168,31 +253,44 @@ export default function Goals() {
               <span className="label">Emoji</span>
               <EmojiPicker options={EMOJIS} value={editor.emoji ?? '🎯'} onChange={(emoji) => setEditor({ ...editor, emoji })} />
             </div>
-            {editor.id && milestones.some((m) => m.goal_id === editor.id) && (
-              <div>
-                <span className="label">Milestones</span>
-                <ul className="space-y-1">
-                  {milestones
-                    .filter((m) => m.goal_id === editor.id)
-                    .map((m) => (
-                      <li key={m.id} className="flex items-center gap-2 text-sm">
-                        <span className="flex-1">{m.title}</span>
-                        <button type="button" className="icon-btn h-7 w-7" onClick={() => deleteMilestone.mutate(m.id)} aria-label={`Remove milestone ${m.title}`}>
-                          <X size={13} />
-                        </button>
-                      </li>
-                    ))}
+            <fieldset>
+              <legend className="label">Milestones (optional)</legend>
+              {editor.ms.length > 0 && (
+                <ul className="mb-2 space-y-1.5">
+                  {editor.ms.map((m, i) => (
+                    <li key={m.key} className="flex items-center gap-2">
+                      <input
+                        className="input !py-1.5"
+                        maxLength={200}
+                        aria-label={`Milestone ${i + 1}`}
+                        placeholder="e.g. First 25 km"
+                        value={m.title}
+                        onChange={(e) => setEditor({ ...editor, ms: editor.ms.map((x) => (x.key === m.key ? { ...x, title: e.target.value } : x)) })}
+                      />
+                      <button
+                        type="button"
+                        className="icon-btn h-9 w-9 shrink-0"
+                        onClick={() => setEditor({ ...editor, ms: editor.ms.filter((x) => x.key !== m.key) })}
+                        aria-label={`Remove milestone ${m.title || i + 1}`}
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  ))}
                 </ul>
-              </div>
-            )}
+              )}
+              <button type="button" className="btn-ghost !px-3 !py-1.5 text-sm" onClick={() => setEditor({ ...editor, ms: [...editor.ms, { key: uid(), title: '' }] })}>
+                <Plus size={14} /> Add a milestone
+              </button>
+              {editor.id && <p className="muted mt-1.5 text-xs">Changes to milestones are saved when you press Save.</p>}
+            </fieldset>
             <div className="flex items-center gap-2">
               {editor.id && (
                 <button
                   type="button"
                   className="btn-danger !px-3"
                   onClick={() => {
-                    if (!window.confirm(`Delete “${editor.title}”? Its milestones go too; linked tasks and habits are kept.`)) return;
-                    del.mutate(editor.id!);
+                    removeGoal({ id: editor.id!, title: editor.title ?? '' });
                     setEditor(null);
                   }}
                 >

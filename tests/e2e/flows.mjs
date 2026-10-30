@@ -718,6 +718,87 @@ await flow('overlays', browser, {}, async (page) => {
   await panel.waitFor({ state: 'detached' });
 });
 
+await flow('honest-numbers', browser, {}, async (page) => {
+  const user = await makeUser('Noor');
+  await logIn(page, user);
+  // Goals: milestones can be added by hand, staged until Save; delete has Undo.
+  await page.goto(`${BASE}/app/goals`);
+  await page.getByRole('button', { name: 'Set your first goal' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New goal' });
+  await dialog.getByRole('textbox', { name: 'Goal' }).fill('Read 3 books');
+  await dialog.getByLabel('Target').fill('3');
+  await dialog.getByRole('button', { name: 'Add a milestone' }).click();
+  await dialog.getByRole('textbox', { name: 'Milestone 1' }).fill('Finish book one');
+  await dialog.getByRole('button', { name: 'Add goal' }).click();
+  const card = page.getByRole('article', { name: 'Read 3 books' });
+  await card.getByText('Finish book one').waitFor();
+  // 2 of 3 is 66%, never rounded up.
+  await card.getByRole('button', { name: 'Increase by 1' }).click();
+  await card.getByRole('button', { name: 'Increase by 1' }).click();
+  await card.getByText('66%').waitFor();
+  await card.getByRole('button', { name: 'Edit goal Read 3 books' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit goal' });
+  await edit.getByRole('button', { name: 'Remove milestone Finish book one' }).click();
+  await page.keyboard.press('Escape');
+  await edit.waitFor({ state: 'detached' });
+  assert(await card.getByText('Finish book one').isVisible(), 'milestone removed without Save');
+  await card.getByRole('button', { name: 'Edit goal Read 3 books' }).click();
+  await edit.getByRole('button', { name: 'Delete' }).click();
+  await card.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByRole('article', { name: 'Read 3 books' }).waitFor();
+  // Habits: the history grid is one Tab stop with arrow keys; past-day edits can be undone.
+  await page.goto(`${BASE}/app/habits`);
+  await page.getByRole('button', { name: 'Add your first habit' }).click();
+  await page.getByRole('textbox', { name: 'Habit' }).fill('Stretch');
+  await page.getByRole('button', { name: 'Add habit' }).click();
+  const grid = page.getByRole('grid', { name: /Stretch/ });
+  await grid.waitFor();
+  assert((await grid.locator('button[tabindex="0"]').count()) === 1, 'grid should have exactly one tab stop');
+  assert((await grid.getByRole('gridcell', { name: /before you started/ }).count()) > 0, 'days before the habit started should be marked');
+  await grid.locator('button[tabindex="0"]').focus();
+  await page.keyboard.press('ArrowUp'); // yesterday is before the habit started: focus stays on today
+  await page.keyboard.press('Space');
+  await page.getByRole('button', { name: /^1 day streak/ }).waitFor();
+  await page.getByRole('button', { name: 'Undo Stretch for today' }).waitFor();
+  // Focus: lengths can be cleared and retyped.
+  await page.goto(`${BASE}/app/focus`);
+  const len = page.getByRole('textbox', { name: 'Focus (min)' });
+  await len.fill('');
+  await len.pressSequentially('45');
+  await len.press('Enter');
+  assert((await len.inputValue()) === '45', `focus length is ${await len.inputValue()}`);
+  await len.fill('500');
+  await len.press('Enter');
+  await page.getByText('Max is 180 min.').waitFor();
+  await len.fill('25');
+  await len.press('Enter');
+  // Full screen: focus moves in, Space starts, Escape leaves and focus returns.
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  const overlay = page.getByRole('dialog', { name: 'Full-screen focus' });
+  await overlay.waitFor();
+  await eventually(() => overlay.evaluate((el) => el.contains(document.activeElement)), 'focus did not move into the overlay');
+  await page.keyboard.press('Escape');
+  await overlay.waitFor({ state: 'detached' });
+  await eventually(async () => (await page.evaluate(() => document.activeElement?.textContent ?? '')).includes('Full screen'), 'focus did not return to the Full screen button');
+  // Review: every number shows once all its data has loaded; the AI button is enabled.
+  await page.goto(`${BASE}/app/review`);
+  await page.getByText('Habit consistency').waitFor();
+  await eventually(() => page.getByRole('button', { name: 'AI summary' }).isEnabled(), 'AI summary stayed disabled');
+  // Stopping a focus block early asks before throwing minutes away, and Discard can be undone.
+  await page.clock.install();
+  await page.goto(`${BASE}/app/focus`);
+  await page.getByRole('button', { name: 'Start timer' }).click();
+  await page.clock.runFor(3 * 60_000);
+  await page.getByRole('button', { name: 'Reset timer' }).click();
+  await page.getByRole('button', { name: 'Log 3 min' }).waitFor();
+  assert(await page.getByRole('button', { name: 'Break', exact: true }).isDisabled(), 'mode switch should be locked mid-block');
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByText('Discarded 3 min of focus.').waitFor();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByText('Paused', { exact: true }).first().waitFor();
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);
