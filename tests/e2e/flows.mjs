@@ -1160,6 +1160,22 @@ await flow('atlas-worst-case', browser, {}, async (page) => {
   await shot(page, 'atlas-worst-case-stopped');
 });
 
+// Voice HUD screen-reader output: "Voice mode ready" once, then the whole reply once (speech output off), never per token.
+await flow('voice-hud-announce', browser, { reducedMotion: 'reduce' }, async (page) => {
+  const user = await makeUser('Sol', { voice: { speak: false } });
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  const sr = hud.locator('p.sr-only[role=status]');
+  await sr.getByText('Voice mode ready.').waitFor({ timeout: 10000 });
+  assert((await hud.locator('[aria-live]').count()) === 0, 'an element in the voice HUD still has aria-live');
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  await hud.getByLabel('Type to Atlas').fill("what's on today");
+  await page.keyboard.press('Enter');
+  await sr.getByText(/^Atlas: Here's your day, Sol/).waitFor({ timeout: 15000 });
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);
