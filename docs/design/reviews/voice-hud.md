@@ -158,4 +158,200 @@ Decision points with more than 4 options: the draft plan card shows 4 actions pl
 
 ### Detector findings
 
-_(Filled in after the critique; see below.)_
+Detector totals: 21 (dark-desktop), 21 (dark-phone), 14 (light-desktop), 13 (light-phone), plus a source scan. **Most of these findings are not about the HUD.** The HUD is a `createPortal` overlay on `document.body`, and the scan walked the whole DOM, including the dashboard rendered underneath. That fact is itself evidence for the P1 focus/`inert` issue: the background app is still live in the accessibility tree.
+
+| Rule | Count per variant (dark/light) | Element | Verdict |
+|---|---|---|---|
+| low-contrast 4.49:1 `#058197` on `#020409` | 4 / 4 | `.text-cyan-500/70` labels "Next up", "Tasks left today", "AI uses left" and the idle hint `p.text-cyan-500/70` (VoiceHud.tsx:305, 311, 315, 384) | **Real (HUD).** Matches my own 4.47:1 calculation. 11px uppercase text, so the 4.5:1 requirement applies. It fails by a hair; raise it to `cyan-400/80` or `cyan-300/70`. |
+| repeating-stripes-gradient | 1 / 1 | `.hud-scan` (VoiceHud.tsx:445) | **False positive in context.** Scanlines are part of the specified showpiece. |
+| codex-grid-background | 1 / 1, plus the src scan VoiceHud.tsx:438 | `.hud-grid` | **False positive in context** (an intended part of the brief). It does confirm the critique's point that the vocabulary is stock sci-fi. |
+| ai-color-palette "Cyan gradient background" | 1 / 1 | `span.absolute.inset-[18%]`, the Atlas orb FAB behind the HUD, not the HUD core | **False positive.** Cyan is reserved for Atlas, and the element is outside this surface anyway. |
+| ai-color-palette violet gradient (logo `span.flex.h-9`, top-bar `span.flex.h-8`), body-level violet accent | 3 / 3 | sidebar logo, top bar, body | **Background app.** Real, but it belongs to the shell/dashboard reviews and is already slated for removal per DESIGN.md. |
+| gradient-text | 2 / 1–2 | `h1.gradient-text`, logo text | **Background app.** Slated for removal. |
+| low-contrast 3.9:1 white on `btn-primary` gradient; dark-glow (`#7c3aed`, `#4c1d95`, `#164e63`) | 1 + 3 (dark) / 1 (light) | dashboard `a.btn-primary`, capture "+", Atlas FAB | **Background app.** Slated for removal. It does matter here indirectly, because the *same* `btn-primary` is used inside the HUD plan card (Priority issue: plan card). |
+| low-contrast 3.5:1 `.faint` (dark-phone only) | 1 / 0 | dashboard chip | **Background app.** |
+| nested-cards | 4 / 0 | dashboard list rows | **Background app.** |
+| overused-font Inter 98% | 1 / 1 | body | **False positive for this surface.** The count is dominated by the hidden app; the HUD itself is entirely `font-mono`. The related real issue is that JetBrains Mono is never loaded. |
+
+**What the detector missed (verified by hand):**
+- the placeholder `text-cyan-700` at 3.83:1 (the input is hidden by default, so it was not scanned);
+- input and button borders `cyan-400/30` at 1.86:1, below the 3:1 non-text contrast (SC 1.4.11) for the input boundary;
+- touch targets: Exit 77×30, keyboard toggle 34×34, plan "✕" about 14×16;
+- the clock/EXIT overlap;
+- all keyboard and focus failures;
+- the light-theme PlanCard buttons, which were not on screen.
+
+### Findings by severity
+
+**[P1] No focus entry, trap or return in the voice dialog**
+- **Location:** src/components/atlas/VoiceHud.tsx:294 (dialog root), 200–206 (`close`); src/components/layout/AppShell.tsx:159.
+- **Category:** Accessibility.
+- **Impact:** Keyboard and screen-reader users start on `<body>`, tab into the hidden app, and lose their place on exit. This was verified live.
+- **WCAG:** 2.4.3 Focus Order, 2.1.2 (modal expectation), ARIA APG dialog pattern.
+- **Recommendation:**
+  - Focus the orb on mount.
+  - Make the app root `inert` while the HUD is open, or trap Tab.
+  - Restore the opener's focus in `close()`.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Global Space handler swallows button activation**
+- **Location:** src/components/atlas/VoiceHud.tsx:219–223.
+- **Category:** Accessibility.
+- **Impact:** Space on EXIT, the keyboard toggle, the plan buttons or the ✕ starts the microphone instead (verified live on Exit).
+- **WCAG:** 2.1.1 Keyboard. It also conflicts with native button semantics.
+- **Recommendation:** Ignore Space when `e.target` is any interactive element other than the orb; only use push-to-talk from the dialog root or `<body>`.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Barge-in leaves phase at `idle` while the mic is live**
+- **Location:** src/components/atlas/VoiceHud.tsx:145–149 (with speech.ts:121–122 resolving on cancel).
+- **Category:** Implementation Integrity.
+- **Impact:** The status, orb icon, aria-label and waveform all claim the HUD is not listening while it is. A trust and privacy mismatch (from code).
+- **Recommendation:** After `await speak(...)`, set `idle` only if `phaseRef.current === 'speaking'` and this run wasn't superseded.
+- **Suggested command:** `/impeccable harden`
+
+**[P1] Phone header collision and unbounded transcript**
+- **Location:** src/components/atlas/VoiceHud.tsx:300–301 (clock), 319 (EXIT), 369–373 (transcript), 310 and 314 (bottom readouts).
+- **Category:** Responsive.
+- **Impact:**
+  - At 390px the clock (x 16–214) overprints EXIT (x 157–234); visible in both phone screenshots.
+  - Long replies run over the readouts and the input.
+- **Recommendation:** Rebuild the HUD as a flex column (header row, orb, scrollable transcript with a max height, footer row). On phones, put EXIT at top-right and the clock under it, or shrink the clock to `text-lg` below `sm`.
+- **Suggested command:** `/impeccable adapt`
+
+**[P2] PlanCard hud variant uses violet and theme-following buttons**
+- **Location:** src/components/plans/PlanCard.tsx:56, 74–85; src/index.css:78–96.
+- **Category:** Theming.
+- **Impact:** A violet gradient with a glow inside the cyan HUD, against the Atlas Colour Rule. In light theme, `btn-ghost` (white/50 with cyan-50 text), `btn-ai` (violet-700) and the emerald-700 badge become near-unreadable on the always-dark card.
+- **WCAG:** 1.4.3 Contrast (light theme).
+- **Recommendation:** A dedicated HUD button set in cyan, or a forced `.dark` scope around the HUD.
+- **Suggested command:** `/impeccable colorize`
+
+**[P2] Wake-phrase mode dies after the first recognition error**
+- **Location:** src/components/atlas/VoiceHud.tsx:186–189, 208–212.
+- **Category:** Implementation Integrity.
+- **Impact:** "Hey Atlas" silently stops working after a silence timeout (`no-speech`). From code.
+- **Recommendation:** Auto-restart on benign errors, and show an explicit "wake phrase paused" state otherwise.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] Live region re-announces per character and per token, and collides with spoken replies**
+- **Location:** src/components/atlas/VoiceHud.tsx:76–86, 127–128, 373–378.
+- **Category:** Accessibility.
+- **Impact:** Screen readers stutter through the boot line and the streamed text, then talk over speechSynthesis.
+- **WCAG:** 4.1.3 Status Messages (noise).
+- **Recommendation:**
+  - Keep the boot line and the caret out of the live region (`aria-hidden` on the typing span, plus one sr-only "Voice mode ready").
+  - Announce the reply once, on `done`, and only when "Speak replies aloud" is off or a screen-reader preference is set.
+- **Suggested command:** `/impeccable harden`
+
+**[P2] The canvas is re-allocated every frame at fractional device pixel ratios, and the rAF loop never idles**
+- **Location:** src/components/atlas/VoiceHud.tsx:244–283.
+- **Category:** Performance.
+- **Impact:**
+  - `el.width !== size * dpr` is always true when `size*dpr` is not an integer (DPR 1.25/1.5/2.625, which is common on Windows laptops and Android). The canvas backing store is reset and re-allocated 60 times a second.
+  - The loop also redraws 96 individually stroked lines and builds a new `rgba()` string per bar every frame, forever, even at idle and under reduced motion.
+  - This drains battery and risks jank on older laptops and phones.
+- **Recommendation:**
+  - Compare against `Math.round(size*dpr)`, and resize only from a ResizeObserver.
+  - Batch all bars into one path with one stroke.
+  - At idle or reduced motion, throttle to about 15fps, or stop the loop once `level` has settled.
+- **Suggested command:** `animation-performance`
+
+**[P2] Expensive always-on layers: rotating SVG groups, a full re-render every second, and a blur over motion**
+- **Location:** src/components/atlas/VoiceHud.tsx:30 (`useToday(1000)`), 336–353, 453–455; PlanCard.tsx:43 (`backdrop-blur`).
+- **Category:** Performance.
+- **Impact:**
+  - CSS rotation of SVG `<g>` elements (one with 72 child lines) is generally repainted on the main thread rather than composited.
+  - The 1s clock tick re-renders the whole HUD tree, including the 72 ticks and the PlanCard.
+  - The plan card blurs live animated content beneath it.
+- **Recommendation:**
+  - Split the rings into three absolutely positioned SVGs (or divs), each rotated with `transform` on an HTML wrapper so they composite.
+  - Memoise the static ring markup.
+  - Move the clock into its own small component.
+  - Drop the `backdrop-blur` (the card is 60% opaque already).
+- **Suggested command:** `animation-performance`
+
+**[P2] Touch targets and safe areas**
+- **Location:** src/components/atlas/VoiceHud.tsx:319 (Exit 77×30), 406 (keyboard 34×34), 396 (plan ✕ about 14×16), 300/304/405 (no `env(safe-area-inset-*)`).
+- **Category:** Responsive.
+- **Impact:** Hard one-handed exit; the ✕ fails the 24px minimum; controls sit under the notch and home indicator in a standalone PWA.
+- **WCAG:** 2.5.8 Target Size (Minimum) for the ✕.
+- **Recommendation:** At least 44px hit areas (padding or ::after), and pad the top and bottom with `max(1rem, env(safe-area-inset-*))`.
+- **Suggested command:** `mobile-native`
+
+**[P2] The AI cost is not stated at the point of use, and the orb stays enabled at 0 uses**
+- **Location:** src/components/atlas/VoiceHud.tsx:358–365, 383–385, 287.
+- **Category:** Implementation Integrity (PRODUCT.md principle 3).
+- **Impact:** Users spend an action without being told on the HUD, or speak into a dead end at 0. When AI is paused globally, the readout shows "0" instead of the resting message.
+- **Recommendation:**
+  - Extend the hint to "Tap the orb or press Space, then speak · each reply uses 1 ✨".
+  - At 0, or when disabled, disable the orb and show the server's message ("AI is resting until tomorrow 🌙" or "You've used today's AI allowance") in the transcript area.
+- **Suggested command:** `/impeccable clarify`
+
+**[P2] Low-contrast HUD labels and placeholder**
+- **Location:** src/components/atlas/VoiceHud.tsx:305, 311, 315, 384 (`cyan-500/70`, 4.49:1); 427 (`placeholder:text-cyan-700`, 3.83:1; border `cyan-400/30`, 1.86:1).
+- **Category:** Accessibility.
+- **WCAG:** 1.4.3, 1.4.11.
+- **Recommendation:** Labels to `cyan-400/80` (about 7:1), placeholder to `cyan-500`, and the input border to at least `cyan-400/60`.
+- **Suggested command:** `/impeccable polish`
+
+**[P3] "Next up" has no day**
+- **Location:** src/components/atlas/VoiceHud.tsx:61–73, 307.
+- **Category:** Implementation Integrity.
+- **Impact:** An event several days away reads as later today, which conflicts with honest numbers.
+- **Recommendation:** Add "Tomorrow" or a weekday when the item is not today, or limit the readout to the next 24 hours with "Nothing else today".
+- **Suggested command:** `/impeccable clarify`
+
+**[P3] JetBrains Mono not loaded; the boot dash snap**
+- **Location:** index.html:9; tailwind.config.js:9; VoiceHud.tsx:456.
+- **Category:** Implementation Integrity.
+- **Impact:** The showpiece typography varies by OS. The segmented arcs pop from solid to dashed when BOOTING ends.
+- **Recommendation:**
+  - Self-host or load JetBrains Mono (300/400) only in the lazy HUD chunk.
+  - Animate `stroke-dashoffset` on a separate overlay circle instead of overriding `stroke-dasharray` on the dashed rings.
+- **Suggested command:** `/impeccable typeset`
+
+### Positive findings
+
+- The HUD is lazy-loaded (AppShell.tsx:18), so its weight is only paid when used.
+- Mic, analyser and recognition are torn down on close and unmount (VoiceHud.tsx:106–110, 229–234). An AbortController cancels in-flight Atlas streams on exit.
+- Reduced motion is handled deliberately at two levels: the HUD's own media query and the JS `reduced` flag. Only the canvas loop keeps running.
+- Speech errors map to plain-language, actionable messages (speech.ts:48–56). An unsupported browser starts in typed mode.
+- The orb button has a visible cyan focus ring and a dynamic aria-label. The typed input has a real `<label>`. Decorative layers are `aria-hidden`.
+- The readouts are computed from real data, not decoration.
+
+## Motion on this surface
+
+| Motion | Where | Trigger | Duration / easing | Earns its place? |
+|---|---|---|---|---|
+| Outer tick ring rotation | VoiceHud.tsx:336, 453 | Always | 60s linear infinite | Yes, as showpiece ambience. It is slow enough to read as "alive" rather than busy. Cost: it is a main-thread SVG repaint (see the Performance finding). Stops under reduced motion. |
+| Segmented arc counter-rotation | VoiceHud.tsx:346, 454 | Always | 38s linear infinite, reverse | Yes. The counter-rotation is the signature move of the brief. Same cost caveat. |
+| Inner dashed ring + bright arc | VoiceHud.tsx:350, 455 | Always | 14s linear infinite | Mostly. It is the fastest and most attention-grabbing element, and it says nothing about state. It could speed up while THINKING and slow down at idle to carry meaning. |
+| Boot draw-on of rings | VoiceHud.tsx:326, 456 | On open (phase `booting`) | 1.6s ease-out | Yes, once. But it overrides the dash pattern, so the rings snap to dashed at the end of boot (P3). Disabled under reduced motion. |
+| Boot line typewriter | VoiceHud.tsx:76–89 | On open | 38ms per character (about 1.5s) + 500ms hold | Charming the first time. It blocks talking for about 2s on every open, and it floods the live region. Suggest making it skippable (Space or tap skips to idle) and playing it in full only once per session. Instant under reduced motion. |
+| Caret blink | VoiceHud.tsx:377, 458 | During boot | 1s steps(1) | Fine; stops under reduced motion. It should be `aria-hidden`. |
+| Core pulse | VoiceHud.tsx:355, 457 | phase `thinking` | 1.2s ease-in-out opacity 1→0.7 | Yes. It is the only non-text THINKING cue. Under reduced motion there is no replacement, so consider a static ring colour change. |
+| Waveform ring (canvas) | VoiceHud.tsx:237–285 | Always (rAF) | Per frame, with 0.25 smoothing on level | Yes, it is the functional heart: it shows the mic is hearing you and that Atlas is speaking. But it runs at 60fps forever, re-allocates the canvas at fractional DPR, and still animates the THINKING oscillation under reduced motion. Throttle at idle. |
+| Button hover tints | VoiceHud.tsx:319, 396, 406 | Hover | Instant (no transition) | Fine. Note there is no `:active` press feedback on the Exit and keyboard buttons. |
+| Plan dialogs (Modal) | PlanCard.tsx:101–102 | Edit / Add to Planner | Inherits Modal | Out of scope for this surface. They layer correctly above the HUD (`z-[95]`). |
+
+## Machine-readable summary
+
+```json
+{"surface":"voice-hud","critique_total":25,"critique_max":40,"na_heuristics":[],"audit_total":10,
+ "issues":[
+  {"id":"voice-hud-1","severity":"P1","title":"No focus entry, trap or return in the aria-modal voice dialog","fix":"Focus the orb on mount, make the app root inert (or trap Tab) while open, restore the opener's focus in close()","command":"/impeccable harden","files":["src/components/atlas/VoiceHud.tsx:294","src/components/atlas/VoiceHud.tsx:200","src/components/layout/AppShell.tsx:159"],"source":"both"},
+  {"id":"voice-hud-2","severity":"P1","title":"Global Space push-to-talk swallows button activation (Space on EXIT turns the mic on)","fix":"Ignore Space when the event target is an interactive element other than the orb; only use push-to-talk from the dialog root/body","command":"/impeccable harden","files":["src/components/atlas/VoiceHud.tsx:219"],"source":"critique"},
+  {"id":"voice-hud-3","severity":"P1","title":"Interrupting Atlas mid-speech sets phase to idle while the mic is live","fix":"After await speak(), only set idle if phaseRef.current === 'speaking' and the run was not superseded (run id or abort signal)","command":"/impeccable harden","files":["src/components/atlas/VoiceHud.tsx:145","src/lib/speech.ts:121"],"source":"critique"},
+  {"id":"voice-hud-4","severity":"P1","title":"Phone layout: clock overprints EXIT and long replies overflow the readouts and input","fix":"Flex-column HUD layout (header, orb, scrollable max-height transcript, footer); on phones put EXIT top-right and shrink or move the clock","command":"/impeccable adapt","files":["src/components/atlas/VoiceHud.tsx:300","src/components/atlas/VoiceHud.tsx:319","src/components/atlas/VoiceHud.tsx:369"],"source":"critique"},
+  {"id":"voice-hud-5","severity":"P2","title":"HUD plan card uses violet gradient and theme-following buttons that become unreadable in light theme","fix":"Give the hud variant its own cyan button set or force a .dark scope around the HUD; drop btn-primary/btn-ai violet there","command":"/impeccable colorize","files":["src/components/plans/PlanCard.tsx:56","src/components/plans/PlanCard.tsx:74","src/index.css:78"],"source":"both"},
+  {"id":"voice-hud-6","severity":"P2","title":"Hey Atlas wake-phrase mode stops for good after any recognition error","fix":"Auto-restart on no-speech/aborted with backoff; show an explicit 'wake phrase paused, tap to resume' state for real errors","command":"/impeccable harden","files":["src/components/atlas/VoiceHud.tsx:186","src/components/atlas/VoiceHud.tsx:210"],"source":"critique"},
+  {"id":"voice-hud-7","severity":"P2","title":"Live region re-announces the boot line per character and the reply per token, and talks over spoken replies","fix":"aria-hide the typing span and caret, announce 'Voice mode ready' once, announce the full reply once on done","command":"/impeccable harden","files":["src/components/atlas/VoiceHud.tsx:373","src/components/atlas/VoiceHud.tsx:128"],"source":"critique"},
+  {"id":"voice-hud-8","severity":"P2","title":"Waveform canvas re-allocated every frame at fractional DPR; 60fps loop never idles","fix":"Compare with Math.round(size*dpr) via ResizeObserver, batch bars into one path, throttle or stop the loop at idle and under reduced motion","command":"animation-performance","files":["src/components/atlas/VoiceHud.tsx:244"],"source":"audit"},
+  {"id":"voice-hud-9","severity":"P2","title":"Main-thread SVG ring rotation, whole-tree re-render every second, backdrop blur over motion","fix":"Rotate HTML wrappers around separate ring SVGs, memoise static ticks, isolate the clock component, remove backdrop-blur on the HUD plan card","command":"animation-performance","files":["src/components/atlas/VoiceHud.tsx:30","src/components/atlas/VoiceHud.tsx:336","src/components/plans/PlanCard.tsx:43"],"source":"audit"},
+  {"id":"voice-hud-10","severity":"P2","title":"Small touch targets (Exit 77x30, keyboard 34x34, plan close about 14x16) and no safe-area insets","fix":"44px hit areas; pad top and bottom with max(1rem, env(safe-area-inset-*))","command":"mobile-native","files":["src/components/atlas/VoiceHud.tsx:319","src/components/atlas/VoiceHud.tsx:396","src/components/atlas/VoiceHud.tsx:406"],"source":"both"},
+  {"id":"voice-hud-11","severity":"P2","title":"AI cost not stated at point of use; orb enabled at 0 uses; paused AI shows '0'","fix":"Hint '... each reply uses 1 ✨'; disable the orb and show the server message at 0 or when AI is paused","command":"/impeccable clarify","files":["src/components/atlas/VoiceHud.tsx:358","src/components/atlas/VoiceHud.tsx:384","src/components/atlas/VoiceHud.tsx:287"],"source":"critique"},
+  {"id":"voice-hud-12","severity":"P2","title":"HUD labels at 4.49:1, placeholder at 3.83:1, input border at 1.86:1","fix":"Labels cyan-400/80, placeholder cyan-500, input border at least cyan-400/60","command":"/impeccable polish","files":["src/components/atlas/VoiceHud.tsx:305","src/components/atlas/VoiceHud.tsx:384","src/components/atlas/VoiceHud.tsx:427"],"source":"both"},
+  {"id":"voice-hud-13","severity":"P3","title":"'Next up' shows a time with no day for future-day items","fix":"Prefix Tomorrow or a weekday when not today, or limit to the next 24h","command":"/impeccable clarify","files":["src/components/atlas/VoiceHud.tsx:307"],"source":"critique"},
+  {"id":"voice-hud-14","severity":"P3","title":"JetBrains Mono never loaded; segmented arcs snap from solid to dashed after boot","fix":"Load JetBrains Mono in the lazy HUD chunk; animate draw-on with a separate overlay instead of overriding stroke-dasharray","command":"/impeccable typeset","files":["index.html:9","src/components/atlas/VoiceHud.tsx:456"],"source":"critique"}
+ ]}
+```
