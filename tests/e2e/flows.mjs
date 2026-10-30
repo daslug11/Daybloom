@@ -1176,6 +1176,128 @@ await flow('voice-hud-announce', browser, { reducedMotion: 'reduce' }, async (pa
   await sr.getByText(/^Atlas: Here's your day, Sol/).waitFor({ timeout: 15000 });
 });
 
+// Phase 7 harden (Brain Dump, Planner & Plans, Calendars).
+await flow('harden-b', browser, { timezoneId: 'UTC' }, async (page) => {
+  const user = await makeUser('Hal');
+  const today = new Date().toISOString().slice(0, 10);
+  const plusDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const twoDaysAgo = new Date(Date.now() - 2 * 864e5).toISOString();
+  const { data: note } = await admin.from('notes').insert({ user_id: user.id, body: 'Plan the study group', pinned: true, created_at: twoDaysAgo }).select('*').single();
+  const { data: task } = await admin.from('tasks').insert({ user_id: user.id, title: 'Book a room', source_note_id: note.id }).select('id').single();
+  await admin.from('notes').insert({ user_id: user.id, body: 'Throwaway thought' });
+  await logIn(page, user);
+
+  // brain-dump-9: Undo after delete gives back the same note (id, date, pin) and keeps the task's link.
+  await page.goto(`${BASE}/app/brain-dump`);
+  const card = page.locator(`#note-${note.id}`);
+  await card.getByText('→ 1 task').waitFor();
+  await card.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete note' }).click();
+  await card.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await card.getByText('→ 1 task').waitFor();
+  await sleep(11_000); // past the delete window: nothing must be deleted
+  const { data: back } = await admin.from('notes').select('id, pinned, created_at').eq('id', note.id).maybeSingle();
+  assert(back && back.pinned && Date.parse(back.created_at) === Date.parse(twoDaysAgo), `note not restored as itself: ${JSON.stringify(back)}`);
+  const { data: link } = await admin.from('tasks').select('source_note_id').eq('id', task.id).single();
+  assert(link.source_note_id === note.id, 'task lost its link to the note');
+  // Without Undo, the delete goes through once the window has passed.
+  const other = page.locator('article', { hasText: 'Throwaway thought' });
+  await other.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete note' }).click();
+  await other.waitFor({ state: 'detached' });
+  await eventually(async () => !(await admin.from('notes').select('id').eq('user_id', user.id).eq('body', 'Throwaway thought')).data.length, 'deleted note was never removed', 15_000);
+
+  // brain-dump-10: view tabs follow the APG pattern.
+  const inbox = page.getByRole('tab', { name: /Inbox/ });
+  await inbox.focus();
+  await page.keyboard.press('ArrowRight');
+  const ideas = page.getByRole('tab', { name: /Ideas/ });
+  await eventually(async () => (await ideas.getAttribute('aria-selected')) === 'true', 'ArrowRight did not select Ideas');
+  assert(await ideas.evaluate((el) => el === document.activeElement), 'focus did not follow the selected tab');
+  await page.keyboard.press('End');
+  await eventually(async () => (await page.getByRole('tab', { name: /Archive/ }).getAttribute('aria-selected')) === 'true', 'End did not select Archive');
+  await page.keyboard.press('Home');
+  await eventually(async () => (await inbox.getAttribute('aria-selected')) === 'true', 'Home did not select Inbox');
+  const stops = await page.locator('[role=tab][tabindex="0"]').count();
+  assert(stops === 1, `${stops} tabs in the Tab order (roving tabindex expects 1)`);
+  const panelId = await inbox.getAttribute('aria-controls');
+  assert(panelId && (await page.locator(`#${panelId}[role=tabpanel]`).count()) === 1, 'tabs do not control a tabpanel');
+
+  // planner-plans-11: a double tap on a repeating block's checkbox counts the linked goal once.
+  const { data: goal } = await admin.from('goals').insert({ user_id: user.id, title: 'Run 10 times', target: 10, current: 0, unit: 'sessions' }).select('id').single();
+  const { data: plan } = await admin
+    .from('plans')
+    .insert({ user_id: user.id, title: 'Running', weeks: 2, start_date: today, status: 'active', added_at: new Date().toISOString(), goal_id: goal.id, sessions: [] })
+    .select('id')
+    .single();
+  await admin.from('block_series').insert({ user_id: user.id, plan_id: plan.id, title: 'Easy run', days: [1, 2, 3, 4, 5, 6, 7], start_min: 600, duration_min: 60, start_date: today, end_date: plusDays(13) });
+  const calA = (await admin.from('calendars').insert({ user_id: user.id, name: 'Lectures', url: 'https://example.com/lectures.ics', sync: true }).select('id').single()).data.id;
+  const calB = (await admin.from('calendars').insert({ user_id: user.id, name: 'Club', url: 'https://example.com/club.ics', sync: true }).select('id').single()).data.id;
+  // Synced feeds come from a stubbed sync endpoint: one works, one fails.
+  await page.route('**/api/calendar-sync', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          { id: calA, ok: true, cached: false, fetchedAt: new Date().toISOString(), events: [{ id: 'ev-1', calendarId: calA, title: 'Stats lecture', start: `${today}T14:00:00.000Z`, end: `${today}T15:00:00.000Z`, allDay: false, location: 'Room 2' }] },
+          { id: calB, ok: false, cached: false, fetchedAt: new Date().toISOString(), events: [], error: 'The feed answered 404 Not Found.' },
+        ],
+      }),
+    }),
+  );
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('tab', { name: 'day' }).click();
+  const check = page.getByRole('button', { name: 'Mark “Easy run” done' });
+  await check.waitFor();
+  await check.evaluate((el) => {
+    el.click();
+    el.click();
+  });
+  await page.getByRole('button', { name: 'Mark “Easy run” not done' }).waitFor();
+  await sleep(1500);
+  const { data: g } = await admin.from('goals').select('current').eq('id', goal.id).single();
+  assert(Number(g.current) === 1, `double tap moved the goal to ${g.current}`);
+
+  // planner-plans-10: synced events are focusable, read-only buttons with a details dialog.
+  const event = page.getByRole('button', { name: /Calendar event: Stats lecture/ });
+  await event.focus();
+  assert(await event.evaluate((el) => el === document.activeElement), 'calendar event cannot take focus');
+  await page.keyboard.press('Enter');
+  const details = page.getByRole('dialog', { name: 'Stats lecture' });
+  await details.getByText('Synced and read-only').waitFor();
+  await details.getByText('Room 2').waitFor();
+  await page.keyboard.press('Escape');
+  await details.waitFor({ state: 'detached' });
+  assert(await event.evaluate((el) => el === document.activeElement), 'focus did not return to the event');
+  const nested = await page.evaluate(() => [...document.querySelectorAll('button button, a button, button a')].length);
+  assert(nested === 0, `${nested} interactive elements nested inside another`);
+
+  // calendars-10/11: the heading holds the group toggle; a feed error is announced by one live region only.
+  await page.goto(`${BASE}/app/calendars`);
+  await page.getByText('The feed answered 404 Not Found.').first().waitFor();
+  const alerts = await page.locator('[role=alert], [aria-live]').filter({ hasText: '404 Not Found' }).count();
+  assert(alerts === 1, `feed error is in ${alerts} live regions`);
+  assert((await page.locator('h2 > button[aria-expanded]').count()) >= 1, 'group toggle is not inside its heading');
+  assert((await page.locator('button[aria-expanded] h2').count()) === 0, 'a heading is still nested in a button');
+  const described = await page.locator('[role=group][aria-describedby^="sync-error-"]').count();
+  assert(described === 1, `failed card's sync row is not described by its error (${described})`);
+  await shot(page, 'harden-b-calendars');
+
+  // planner-plans-9: ✨ suggestions survive a reload, and Discard can be undone.
+  await admin.from('tasks').insert({ user_id: user.id, title: 'Draft the lab report', estimate_min: 60 });
+  await page.goto(`${BASE}/app/planner`);
+  await page.getByRole('tab', { name: 'week' }).click();
+  await page.getByRole('button', { name: /Plan my week/ }).click();
+  await page.getByText(/suggested block/).waitFor({ timeout: 15000 });
+  await page.reload();
+  await page.getByText(/suggested block/).waitFor();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByText(/suggested block/).waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByText(/suggested block/).waitFor();
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

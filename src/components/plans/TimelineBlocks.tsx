@@ -1,4 +1,5 @@
 import { Check, Lock, MapPin, Repeat, X } from 'lucide-react';
+import type { SyncedEvent } from '../../../server/calendar/types';
 import type { Occurrence } from '../../../server/data/recurrence';
 import { CALENDAR_COLORS } from '../../lib/calendars';
 import { DAY_MINUTES, formatMinutes, rangeLabel, SNAP, type DayEvent, type Lane, type TimeBlock } from '../../lib/planner';
@@ -6,6 +7,7 @@ import { formatDuration } from '../../lib/quickAdd';
 import type { Task } from '../../lib/types';
 import { cn } from '../../lib/utils';
 import { PRIORITY_STYLES } from '../tasks/TaskChips';
+import { Modal } from '../ui/Modal';
 
 /** Pixels per 15-minute slot. */
 export const SLOT = 14;
@@ -29,32 +31,88 @@ export function laneStyle(lane: Lane | undefined) {
   return { left: `calc(${l.lane * width}% + 3px)`, width: `calc(${width}% - 6px)` };
 }
 
-export function EventBlock({ de, lane, calendar }: { de: DayEvent; lane?: Lane; calendar?: { color: number; emoji: string; name: string } }) {
+/**
+ * A synced calendar event: read-only, but a real button so keyboard and screen-reader users can
+ * reach it; it opens a small details dialog (EventDetailsDialog).
+ */
+export function EventBlock({ de, lane, calendar, onOpen }: { de: DayEvent; lane?: Lane; calendar?: { color: number; emoji: string; name: string }; onOpen: () => void }) {
   const c = CALENDAR_COLORS[calendar?.color ?? 1] ?? CALENDAR_COLORS[1];
   const height = (de.end - de.start) * PX_PER_MIN;
   const label = [de.event.title, `${formatMinutes(de.start)} – ${formatMinutes(de.end % DAY_MINUTES)}`, de.event.location, calendar && `${calendar.emoji} ${calendar.name} (synced, read-only)`].filter(Boolean).join('\n');
   return (
-    <div
-      className="striped absolute z-10 cursor-not-allowed overflow-hidden rounded-lg border px-1.5 py-0.5"
+    <button
+      type="button"
+      data-event-id={de.event.id}
+      onClick={onOpen}
+      className="striped absolute z-10 block overflow-hidden rounded-lg border px-1.5 py-0.5 text-left focus-visible:ring-2 focus-visible:ring-ink/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
       style={{ ...laneStyle(lane), top: de.start * PX_PER_MIN, height: Math.max(height, SLOT) - 1, '--stripe': `${c.hex}40`, borderColor: `${c.hex}99` } as React.CSSProperties}
       title={label}
-      aria-label={`Calendar event: ${label}`}
+      aria-label={`Calendar event: ${label.replace(/\n/g, ', ')}${calendar ? '' : ' (synced, read-only)'}`}
+      aria-haspopup="dialog"
     >
-      <div className="flex items-center gap-1 truncate text-xs font-semibold leading-tight">
+      <span className="flex items-center gap-1 truncate text-xs font-semibold leading-tight">
         <Lock size={9} className="shrink-0 opacity-60" aria-hidden />
         <span className="truncate">{de.event.title}</span>
-      </div>
+      </span>
       {height >= 34 && (
-        <div className="truncate text-xs opacity-75">
+        <span className="block truncate text-xs opacity-75">
           {formatMinutes(de.start)} – {formatMinutes(de.end % DAY_MINUTES)}
           {de.event.location && (
             <span className="ml-1 inline-flex items-center gap-0.5">
               · <MapPin size={9} aria-hidden /> {de.event.location}
             </span>
           )}
-        </div>
+        </span>
       )}
-    </div>
+    </button>
+  );
+}
+
+/** Read-only details for a synced event (timed or all-day). Daybloom never edits outside calendars. */
+export function EventDetailsDialog({ event, calendar, onClose }: { event: SyncedEvent; calendar?: { emoji: string; name: string }; onClose: () => void }) {
+  const when = event.allDay
+    ? (() => {
+        const [y, m, d] = event.start.split('-').map(Number);
+        const [ey, em, ed] = event.end.split('-').map(Number);
+        const start = new Date(y, m - 1, d);
+        const last = new Date(ey, em - 1, ed - 1);
+        const fmt = (x: Date) => x.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        return last > start ? `All day, ${fmt(start)} – ${fmt(last)}` : `All day, ${fmt(start)}`;
+      })()
+    : (() => {
+        const s = new Date(event.start);
+        const e = new Date(event.end);
+        const day = s.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        const t = (x: Date) => x.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return `${day}, ${t(s)} – ${t(e)}`;
+      })();
+  return (
+    <Modal open onClose={onClose} title={event.title} className="max-w-sm">
+      <dl className="space-y-2 text-sm">
+        <div>
+          <dt className="label">When</dt>
+          <dd>{when}</dd>
+        </div>
+        {event.location && (
+          <div>
+            <dt className="label">Where</dt>
+            <dd className="break-words">{event.location}</dd>
+          </div>
+        )}
+        <div>
+          <dt className="label">Calendar</dt>
+          <dd>{calendar ? `${calendar.emoji} ${calendar.name}` : 'Synced calendar'}</dd>
+        </div>
+      </dl>
+      <p className="muted mt-4 flex items-start gap-1.5 text-sm">
+        <Lock size={14} className="mt-0.5 shrink-0" aria-hidden /> Synced and read-only. Change it in the calendar it comes from; Daybloom picks up the change on the next sync.
+      </p>
+      <div className="mt-5 flex justify-end">
+        <button className="btn-primary" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -86,9 +144,11 @@ interface RepeatBlockProps {
   onResizeStart: (e: React.PointerEvent) => void;
   onOpen: () => void;
   onToggleDone: () => void;
+  /** A check-off is saving: the box ignores taps until it's done. */
+  doneBusy?: boolean;
 }
 
-export function RepeatBlock({ occ, block, lane, lifted, onMoveStart, onResizeStart, onOpen, onToggleDone }: RepeatBlockProps) {
+export function RepeatBlock({ occ, block, lane, lifted, onMoveStart, onResizeStart, onOpen, onToggleDone, doneBusy }: RepeatBlockProps) {
   const height = block.duration * PX_PER_MIN;
   const compact = height < 40;
   const label = `${occ.title}, ${rangeLabel(block.start, block.duration)}`;
@@ -108,9 +168,11 @@ export function RepeatBlock({ occ, block, lane, lifted, onMoveStart, onResizeSta
       <div className={cn('flex h-full gap-1 overflow-hidden rounded-lg px-1.5', compact ? 'items-center' : 'items-start py-1')}>
         <button
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={onToggleDone}
+          onClick={() => !doneBusy && onToggleDone()}
+          aria-disabled={doneBusy || undefined}
+          aria-busy={doneBusy || undefined}
           aria-label={occ.done ? `Mark “${occ.title}” not done` : `Mark “${occ.title}” done`}
-          className={cn(HIT, 'mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas')}
+          className={cn(HIT, 'mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas', doneBusy && 'opacity-60')}
         >
           {occ.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
         </button>

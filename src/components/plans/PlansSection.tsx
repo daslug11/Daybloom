@@ -178,7 +178,7 @@ function PlanProgress({ plan, series, rows }: { plan: Plan; series: BlockSeries[
       </ul>
 
       {removing && (
-        <Modal open onClose={() => setRemoving(false)} title={`Remove “${plan.title}”?`} description="Should its upcoming Planner blocks be deleted too? Sessions already past stay in your history either way.">
+        <Modal open onClose={() => setRemoving(false)} title={`Remove “${plan.title}”?`} description="Should its upcoming Planner blocks be deleted too? Past sessions, and any you’ve already checked off today, stay in your history either way.">
           {(habit || goal) && <p className="muted mb-3 text-sm">The linked {[habit && 'habit', goal && 'goal'].filter(Boolean).join(' and ')} will be kept.</p>}
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <button className="btn-ghost" onClick={() => setRemoving(false)}>

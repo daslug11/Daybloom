@@ -1,6 +1,6 @@
 import { AlertTriangle, CalendarDays, ChevronDown, Copy, ExternalLink, FolderPlus, HelpCircle, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarCard } from '../../components/calendars/CalendarCard';
 import { CalendarModal } from '../../components/calendars/CalendarModal';
@@ -70,6 +70,24 @@ export default function Calendars() {
   const [dropTarget, setDropTarget] = useState<{ section: string; before: string | null } | null>(null);
   const [movingCal, setMovingCal] = useState<CalendarLink | null>(null);
   const [announcement, setAnnouncement] = useState('');
+
+  // Sync problems are announced once each: only errors that weren't already showing are read out.
+  // (The pill, the summary list and the cards show them, but none of those is a live region here.)
+  const [syncNews, setSyncNews] = useState('');
+  const seenErrors = useRef(new Set<string>());
+  const errorList = sync.requestError
+    ? [{ key: `request:${sync.requestError}`, text: `Calendar sync failed: ${sync.requestError}` }]
+    : sync.syncedCalendars
+        .filter((c) => sync.statuses[c.id]?.state === 'error')
+        .map((c) => ({ key: `${c.id}:${sync.statuses[c.id]?.error}`, text: `${c.name} failed to sync: ${sync.statuses[c.id]?.error}` }));
+  const errorSignature = errorList.map((e) => e.key).join('|');
+  useEffect(() => {
+    const fresh = errorList.filter((e) => !seenErrors.current.has(e.key));
+    // Forget errors that have cleared, so the same problem coming back is announced again.
+    seenErrors.current = new Set(errorList.map((e) => e.key));
+    if (fresh.length) setSyncNews(fresh.map((e) => e.text).join('. '));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorSignature]);
   const [collapsed, setCollapsed] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
@@ -200,15 +218,19 @@ export default function Calendars() {
             <h2 className="font-semibold">Calendar sync</h2>
             <p className="muted mt-0.5 text-sm">Synced feeds refresh every 10 minutes. Only links with Sync turned on are fetched.</p>
           </div>
-          <SyncStatusPill />
+          <SyncStatusPill live={false} />
         </div>
+        {/* The one live region for sync problems: each new error is announced once. */}
+        <p role="alert" className="sr-only">
+          {syncNews}
+        </p>
         {sync.requestError && (
-          <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <p className="mt-3 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {sync.requestError}
           </p>
         )}
         {!sync.requestError && sync.errorCount > 0 && (
-          <ul role="alert" className="mt-3 space-y-1 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <ul aria-label="Calendars that failed to sync" className="mt-3 space-y-1 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
             {sync.syncedCalendars
               .filter((c) => sync.statuses[c.id]?.state === 'error')
               .map((c) => (
@@ -249,26 +271,26 @@ export default function Calendars() {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="faint mr-1 text-xs font-medium">Group</span>
-            <button className={groupFilter === null ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(null)}>
+            <button className={groupFilter === null ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(null)} aria-pressed={groupFilter === null}>
               All
             </button>
             {groups.map((g) => (
-              <button key={g.id} className={groupFilter === g.id ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(groupFilter === g.id ? null : g.id)}>
+              <button key={g.id} className={groupFilter === g.id ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(groupFilter === g.id ? null : g.id)} aria-pressed={groupFilter === g.id}>
                 <span className="h-2 w-2 rounded-full" style={{ background: calendarColor(g.color) }} /> {g.name}
               </button>
             ))}
-            <button className={groupFilter === UNGROUPED ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(groupFilter === UNGROUPED ? null : UNGROUPED)}>
+            <button className={groupFilter === UNGROUPED ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(groupFilter === UNGROUPED ? null : UNGROUPED)} aria-pressed={groupFilter === UNGROUPED}>
               Ungrouped
             </button>
           </div>
           {presentTypes.length > 1 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="faint mr-1 text-xs font-medium">Type</span>
-              <button className={typeFilter === null ? 'chip-on' : 'chip-off'} onClick={() => setTypeFilter(null)}>
+              <button className={typeFilter === null ? 'chip-on' : 'chip-off'} onClick={() => setTypeFilter(null)} aria-pressed={typeFilter === null}>
                 All
               </button>
               {presentTypes.map((t) => (
-                <button key={t} className={typeFilter === t ? 'chip-on' : 'chip-off'} onClick={() => setTypeFilter(typeFilter === t ? null : t)}>
+                <button key={t} className={typeFilter === t ? 'chip-on' : 'chip-off'} onClick={() => setTypeFilter(typeFilter === t ? null : t)} aria-pressed={typeFilter === t}>
                   {CALENDAR_TYPES[t].emoji} {CALENDAR_TYPES[t].label}
                 </button>
               ))}
@@ -361,12 +383,18 @@ export default function Calendars() {
                 className={cn('rounded-2xl p-1', isOver && 'bg-ink/[0.03] ring-2 ring-ink/40')}
               >
                 <div className="mb-2 flex items-center gap-2">
-                  <button className="flex min-w-0 items-center gap-2 text-left" onClick={() => toggleCollapsed(id)} aria-expanded={!isCollapsed}>
-                    <ChevronDown size={18} className={cn('faint transition-transform duration-fast ease-out', isCollapsed && '-rotate-90')} />
-                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: group ? calendarColor(group.color) : 'rgb(var(--faint))' }} aria-hidden />
-                    <h2 className="truncate text-base font-bold">{group ? group.name : 'Ungrouped'}</h2>
-                    <span className="faint text-xs">{items.length}</span>
-                  </button>
+                  {/* The heading holds the toggle (not the other way round), so heading navigation finds every group. */}
+                  <h2 className="min-w-0 text-base font-bold">
+                    <button className="flex min-w-0 max-w-full items-center gap-2 text-left" onClick={() => toggleCollapsed(id)} aria-expanded={!isCollapsed}>
+                      <ChevronDown size={18} className={cn('faint shrink-0 transition-transform duration-fast ease-out', isCollapsed && '-rotate-90')} aria-hidden />
+                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: group ? calendarColor(group.color) : 'rgb(var(--faint))' }} aria-hidden />
+                      <span className="truncate">{group ? group.name : 'Ungrouped'}</span>
+                      <span className="faint text-xs font-normal">
+                        {items.length}
+                        <span className="sr-only"> {items.length === 1 ? 'calendar' : 'calendars'}</span>
+                      </span>
+                    </button>
+                  </h2>
                   <div className="ml-auto flex items-center">
                     <button className="icon-btn h-8 w-8" onClick={() => setCalModal({ open: true, editing: null, groupId: group?.id ?? null })} aria-label={`Add calendar to ${group?.name ?? 'Ungrouped'}`}>
                       <Plus size={15} />

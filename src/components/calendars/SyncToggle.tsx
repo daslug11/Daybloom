@@ -3,10 +3,15 @@ import type { FeedStatus } from '../../hooks/useCalendarSync';
 import { timeAgo } from '../../lib/dates';
 import { Switch } from '../ui/Switch';
 
-/** Per-calendar sync switch + its live status. */
-export function SyncRow({ enabled, status, onToggle }: { enabled: boolean; status?: FeedStatus; onToggle: (v: boolean) => void }) {
+/**
+ * Per-calendar sync switch + its status. A feed error is a plain paragraph that describes this
+ * row; the page announces each error once from its own live region, so it isn't read twice.
+ */
+export function SyncRow({ id, name, enabled, status, onToggle }: { id: string; name: string; enabled: boolean; status?: FeedStatus; onToggle: (v: boolean) => void }) {
+  const errorId = `sync-error-${id}`;
+  const failed = enabled && status?.state === 'error';
   return (
-    <div className="px-4 pb-3 pl-5">
+    <div className="px-4 pb-3 pl-5" role="group" aria-label={`Sync for ${name}`} aria-describedby={failed ? errorId : undefined}>
       <div className="flex items-center gap-2 text-xs">
         <Switch checked={enabled} onChange={onToggle} label="Sync events into the Planner" />
         <span className="font-medium">Sync</span>
@@ -29,8 +34,8 @@ export function SyncRow({ enabled, status, onToggle }: { enabled: boolean; statu
         )}
         {!enabled && <span className="muted ml-auto">Off</span>}
       </div>
-      {enabled && status?.state === 'error' && (
-        <p role="alert" className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-2.5 py-1.5 text-xs text-danger">
+      {failed && (
+        <p id={errorId} className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-2.5 py-1.5 text-xs text-danger">
           {status.error}
         </p>
       )}

@@ -10,6 +10,9 @@ import { CONVERSIONS, STATE_LABEL } from './outcomes';
 
 export type NoteAiAction = 'extract' | 'summarize' | 'plan';
 
+/** What the card says while a ✨ action runs on it (plain text, so it also shows under reduced motion). */
+const AI_PROGRESS: Record<NoteAiAction, string> = { extract: 'Finding actions…', summarize: 'Summarizing…', plan: 'Drafting a plan…' };
+
 const STATE_STYLE: Record<Note['state'], string> = {
   inbox: 'bg-ink text-canvas',
   idea: 'border border-line-strong text-ink',
@@ -52,6 +55,7 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
       data-note-id={note.id}
       className={cn('card group p-4 transition-colors duration-fast', highlight && 'ring-2 ring-ink/40', note.pinned && 'border-ink/40', className)}
       aria-label={`Note from ${timeAgo(note.created_at)}`}
+      aria-busy={aiBusy ? true : undefined}
     >
       <div className="mb-2 flex items-center gap-2 text-xs">
         {note.pinned && <Pin size={12} className="text-ink" aria-label="Pinned" />}
@@ -65,6 +69,16 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
           </span>
         )}
         {links && <span className="faint truncate">→ {links}</span>}
+        {/* Always rendered, so screen readers announce the text when it appears. */}
+        {onAi && (
+          <span role="status" className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium text-atlas">
+            {aiBusy && (
+              <>
+                <Sparkles size={12} aria-hidden /> {AI_PROGRESS[aiBusy]}
+              </>
+            )}
+          </span>
+        )}
       </div>
 
       {editing ? (
@@ -119,7 +133,7 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
             </Menu>
           )}
           {onAi && (
-            <Menu label="AI actions" trigger={aiBusy ? <Loader2 size={15} className="animate-spin text-ink" aria-label="AI is working" /> : <Sparkles size={15} />} align="left">
+            <Menu label="AI actions" trigger={aiBusy ? <Loader2 size={15} className="animate-spin text-ink" aria-hidden /> : <Sparkles size={15} />} align="left">
               {(close) => (
                 <>
                   <p className="faint px-2.5 pb-1 pt-1.5 text-xs">Each uses 1 of your daily ✨ AI actions.</p>

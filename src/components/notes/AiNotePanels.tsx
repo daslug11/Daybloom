@@ -269,17 +269,33 @@ export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: 
   const toast = useToast();
   const keep = steps.filter((s) => s.keep && s.title.trim());
 
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+  // One submit at a time; nothing is reported as created until it has saved.
   const create = async () => {
-    if (as === 'tasks') {
-      addTasks.mutate(keep.map((s, i) => ({ title: s.title.trim(), estimate_min: s.estimate_min, source_note_id: note.id, sort: Date.now() / 1000 + i })));
-      toast(`Added ${keep.length} tasks from your plan`);
-    } else {
-      const goal = await addGoal.mutateAsync({ title: title.trim(), emoji: '🎯', target: keep.length, current: 0, unit: 'steps', source_note_id: note.id });
-      addMilestones.mutate(keep.map((s) => ({ goal_id: goal.id, title: s.title.trim() })));
-      toast(`New goal “${title.trim()}” with ${keep.length} milestones`);
+    if (pending) return;
+    setPending(true);
+    setError('');
+    const moved = note.state === 'inbox';
+    try {
+      let message: string;
+      if (as === 'tasks') {
+        await addTasks.mutateAsync(keep.map((s, i) => ({ title: s.title.trim(), estimate_min: s.estimate_min, source_note_id: note.id, sort: Date.now() / 1000 + i })));
+        message = `Added ${plural(keep.length, 'task', 'tasks')} from your plan`;
+      } else {
+        const goal = await addGoal.mutateAsync({ title: title.trim(), emoji: '🎯', target: keep.length, current: 0, unit: 'steps', source_note_id: note.id });
+        await addMilestones.mutateAsync(keep.map((s) => ({ goal_id: goal.id, title: s.title.trim() })));
+        message = `New goal “${title.trim()}” with ${plural(keep.length, 'milestone', 'milestones')}`;
+      }
+      if (moved) updateNote.mutate({ id: note.id, patch: { state: 'idea' } });
+      toast(moved ? `${message}. The note moved to Ideas.` : message);
+      onClose(true);
+    } catch {
+      setError(as === 'tasks' ? 'The tasks could not be saved. Please try again.' : 'The goal could not be fully saved. Check Goals before trying again.');
+      setPending(false);
     }
-    if (note.state === 'inbox') updateNote.mutate({ id: note.id, patch: { state: 'idea' } });
-    onClose(true);
   };
 
   return (
@@ -311,12 +327,17 @@ export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: 
           </button>
         ))}
       </fieldset>
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-danger">
+          {error}
+        </p>
+      )}
       <div className="mt-5 flex justify-end gap-2">
         <button className="btn-ghost" onClick={() => onClose()}>
           Cancel
         </button>
-        <button className="btn-primary" disabled={!keep.length || !title.trim()} onClick={create}>
-          Create
+        <button className="btn-primary" disabled={!keep.length || !title.trim() || pending} aria-busy={pending || undefined} onClick={create}>
+          {pending ? 'Creating…' : 'Create'}
         </button>
       </div>
     </Modal>
