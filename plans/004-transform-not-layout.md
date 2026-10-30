@@ -1,6 +1,6 @@
 # 004 — Animate transform, not layout properties
 
-- **Status**: TODO
+- **Status**: DONE (Phase 5)
 - **Commit**: 9799a50
 - **Severity**: MEDIUM
 - **Category**: Performance

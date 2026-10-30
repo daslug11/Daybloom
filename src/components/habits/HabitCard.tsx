@@ -32,13 +32,13 @@ export function HabitCard({ habit, today, start, days, streak, streakCapped, goa
         <button
           onClick={() => onToggle?.(today)}
           className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl transition-colors duration-fast',
-            doneToday ? 'bg-accent text-accent-ink ring-2 ring-ink/40' : 'bg-raised hover:bg-raised',
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl transition-[transform,color,background-color,border-color] duration-press ease-out motion-safe:active:scale-[0.9]',
+            doneToday ? 'bg-accent text-accent-ink ring-2 ring-ink/40' : 'bg-raised hover:bg-line',
           )}
           aria-label={doneToday ? `Undo ${habit.name} for today` : `Mark ${habit.name} done today`}
           aria-pressed={doneToday}
         >
-          {doneToday ? <Check size={20} strokeWidth={3} /> : <span aria-hidden>{habit.emoji}</span>}
+          {doneToday ? <Check size={20} strokeWidth={3} className="animate-check-pop" /> : <span aria-hidden>{habit.emoji}</span>}
         </button>
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-semibold">{habit.name}</h3>

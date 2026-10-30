@@ -182,7 +182,7 @@ export function ProcessInbox({ onClose, onChange, onDelete }: Props) {
                   {sorted} sorted · {ids.length - sorted} left
                 </span>
               </div>
-              <div className="mt-4 max-h-[40vh] overflow-y-auto rounded-2xl border border-line bg-raised p-4">
+              <div key={current.id} className="mt-4 max-h-[40vh] animate-fade-in overflow-y-auto rounded-2xl border border-line bg-raised p-4">
                 <p className="faint mb-2 text-xs">
                   Captured {timeAgo(current.created_at)}
                   {current.state !== 'inbox' && <span className="font-medium text-ink"> · Already sorted: {STATE_LABEL[current.state]}</span>}

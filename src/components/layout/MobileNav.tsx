@@ -39,7 +39,7 @@ export function MobileNav() {
           </button>
         </div>
       </nav>
-      <Modal open={more} onClose={() => setMore(false)} title="More">
+      <Modal open={more} onClose={() => setMore(false)} title="More" variant="sheet">
         <div className="grid grid-cols-2 gap-2">
           {[...secondary, { to: '/app/settings', label: 'Settings', icon: SettingsIcon, blurb: 'Account, appearance, voice and data.' }].map(({ to, label, icon: Icon, blurb }) => (
             <NavLink

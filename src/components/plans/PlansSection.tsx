@@ -133,7 +133,7 @@ function PlanProgress({ plan, series, rows }: { plan: Plan; series: BlockSeries[
         </button>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-        <div className="h-full bg-ink transition-all" style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+        <div className="h-full w-full origin-left bg-ink transition-transform duration-base ease-out" style={{ transform: `scaleX(${p.total ? p.done / p.total : 0})` }} />
       </div>
       {(habit || goal) && (
         <p className="faint mt-2 text-xs">

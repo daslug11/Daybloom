@@ -56,7 +56,7 @@ export function CalendarCard(p: Props) {
       layout
       initial={false}
       animate={{ opacity: p.dragging ? 0.4 : 1 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, transform: 'scale(0.95)' }}
       className={cn(preview && 'sm:col-span-2')}
       data-calendar-id={c.id}
     >
@@ -157,7 +157,7 @@ export function CalendarCard(p: Props) {
 
         <AnimatePresence>
           {preview && embeddable && (
-            <motion.div initial={{ height: 0 }} animate={{ height: 420 }} exit={{ height: 0 }} className="relative overflow-hidden border-t border-line">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="relative overflow-hidden border-t border-line">
               <iframe
                 src={c.url}
                 title={`${c.name} preview`}

@@ -154,8 +154,9 @@ function TourCard({ onClose }: { onClose: () => void }) {
   return createPortal(
     <div className="fixed inset-0 z-[70]">
       {rect ? (
+        // Layout properties on purpose: the ring tracks a resizing rectangle, once per user.
         <div
-          className="pointer-events-none absolute rounded-2xl ring-2 ring-ink/40 transition-all duration-200 ease-out motion-reduce:transition-none"
+          className="pointer-events-none absolute rounded-2xl ring-2 ring-ink/40 transition-[left,top,width,height] duration-base ease-out motion-reduce:transition-none"
           style={{ left: rect.left - PAD, top: rect.top - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2, boxShadow: '0 0 0 9999px rgba(0,0,0,0.65)' }}
         />
       ) : (

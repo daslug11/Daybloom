@@ -112,7 +112,7 @@ export function RepeatBlock({ occ, block, lane, lifted, onMoveStart, onResizeSta
           aria-label={occ.done ? `Mark “${occ.title}” not done` : `Mark “${occ.title}” done`}
           className={cn(HIT, 'mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas')}
         >
-          {occ.done && <Check size={10} strokeWidth={3} />}
+          {occ.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
         </button>
         <button
           className="block-handle min-w-0 flex-1 cursor-[inherit] text-left focus-visible:ring-0"
@@ -172,7 +172,7 @@ export function TaskBlock({ task, block, lane, lifted, fading, onMoveStart, onRe
           aria-label={task.done ? `Mark “${task.title}” not done` : `Complete “${task.title}”`}
           className={cn(HIT, 'mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-canvas/70', task.done && 'bg-canvas text-ink')}
         >
-          {task.done && <Check size={10} strokeWidth={3} />}
+          {task.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
         </button>
         <button
           data-block-handle={task.id}

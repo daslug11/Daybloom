@@ -930,6 +930,31 @@ await flow('voice-hud-states', browser, { reducedMotion: 'reduce' }, async (page
   await hud.waitFor({ state: 'detached' });
 });
 
+for (const reduce of [false, true]) {
+  await flow(reduce ? 'motion-reduced' : 'motion', browser, reduce ? { reducedMotion: 'reduce' } : {}, async (page) => {
+    const user = await makeUser(reduce ? 'Rem' : 'Mo');
+    await admin.from('goals').insert({ user_id: user.id, title: 'Run 100 km', emoji: '🏃', target: 100, current: 25, unit: 'km' });
+    await logIn(page, user);
+    // Menus grow from their trigger; under reduced motion they only fade.
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    const menu = page.getByRole('menu').first();
+    await menu.waitFor();
+    const anim = await menu.evaluate((el) => getComputedStyle(el).animationName);
+    assert(anim === (reduce ? 'fade' : 'menu-pop'), `menu animation: ${anim}`);
+    await page.keyboard.press('Escape');
+    // Progress bars scale instead of animating width.
+    await page.goto(`${BASE}/app/goals`);
+    const bar = page.getByRole('progressbar', { name: /Run 100 km/ }).locator('div').first();
+    await bar.waitFor();
+    const t = await bar.evaluate((el) => ({ transform: getComputedStyle(el).transform, prop: getComputedStyle(el).transitionProperty }));
+    assert(t.transform.startsWith('matrix(0.25'), `progress transform: ${t.transform}`);
+    assert(!/width/.test(t.prop), `progress transitions ${t.prop}`);
+    // Nothing loops on an ordinary page.
+    const looping = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.getTiming().iterations === Infinity).length);
+    assert(looping === 0, `${looping} looping animations on Goals`);
+  });
+}
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

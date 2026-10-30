@@ -94,10 +94,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <motion.div
               key={t.id}
               layout
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.95 }}
-              animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.95 }}
-              transition={reduce ? { duration: 0.15 } : undefined}
+              // Full transform strings run on the compositor; Framer's x/y/scale shorthands don't.
+              initial={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(20px) scale(0.95)' }}
+              animate={reduce ? { opacity: 1 } : { opacity: 1, transform: 'translateY(0px) scale(1)' }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px) scale(0.95)' }}
+              transition={reduce ? { duration: 0.15 } : { type: 'spring', duration: 0.5, bounce: 0.2 }}
               className="toast pointer-events-auto"
             >
               <span className="min-w-0 flex-1">{t.message}</span>

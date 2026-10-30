@@ -26,7 +26,7 @@ export function Menu({ label, trigger, triggerClassName, align = 'right', width 
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null);
   const close = () => setOpen(false);
   useOverlay({ open, onEscape: close, container: panel, trapFocus: false, initialFocus: false });
 
@@ -37,9 +37,9 @@ export function Menu({ label, trigger, triggerClassName, align = 'right', width 
       const h = panel.current?.offsetHeight ?? 0;
       if (!t) return;
       const below = t.bottom + GAP;
-      const top = below + h > window.innerHeight - 8 && t.top - GAP - h > 8 ? t.top - GAP - h : below;
+      const up = below + h > window.innerHeight - 8 && t.top - GAP - h > 8;
       const rawLeft = align === 'right' ? t.right - width : t.left;
-      setPos({ top, left: Math.max(8, Math.min(rawLeft, window.innerWidth - width - 8)) });
+      setPos({ top: up ? t.top - GAP - h : below, left: Math.max(8, Math.min(rawLeft, window.innerWidth - width - 8)), up });
     };
     place();
     panel.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus({ preventScroll: true });
@@ -81,8 +81,9 @@ export function Menu({ label, trigger, triggerClassName, align = 'right', width 
             role="menu"
             aria-label={label}
             onKeyDown={onKeyDown}
-            style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width }}
-            className={cn('menu-panel fixed z-[75]', !pos && 'invisible')}
+            // Grows from the corner nearest its trigger.
+            style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width, transformOrigin: `${pos?.up ? 'bottom' : 'top'} ${align}` }}
+            className={cn('menu-panel fixed z-[75]', pos ? 'animate-menu-pop' : 'invisible')}
           >
             {children(close)}
           </div>,
