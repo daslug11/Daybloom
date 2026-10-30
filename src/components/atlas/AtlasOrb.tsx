@@ -9,10 +9,25 @@ export function OrbGlyph({ size = 22, active }: { size?: number; active?: boolea
   );
 }
 
+/**
+ * Set when the orb was clicked with a pointer, read once by AtlasPanel on mount: a pointer
+ * open slides the panel in from the edge it lives on; ⌘J and other openers show it instantly.
+ */
+let pointerOpen = false;
+export function takePointerOpen() {
+  const was = pointerOpen;
+  pointerOpen = false;
+  return was;
+}
+
 export function AtlasOrb({ onClick }: { onClick: () => void }) {
   return (
     <button
-      onClick={onClick}
+      onClick={(e) => {
+        // detail is 0 when Enter or Space activated the button.
+        pointerOpen = e.detail > 0;
+        onClick();
+      }}
       className="group flex h-12 w-12 items-center justify-center rounded-full border border-atlas/40 bg-overlay shadow-pop transition-colors duration-fast hover:border-atlas"
       aria-label="Ask Atlas (Ctrl/⌘ + J)"
       title="Ask Atlas (⌘J)"
