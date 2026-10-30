@@ -7,6 +7,8 @@ import { useToast } from '../useToast';
 import { must, tempId, useListMutation } from './cache';
 
 export const habitsKey = (uid: string) => ['habits', uid];
+/** Under habitsKey, so anything that invalidates habits refreshes the archived list too. */
+export const archivedHabitsKey = (uid: string) => ['habits', uid, 'archived'];
 /** Keyed by day too, so the window moves at midnight. `['habit_logs', uid]` still matches every day for invalidation. */
 export const habitLogsKey = (uid: string, today?: string) => (today ? ['habit_logs', uid, today] : ['habit_logs', uid]);
 /** History shown in grids: the last 12 weeks (+ a little for streaks). */
@@ -63,6 +65,41 @@ export function useHabits() {
     queryKey: habitsKey(uid),
     enabled: !!uid,
     queryFn: async () => must(await supabase.from('habits').select('*').is('archived_at', null).order('sort')) as Habit[],
+  });
+}
+
+/** Archived habits, most recently archived first. Their logs are kept. */
+export function useArchivedHabits() {
+  const uid = useUserId();
+  return useQuery({
+    queryKey: archivedHabitsKey(uid),
+    enabled: !!uid,
+    queryFn: async () => must(await supabase.from('habits').select('*').not('archived_at', 'is', null).order('archived_at', { ascending: false })) as Habit[],
+  });
+}
+
+/** Brings an archived habit back to the list, history and all. Optimistic in both lists. */
+export function useRestoreHabit() {
+  const uid = useUserId();
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (h: Habit) => must(await supabase.from('habits').update({ archived_at: null }).eq('id', h.id).select('id')),
+    onMutate: async (h) => {
+      await qc.cancelQueries({ queryKey: habitsKey(uid) });
+      const prevActive = qc.getQueryData<Habit[]>(habitsKey(uid));
+      const prevArchived = qc.getQueryData<Habit[]>(archivedHabitsKey(uid));
+      qc.setQueryData<Habit[]>(archivedHabitsKey(uid), (list) => list?.filter((x) => x.id !== h.id));
+      qc.setQueryData<Habit[]>(habitsKey(uid), (list) => (list ? [...list.filter((x) => x.id !== h.id), { ...h, archived_at: null }].sort((a, b) => a.sort - b.sort) : list));
+      return { prevActive, prevArchived };
+    },
+    onError: (err, _h, ctx) => {
+      if (ctx?.prevActive) qc.setQueryData(habitsKey(uid), ctx.prevActive);
+      if (ctx?.prevArchived) qc.setQueryData(archivedHabitsKey(uid), ctx.prevArchived);
+      console.error(err);
+      toast('Could not restore that habit. Please try again.');
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: habitsKey(uid) }),
   });
 }
 
