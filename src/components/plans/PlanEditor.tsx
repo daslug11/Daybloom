@@ -71,7 +71,7 @@ export function PlanEditor({ plan, onClose, layer }: { plan: Plan; onClose: () =
           <legend className="label">Weekly sessions</legend>
           <ul className="space-y-3">
             {sessions.map((s, i) => (
-              <li key={i} className="rounded-xl border border-slate-900/10 p-3 dark:border-white/10" aria-label={`Session ${i + 1}`}>
+              <li key={i} className="rounded-xl border border-line p-3" aria-label={`Session ${i + 1}`}>
                 <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
                   <select className="input !py-1.5" value={s.day} onChange={(e) => set(i, { day: Number(e.target.value) })} aria-label={`Session ${i + 1} day`}>
                     {WEEKDAYS.map((d, k) => (
@@ -123,7 +123,7 @@ export function PlanEditor({ plan, onClose, layer }: { plan: Plan; onClose: () =
           )}
         </fieldset>
 
-        {invalid && <p className="text-sm text-rose-600 dark:text-rose-300">Every session needs a title and must end by midnight.</p>}
+        {invalid && <p className="text-sm text-danger">Every session needs a title and must end by midnight.</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel

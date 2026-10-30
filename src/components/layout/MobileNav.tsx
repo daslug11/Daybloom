@@ -15,17 +15,17 @@ export function MobileNav() {
   const inMore = secondary.some((n) => pathname.startsWith(n.to)) || pathname.startsWith('/app/settings');
 
   const tab = ({ isActive }: { isActive: boolean }) =>
-    cn('relative flex min-w-0 flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium', isActive ? 'text-violet-700 dark:text-violet-300' : 'text-slate-600 dark:text-slate-400');
+    cn('relative flex min-w-0 flex-1 flex-col items-center gap-1 py-2 text-xs font-medium', isActive ? 'text-ink' : 'text-muted');
 
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-900/10 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden dark:border-white/10 dark:bg-[#0b0a14]/90" aria-label="Main navigation">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Main navigation">
         <div className="flex">
           {NAV.filter((n) => n.primary).map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} end={to === '/app'} className={tab}>
               <Icon size={20} aria-hidden />
               <span className="max-w-full truncate">{label === 'Dashboard' ? 'Today' : label}</span>
-              {to === '/app/brain-dump' && inbox > 0 && <span className="absolute right-[22%] top-1 rounded-full bg-violet-600 px-1 text-[10px] font-bold text-white">{inbox}</span>}
+              {to === '/app/brain-dump' && inbox > 0 && <span className="badge absolute right-[18%] top-0.5">{inbox}</span>}
             </NavLink>
           ))}
           <button className={tab({ isActive: inMore })} onClick={() => setMore(true)} aria-haspopup="dialog">
@@ -42,10 +42,10 @@ export function MobileNav() {
               to={to}
               onClick={() => setMore(false)}
               className={({ isActive }) =>
-                cn('rounded-2xl border p-3 text-left transition', isActive ? 'border-violet-400/50 bg-violet-500/10' : 'border-slate-900/10 dark:border-white/10')
+                cn('rounded-2xl border p-3 text-left transition', isActive ? 'border-ink/40 bg-ink/[0.06]' : 'border-line ')
               }
             >
-              <Icon size={18} className="text-violet-600 dark:text-violet-300" aria-hidden />
+              <Icon size={18} className="text-ink " aria-hidden />
               <div className="mt-1.5 text-sm font-semibold">{label}</div>
               <div className="muted mt-0.5 text-xs leading-snug">{blurb}</div>
             </NavLink>

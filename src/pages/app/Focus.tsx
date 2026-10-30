@@ -108,8 +108,8 @@ export default function Focus() {
             <div className="mt-4 flex h-24 items-end gap-1.5" role="img" aria-label={`Focus minutes per day: ${stats.week.map((w) => `${w.minutes}`).join(', ')}`}>
               {stats.week.map((w) => (
                 <div key={w.day} className="flex flex-1 flex-col items-center gap-1">
-                  <div className="w-full rounded-md bg-violet-500" style={{ height: `${Math.max(3, (w.minutes / max) * 72)}px`, opacity: w.minutes ? 1 : 0.2 }} title={`${w.minutes} min`} />
-                  <span className="faint text-[10px]">{parseKey(w.day).toLocaleDateString(undefined, { weekday: 'narrow' })}</span>
+                  <div className="w-full rounded-md bg-accent" style={{ height: `${Math.max(3, (w.minutes / max) * 72)}px`, opacity: w.minutes ? 1 : 0.2 }} title={`${w.minutes} min`} />
+                  <span className="faint text-xs">{parseKey(w.day).toLocaleDateString(undefined, { weekday: 'narrow' })}</span>
                 </div>
               ))}
             </div>

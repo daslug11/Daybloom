@@ -1,13 +1,8 @@
 import { addDays, parseKey } from '../../lib/dates';
 import { cn } from '../../lib/utils';
 
-const SHADES = [
-  'bg-slate-900/[0.07] dark:bg-white/[0.07]',
-  'bg-violet-300 dark:bg-violet-900',
-  'bg-violet-400 dark:bg-violet-700',
-  'bg-violet-500 dark:bg-violet-500',
-  'bg-violet-700 dark:bg-violet-300',
-];
+// Ink density: none → done. The "done" square is the strongest ink in both themes.
+const SHADES = ['bg-raised', 'bg-ink/25', 'bg-ink/45', 'bg-ink/70', 'bg-ink'];
 
 /** 12 week columns (Mon→Sun), ending with the current week. */
 export function buildWeeks(today: string, weeks = 12) {
@@ -51,7 +46,7 @@ export function ContributionGrid({ today, level, onToggle, label, cell = 'h-3.5 
                 title={text}
                 aria-label={text}
                 aria-pressed={l > 0}
-                className={cn('rounded-[3px] transition', cell, SHADES[shade], onToggle && 'hover:ring-1 hover:ring-violet-400', key === today && 'ring-1 ring-violet-500')}
+                className={cn('rounded-[3px] transition', cell, SHADES[shade], onToggle && 'hover:ring-1 hover:ring-ink/40', key === today && 'ring-1 ring-ink/40')}
               />
             );
           })}

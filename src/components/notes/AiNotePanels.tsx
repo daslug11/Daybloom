@@ -59,7 +59,7 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
             {open.map(({ s, i }) => {
               const note = byId.get(s.note_id)!;
               return (
-                <li key={s.note_id} className="rounded-2xl border border-slate-900/10 p-3 dark:border-white/10">
+                <li key={s.note_id} className="rounded-2xl border border-line p-3">
                   <p className="muted text-xs">“{clip(note.body.replace(/\s+/g, ' '), 140)}”</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="sr-only" htmlFor={`kind-${i}`}>
@@ -147,7 +147,7 @@ export function ExtractPanel({ note, actions, onClose }: { note: Note; actions: 
         <ul className="space-y-1.5">
           {items.map((a, i) => (
             <li key={i} className="flex items-center gap-2">
-              <input type="checkbox" className="accent-violet-600" checked={a.keep} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} aria-label={`Keep “${a.title}”`} />
+              <input type="checkbox" className="accent-ink" checked={a.keep} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} aria-label={`Keep “${a.title}”`} />
               <input className="input !py-1.5 flex-1" value={a.title} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} aria-label="Task title" />
               {a.due_date && <span className="faint text-xs">{a.due_date}</span>}
             </li>
@@ -220,7 +220,7 @@ export function PatternsPanel({ themes, onClose }: { themes: { theme: string; ev
       ) : (
         <ul className="space-y-3">
           {themes.map((t, i) => (
-            <li key={i} className="rounded-2xl border border-slate-900/10 p-3 dark:border-white/10">
+            <li key={i} className="rounded-2xl border border-line p-3">
               <p className="font-semibold">{t.theme}</p>
               <p className="muted mt-0.5 text-xs">{t.evidence}</p>
               <p className="mt-1.5 text-sm">💡 {t.suggestion}</p>
@@ -273,7 +273,7 @@ export function PlanPanel({ note, plan, onClose }: { note: Note; plan: { title: 
       <ol className="mt-3 space-y-1.5">
         {steps.map((s, i) => (
           <li key={i} className="flex items-center gap-2">
-            <input type="checkbox" className="accent-violet-600" checked={s.keep} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} aria-label={`Keep step ${i + 1}`} />
+            <input type="checkbox" className="accent-ink" checked={s.keep} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))} aria-label={`Keep step ${i + 1}`} />
             <span className="faint w-5 text-right text-xs">{i + 1}.</span>
             <input className="input !py-1.5 flex-1" value={s.title} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} aria-label={`Step ${i + 1}`} />
             {s.estimate_min && <span className="faint text-xs">{s.estimate_min}m</span>}

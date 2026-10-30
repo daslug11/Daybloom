@@ -27,7 +27,7 @@ import {
 import { useUserId } from '../../hooks/useAuth';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useToast } from '../../hooks/useToast';
-import { CALENDAR_TYPES, detectCalendarType, gradient } from '../../lib/calendars';
+import { CALENDAR_TYPES, calendarColor, calendarTile, detectCalendarType } from '../../lib/calendars';
 import { supabase } from '../../lib/supabase';
 import type { CalendarGroup, CalendarLink, CalendarType } from '../../lib/types';
 import { cn } from '../../lib/utils';
@@ -184,12 +184,12 @@ export default function Calendars() {
           <SyncStatusPill />
         </div>
         {sync.requestError && (
-          <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-200">
+          <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {sync.requestError}
           </p>
         )}
         {!sync.requestError && sync.errorCount > 0 && (
-          <ul role="alert" className="mt-3 space-y-1 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-200">
+          <ul role="alert" className="mt-3 space-y-1 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
             {sync.syncedCalendars
               .filter((c) => sync.statuses[c.id]?.state === 'error')
               .map((c) => (
@@ -205,12 +205,12 @@ export default function Calendars() {
               ))}
           </ul>
         )}
-        <button className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-violet-700 hover:underline dark:text-violet-300" onClick={() => setHelpOpen((v) => !v)} aria-expanded={helpOpen}>
+        <button className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-ink hover:underline" onClick={() => setHelpOpen((v) => !v)} aria-expanded={helpOpen}>
           <HelpCircle size={15} /> How do I find my calendar’s secret ICS address?
           <ChevronDown size={14} className={cn('transition', helpOpen && 'rotate-180')} />
         </button>
         {helpOpen && (
-          <div className="mt-3 border-t border-slate-900/10 pt-3 dark:border-white/10">
+          <div className="mt-3 border-t border-line pt-3">
             <IcsHelp />
           </div>
         )}
@@ -228,13 +228,13 @@ export default function Calendars() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="faint mr-1 text-[11px] font-semibold uppercase tracking-wider">Group</span>
+            <span className="faint mr-1 text-xs font-medium">Group</span>
             <button className={groupFilter === null ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(null)}>
               All
             </button>
             {groups.map((g) => (
               <button key={g.id} className={groupFilter === g.id ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(groupFilter === g.id ? null : g.id)}>
-                <span className="h-2 w-2 rounded-full" style={{ background: gradient(g.color) }} /> {g.name}
+                <span className="h-2 w-2 rounded-full" style={{ background: calendarColor(g.color) }} /> {g.name}
               </button>
             ))}
             <button className={groupFilter === UNGROUPED ? 'chip-on' : 'chip-off'} onClick={() => setGroupFilter(groupFilter === UNGROUPED ? null : UNGROUPED)}>
@@ -243,7 +243,7 @@ export default function Calendars() {
           </div>
           {presentTypes.length > 1 && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="faint mr-1 text-[11px] font-semibold uppercase tracking-wider">Type</span>
+              <span className="faint mr-1 text-xs font-medium">Type</span>
               <button className={typeFilter === null ? 'chip-on' : 'chip-off'} onClick={() => setTypeFilter(null)}>
                 All
               </button>
@@ -278,12 +278,12 @@ export default function Calendars() {
           {pinned.length > 0 && (
             <section aria-labelledby="pinned-h">
               <h2 id="pinned-h" className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                <Star size={15} className="fill-amber-400 text-amber-400" aria-hidden /> Pinned
+                <Star size={15} className="fill-warning text-warning" aria-hidden /> Pinned
               </h2>
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {pinned.map((c) => (
-                  <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className="glass glass-hover flex min-w-[210px] items-center gap-3 p-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg" style={{ background: gradient(c.color) }} aria-hidden>
+                  <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className="card card-hover flex min-w-[210px] items-center gap-3 p-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-lg" style={calendarTile(c.color)} aria-hidden>
                       {c.emoji}
                     </span>
                     <span className="min-w-0">
@@ -316,12 +316,12 @@ export default function Calendars() {
                   e.preventDefault();
                   drop(id, null);
                 }}
-                className={cn('rounded-2xl p-1', isOver && 'bg-violet-500/5 ring-2 ring-violet-400/50')}
+                className={cn('rounded-2xl p-1', isOver && 'bg-ink/[0.03] ring-2 ring-ink/40')}
               >
                 <div className="mb-2 flex items-center gap-2">
                   <button className="flex min-w-0 items-center gap-2 text-left" onClick={() => toggleCollapsed(id)} aria-expanded={!isCollapsed}>
                     <ChevronDown size={18} className={cn('faint transition', isCollapsed && '-rotate-90')} />
-                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: group ? gradient(group.color) : 'rgba(148,163,184,0.6)' }} aria-hidden />
+                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: group ? calendarColor(group.color) : 'rgb(var(--faint))' }} aria-hidden />
                     <h2 className="truncate text-base font-bold">{group ? group.name : 'Ungrouped'}</h2>
                     <span className="faint text-xs">{items.length}</span>
                   </button>
@@ -343,7 +343,7 @@ export default function Calendars() {
                 </div>
                 {!isCollapsed &&
                   (items.length === 0 ? (
-                    <div className="muted rounded-2xl border-2 border-dashed border-slate-900/10 p-5 text-center text-sm dark:border-white/10">
+                    <div className="muted rounded-2xl border-2 border-dashed border-line p-5 text-center text-sm">
                       {dragId ? 'Drop here to move it into this group' : 'Empty group — drag a calendar here or add one.'}
                     </div>
                   ) : (

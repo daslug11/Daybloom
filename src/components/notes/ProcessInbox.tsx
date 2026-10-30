@@ -41,26 +41,26 @@ export function ProcessInbox({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-900/10 dark:bg-white/10" aria-hidden>
-              <div className="h-full bg-violet-600 transition-all" style={{ width: `${(index / queue.length) * 100}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+              <div className="h-full bg-accent transition-all" style={{ width: `${(index / queue.length) * 100}%` }} />
             </div>
-            <div className="mt-4 max-h-[40vh] overflow-y-auto rounded-2xl border border-slate-900/10 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+            <div className="mt-4 max-h-[40vh] overflow-y-auto rounded-2xl border border-line bg-raised p-4">
               <p className="faint mb-2 text-xs">Captured {timeAgo(current.created_at)}</p>
               <Markdown text={current.body} onToggleCheck={(i) => update.mutate({ id: current.id, patch: { body: toggleCheckLine(current.body, i) } })} />
             </div>
-            <p className="muted mb-2 mt-4 text-xs font-semibold uppercase tracking-wider">What is it?</p>
+            <h3 className="mb-2 mt-4 text-sm font-semibold">What is it?</h3>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <button className="btn-ghost justify-start" onClick={() => setConvert('task')}>
-                <ListChecks size={16} className="text-violet-600" /> Make task
+                <ListChecks size={16} className="text-muted" /> Make task
               </button>
               <button className="btn-ghost justify-start" onClick={() => setConvert('block')}>
-                <CalendarClock size={16} className="text-blue-600" /> Schedule
+                <CalendarClock size={16} className="text-muted" /> Schedule
               </button>
               <button className="btn-ghost justify-start" onClick={() => setConvert('goal-task')}>
-                <Target size={16} className="text-emerald-600" /> Add to goal
+                <Target size={16} className="text-muted" /> Add to goal
               </button>
               <button className="btn-ghost justify-start" onClick={() => act(() => update.mutate({ id: current.id, patch: { state: 'idea' } }))}>
-                <Lightbulb size={16} className="text-amber-500" /> Keep as idea
+                <Lightbulb size={16} className="text-muted" /> Keep as idea
               </button>
               <button className="btn-ghost justify-start" onClick={() => act(() => update.mutate({ id: current.id, patch: { state: 'archived' } }))}>
                 <Archive size={16} /> Archive
@@ -70,7 +70,7 @@ export function ProcessInbox({ onClose }: { onClose: () => void }) {
               </button>
             </div>
             <div className="mt-4 flex items-center justify-between">
-              <button className="btn-ghost !px-3 !py-1.5 text-rose-600" onClick={() => act(() => del.mutate(current.id))}>
+              <button className="btn-ghost !px-3 !py-1.5 text-danger" onClick={() => act(() => del.mutate(current.id))}>
                 <Trash2 size={14} /> Delete
               </button>
               <button className="btn-ghost !px-3 !py-1.5" onClick={next}>

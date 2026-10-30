@@ -21,13 +21,13 @@ export function HabitCard({ habit, today, days, streak, goalLabel, onToggle, onE
   let week = 0;
   for (let i = 0; i < 7; i++) if (days.has(addDays(today, -i))) week++;
   return (
-    <div className="glass p-4">
+    <div className="card p-4">
       <div className="flex items-center gap-3">
         <button
           onClick={() => onToggle?.(today)}
           className={cn(
             'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl transition',
-            doneToday ? 'bg-violet-600 text-white ring-2 ring-violet-400' : 'bg-slate-900/5 hover:bg-violet-500/15 dark:bg-white/5',
+            doneToday ? 'bg-accent text-accent-ink ring-2 ring-ink/40' : 'bg-raised hover:bg-raised',
           )}
           aria-label={doneToday ? `Undo ${habit.name} for today` : `Mark ${habit.name} done today`}
           aria-pressed={doneToday}
@@ -43,8 +43,8 @@ export function HabitCard({ habit, today, days, streak, goalLabel, onToggle, onE
           </p>
         </div>
         <div className="text-right" title="Streak: days in a row, ending today (or yesterday if today isn’t done yet)">
-          <div className={cn('text-lg font-bold tabular-nums', streak > 0 ? 'text-orange-600 dark:text-orange-300' : 'faint')}>🔥 {streak}</div>
-          <div className="faint text-[10px] uppercase tracking-wider">day streak</div>
+          <div className={cn('text-lg font-bold tabular-nums', streak > 0 ? 'text-ink' : 'faint')}>🔥 {streak}</div>
+          <div className="faint text-xs">day streak</div>
         </div>
         {onEdit && (
           <button className="icon-btn h-8 w-8" onClick={onEdit} aria-label={`Edit ${habit.name}`}>

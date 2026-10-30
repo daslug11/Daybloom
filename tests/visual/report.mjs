@@ -1,15 +1,15 @@
 // Summarises detector results as Markdown, optionally against a baseline.
 //   node tests/visual/report.mjs <label> [baselineLabel]
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const [label, base] = process.argv.slice(2);
 const dir = (l) => `test-results/visual/${l}`;
 
 function load(l) {
   const pages = {};
-  for (const theme of ['dark', 'light']) {
-    const f = `${dir(l)}/detect-pages-${theme}.json`;
-    if (existsSync(f)) Object.assign(pages, JSON.parse(readFileSync(f, 'utf8')));
+  // One file per capture run: detect-pages-dark.json, detect-pages-dark+light.json, …
+  for (const f of readdirSync(dir(l)).filter((n) => /^detect-pages-.+\.json$/.test(n))) {
+    Object.assign(pages, JSON.parse(readFileSync(`${dir(l)}/${f}`, 'utf8')));
   }
   const src = existsSync(`${dir(l)}/detect-src.json`) ? JSON.parse(readFileSync(`${dir(l)}/detect-src.json`, 'utf8')) : [];
   return { pages, src };

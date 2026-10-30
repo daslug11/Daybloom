@@ -1,19 +1,29 @@
+import type React from 'react';
 import type { CalendarType } from './types';
 
+/**
+ * A calendar's identity colour, stored by position, so the order must not change.
+ * Solid colours only; none of them is cyan, which is reserved for Atlas.
+ */
 export const CALENDAR_COLORS = [
-  { name: 'Grape', from: '#8b5cf6', to: '#6366f1' },
-  { name: 'Ocean', from: '#3b82f6', to: '#06b6d4' },
-  { name: 'Bubblegum', from: '#ec4899', to: '#f43f5e' },
-  { name: 'Sunset', from: '#f97316', to: '#facc15' },
-  { name: 'Mint', from: '#10b981', to: '#84cc16' },
-  { name: 'Aurora', from: '#a855f7', to: '#ec4899' },
-  { name: 'Lagoon', from: '#14b8a6', to: '#3b82f6' },
-  { name: 'Ember', from: '#ef4444', to: '#f59e0b' },
+  { name: 'Grape', hex: '#8b5cf6' },
+  { name: 'Ocean', hex: '#3b82f6' },
+  { name: 'Bubblegum', hex: '#ec4899' },
+  { name: 'Sunset', hex: '#f97316' },
+  { name: 'Mint', hex: '#10b981' },
+  { name: 'Plum', hex: '#c026d3' },
+  { name: 'Graphite', hex: '#71717a' },
+  { name: 'Ember', hex: '#ef4444' },
 ];
 
-export function gradient(color: number, dir = '135deg') {
-  const c = CALENDAR_COLORS[color] ?? CALENDAR_COLORS[0];
-  return `linear-gradient(${dir}, ${c.from}, ${c.to})`;
+export function calendarColor(color: number) {
+  return (CALENDAR_COLORS[color] ?? CALENDAR_COLORS[0]).hex;
+}
+
+/** An emoji tile tinted with the calendar's colour. */
+export function calendarTile(color: number): React.CSSProperties {
+  const hex = calendarColor(color);
+  return { background: `${hex}26`, boxShadow: `inset 0 0 0 1px ${hex}59` };
 }
 
 export const CALENDAR_TYPES: Record<CalendarType, { label: string; emoji: string }> = {

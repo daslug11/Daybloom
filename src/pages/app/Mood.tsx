@@ -77,7 +77,7 @@ export default function Mood() {
             {reflection ? (
               <div className="space-y-2 text-sm">
                 <p>{reflection.reflection}</p>
-                <p className="rounded-xl bg-violet-500/10 p-3">💡 {reflection.suggestion}</p>
+                <p className="rounded-xl bg-ink/[0.06] p-3">💡 {reflection.suggestion}</p>
                 <p className="faint text-xs">Not medical advice. If you’re struggling, please talk to someone you trust or a professional.</p>
               </div>
             ) : (
@@ -86,7 +86,7 @@ export default function Mood() {
               </p>
             )}
             {recent.length > 0 && (
-              <ul className="mt-4 divide-y divide-slate-900/5 text-sm dark:divide-white/5">
+              <ul className="mt-4 divide-y divide-line text-sm">
                 {recent.map((m) => (
                   <li key={m.day} className="flex items-start gap-3 py-2">
                     <span aria-hidden>{MOODS[m.score - 1].emoji}</span>

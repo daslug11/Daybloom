@@ -2,32 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Daybloom design tokens — "The Clear Head" (see DESIGN.md).
+ * Neutral near-black / near-white, emphasis in ink rather than a hue, colour only for meaning:
+ * danger / warning / success, calendar identity, and Atlas (cyan, reserved).
+ * Every text role below is ≥4.5:1 on every surface in its theme; `control` borders are ≥3:1.
+ */
 @layer base {
   :root {
-    --hour-line: rgba(15, 23, 42, 0.1);
-    --slot-line: rgba(15, 23, 42, 0.035);
+    --canvas: 243 243 244;
+    --surface: 255 255 255;
+    --raised: 246 246 247;
+    --overlay: 255 255 255;
+    --line: 227 227 230;
+    --line-strong: 207 207 212;
+    --control: 140 140 148;
+    --ink: 24 24 27;
+    --muted: 80 80 88;
+    --faint: 102 102 110;
+    --accent: 24 24 27;
+    --accent-ink: 255 255 255;
+    --danger: 190 18 60;
+    --warning: 161 76 6;
+    --success: 21 128 61;
+    --atlas: 14 116 144;
+
+    --shadow-card: 0 1px 2px 0 rgb(16 16 20 / 0.06), 0 1px 3px 0 rgb(16 16 20 / 0.04);
+    --shadow-button: inset 0 1px 0 0 rgb(255 255 255 / 0.12), 0 1px 2px 0 rgb(16 16 20 / 0.16);
+    --shadow-pop: 0 12px 32px -8px rgb(16 16 20 / 0.18), 0 2px 6px 0 rgb(16 16 20 / 0.08);
+    --shadow-modal: 0 24px 64px -12px rgb(16 16 20 / 0.28), 0 4px 12px 0 rgb(16 16 20 / 0.08);
+
+    /* Planner grid lines */
+    --hour-line: rgb(24 24 27 / 0.1);
+    --slot-line: rgb(24 24 27 / 0.035);
   }
   .dark {
-    --hour-line: rgba(255, 255, 255, 0.09);
-    --slot-line: rgba(255, 255, 255, 0.03);
+    --canvas: 11 11 12;
+    --surface: 21 21 23;
+    --raised: 29 29 32;
+    --overlay: 26 26 29;
+    --line: 42 42 46;
+    --line-strong: 61 61 67;
+    --control: 107 107 115;
+    --ink: 244 244 245;
+    --muted: 168 168 176;
+    --faint: 141 141 149;
+    --accent: 244 244 245;
+    --accent-ink: 11 11 12;
+    --danger: 251 113 133;
+    --warning: 251 191 36;
+    --success: 74 222 128;
+    --atlas: 94 227 245;
+
+    --shadow-card: inset 0 1px 0 0 rgb(255 255 255 / 0.04), 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --shadow-button: inset 0 1px 0 0 rgb(255 255 255 / 0.5), 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.7), 0 2px 6px 0 rgb(0 0 0 / 0.4);
+    --shadow-modal: 0 24px 64px -12px rgb(0 0 0 / 0.8), 0 4px 12px 0 rgb(0 0 0 / 0.4);
+
+    --hour-line: rgb(255 255 255 / 0.08);
+    --slot-line: rgb(255 255 255 / 0.03);
   }
   html {
     color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
   }
   html:not(.dark) {
     color-scheme: light;
   }
   body {
-    @apply min-h-screen bg-slate-100 font-sans text-slate-800 antialiased dark:bg-[#08070f] dark:text-slate-100;
-    /* One static gradient wash instead of animated blobs: same identity, no repaint cost. */
-    background-image:
-      radial-gradient(60rem 40rem at -10% -20%, rgba(124, 58, 237, 0.16), transparent 60%),
-      radial-gradient(50rem 36rem at 110% 10%, rgba(59, 130, 246, 0.12), transparent 60%),
-      radial-gradient(40rem 30rem at 50% 120%, rgba(236, 72, 153, 0.08), transparent 60%);
-    background-attachment: fixed;
+    @apply min-h-screen bg-canvas font-sans text-ink antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    caret-color: rgb(var(--ink));
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
   :focus-visible {
-    @apply outline-none ring-2 ring-violet-400 ring-offset-2 ring-offset-slate-100 dark:ring-offset-[#08070f];
+    @apply outline-none ring-2 ring-ink/70 ring-offset-2 ring-offset-canvas;
   }
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -40,66 +96,105 @@
     }
   }
   ::selection {
-    @apply bg-violet-500/40;
+    background: rgb(var(--ink) / 0.2);
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
+    scrollbar-color: rgb(var(--line-strong)) transparent;
   }
 }
 
 @layer components {
-  .glass {
-    @apply rounded-2xl border border-slate-900/10 bg-white/60 shadow-sm backdrop-blur-xl
-      dark:border-white/10 dark:bg-white/5 dark:shadow-none;
+  /* Surfaces: solid and tactile — no blur. */
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-card;
   }
-  .glass-hover {
-    @apply transition-colors duration-200 hover:border-violet-400/40;
+  .card-hover {
+    @apply transition-colors duration-fast hover:border-line-strong;
   }
-  .gradient-text {
-    @apply bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent
-      dark:from-violet-300 dark:via-blue-300 dark:to-pink-300;
+  .sheet {
+    @apply rounded-t-sheet border border-line bg-overlay shadow-modal sm:rounded-sheet;
   }
+  .menu-panel {
+    @apply rounded-card border border-line bg-overlay p-1 shadow-pop;
+  }
+  .menu-item {
+    @apply flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-ink outline-none
+      hover:bg-raised focus-visible:bg-raised focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  /* Text roles */
   .muted {
-    @apply text-slate-600 dark:text-slate-400;
+    @apply text-muted;
   }
   .faint {
-    @apply text-slate-500 dark:text-slate-500;
+    @apply text-faint;
   }
+  .page-title {
+    @apply text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-[1.75rem] sm:leading-9;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium text-muted;
+  }
+  .link {
+    @apply font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-[3px] hover:decoration-ink;
+  }
+  .kbd {
+    @apply inline-flex items-center rounded-md border border-line-strong bg-raised px-1.5 py-0.5 font-mono text-xs text-muted;
+  }
+
+  /* Controls */
   .input {
-    @apply w-full rounded-xl border border-slate-900/10 bg-white/70 px-3.5 py-2.5 text-sm outline-none transition
-      placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30
-      dark:border-white/10 dark:bg-white/5 dark:placeholder:text-slate-500;
+    @apply w-full rounded-control border border-control/70 bg-surface px-3.5 py-2.5 text-base text-ink outline-none transition-[border-color,box-shadow] duration-fast
+      placeholder:text-faint focus:border-ink focus:ring-2 focus:ring-ink/15 sm:text-sm;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-4 py-2 text-sm font-semibold
+      transition-[transform,background-color,border-color,color,opacity,box-shadow] duration-press ease-out
       active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500 text-white
-      shadow-[0_8px_30px_-8px_rgba(124,58,237,0.7)] hover:brightness-110;
+    @apply btn bg-accent text-accent-ink shadow-button hover:bg-accent/90;
   }
   .btn-ghost {
-    @apply btn border border-slate-900/10 bg-white/50 hover:bg-white/80
-      dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10;
+    @apply btn border border-line-strong bg-surface text-ink shadow-card hover:bg-raised;
   }
   .btn-danger {
-    @apply btn bg-rose-500/15 text-rose-600 hover:bg-rose-500/25 dark:text-rose-300;
+    @apply btn border border-danger/30 bg-danger/10 text-danger hover:bg-danger/15;
+  }
+  /* ✨ actions: Atlas cyan, the only place cyan appears outside Atlas itself. */
+  .btn-ai {
+    @apply btn border border-atlas/40 bg-atlas/10 text-atlas hover:bg-atlas/15;
   }
   .icon-btn {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-600 transition
-      hover:bg-slate-900/5 hover:text-slate-900 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-muted transition-colors duration-fast
+      hover:bg-raised hover:text-ink disabled:opacity-40;
   }
-  .btn-ai {
-    @apply btn border border-violet-400/40 bg-violet-500/10 text-violet-700 hover:bg-violet-500/20
-      dark:text-violet-200;
+  .chip {
+    @apply inline-flex min-h-7 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-fast;
   }
-  .link {
-    @apply font-semibold text-violet-700 underline-offset-2 hover:underline dark:text-violet-300;
+  .chip-off {
+    @apply chip border-line-strong bg-surface text-muted hover:bg-raised hover:text-ink;
   }
-  .kbd {
-    @apply inline-flex items-center rounded-md border border-slate-900/15 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:border-white/15 dark:text-slate-400;
+  .chip-on {
+    @apply chip border-ink bg-ink text-canvas;
   }
+  .badge {
+    @apply inline-flex min-w-5 items-center justify-center rounded-full bg-ink px-1.5 text-xs font-semibold tabular-nums text-canvas;
+  }
+
+  /* Toasts: inverse surface, readable in both themes. */
+  .toast {
+    @apply flex w-full max-w-md items-center gap-3 rounded-card bg-ink px-4 py-3 text-sm text-canvas shadow-pop sm:w-auto;
+  }
+  .toast-action {
+    @apply shrink-0 rounded-md bg-canvas/15 px-2.5 py-1 font-semibold hover:bg-canvas/25;
+  }
+  .toast-close {
+    @apply -mr-1 shrink-0 rounded-md p-1 opacity-70 hover:opacity-100;
+  }
+
+  /* Notes */
   .prose-note {
     @apply text-sm leading-relaxed;
   }
@@ -122,7 +217,7 @@
     @apply list-decimal;
   }
   .prose-note code {
-    @apply rounded bg-slate-900/10 px-1 py-0.5 font-mono text-[12px] dark:bg-white/10;
+    @apply rounded bg-raised px-1 py-0.5 font-mono text-xs;
   }
   .prose-note a {
     @apply link;
@@ -130,27 +225,10 @@
   .prose-note p + p {
     @apply mt-1.5;
   }
-  .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition;
-  }
-  .chip-off {
-    @apply chip border-slate-900/10 bg-white/50 text-slate-600 hover:bg-white
-      dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10;
-  }
-  .chip-on {
-    @apply chip border-violet-400/50 bg-violet-500/20 text-violet-700 dark:text-violet-200;
-  }
-  /* Locked calendar events: diagonal stripes in the calendar's color (set via --stripe). */
+
+  /* Locked calendar events: diagonal stripes in the calendar's colour (set via --stripe). */
   .striped {
-    background-color: color-mix(in srgb, var(--stripe, rgba(59, 130, 246, 0.4)) 55%, transparent);
-    background-image: repeating-linear-gradient(
-      135deg,
-      var(--stripe, rgba(59, 130, 246, 0.4)) 0 6px,
-      transparent 6px 12px
-    );
-    backdrop-filter: blur(6px);
-  }
-  .label {
-    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400;
+    background-color: color-mix(in srgb, var(--stripe, rgba(59, 130, 246, 0.4)) 55%, rgb(var(--surface)));
+    background-image: repeating-linear-gradient(135deg, var(--stripe, rgba(59, 130, 246, 0.4)) 0 6px, transparent 6px 12px);
   }
 }

@@ -6,6 +6,7 @@ import { atlasKey, useAtlasMessages } from '../../hooks/data/atlas';
 import { useAiStatus, useAiStatusUpdater } from '../../hooks/useAi';
 import { useUserId } from '../../hooks/useAuth';
 import { useInvalidateUserData } from '../../hooks/useInvalidateAll';
+import { useOverlay } from '../../hooks/useOverlay';
 import { useProfile } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
 import { apiFetch, ApiError, atlasStream } from '../../lib/api';
@@ -45,6 +46,8 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
   const [confirmClear, setConfirmClear] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const abort = useRef<AbortController | null>(null);
+  // How many saved messages existed when the current reply started; a refetch mid-reply must not show it twice.
+  const shownCount = useRef<number | null>(null);
 
   const pending = useQuery({
     queryKey: ['atlas_pending', uid],
@@ -59,14 +62,10 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     },
   });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      abort.current?.abort();
-    };
-  }, [onClose]);
+  const root = useRef<HTMLDivElement>(null);
+  useOverlay({ open: true, onEscape: onClose, container: root });
+  // Closing the panel stops a reply that is still streaming.
+  useEffect(() => () => abort.current?.abort(), []);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -76,6 +75,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     const message = text.trim();
     if (!message || sending) return;
     setInput('');
+    shownCount.current = history.data?.length ?? 0;
     setSending(message);
     setLive({ text: '', actions: [] });
     abort.current = new AbortController();
@@ -96,10 +96,12 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
       if (err instanceof ApiError && err.data.reason === 'daily_limit') updateStatus(0);
       if (err instanceof ApiError && String(err.data.reason ?? '').startsWith('paused')) updateStatus(null, { enabled: false, paused: true, message: err.message });
       setSending(null);
+      shownCount.current = null;
       return;
     }
     await qc.invalidateQueries({ queryKey: atlasKey(uid) });
     invalidate();
+    shownCount.current = null;
     setSending(null);
     setLive(null);
   };
@@ -125,15 +127,16 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
     qc.invalidateQueries({ queryKey: atlasKey(uid) });
   };
 
-  const messages = history.data ?? [];
+  const all = history.data ?? [];
+  const messages = live && shownCount.current !== null ? all.slice(0, shownCount.current) : all;
   const aiOff = status.data && (!status.data.enabled || status.data.remaining <= 0);
   const name = profile?.name || 'there';
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Atlas assistant">
+    <div ref={root} className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Atlas assistant">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
-      <aside className="relative flex h-full w-full max-w-md animate-fade-in flex-col border-l border-slate-900/10 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0d0c16]">
-        <header className="flex items-center gap-3 border-b border-slate-900/10 px-4 py-3 dark:border-white/10">
+      <aside className="relative flex h-full w-full max-w-md animate-fade-in flex-col border-l border-line bg-overlay shadow-modal">
+        <header className="flex items-center gap-3 border-b border-line px-4 py-3">
           <OrbGlyph size={28} active={!!sending} />
           <div className="min-w-0 flex-1">
             <h2 className="font-bold">Atlas</h2>
@@ -153,7 +156,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
         </header>
 
         {confirmClear && (
-          <div className="flex items-center gap-2 border-b border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm">
+          <div className="flex items-center gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm">
             <span className="flex-1">Clear your whole conversation with Atlas?</span>
             <button className="btn-danger !px-3 !py-1.5" onClick={clearHistory}>
               Clear
@@ -194,7 +197,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
             </p>
           ) : null}
           {(pending.data ?? []).map((p) => (
-            <div key={p.id} className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <div key={p.id} className="rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm">
               <p className="font-medium">Confirm: {p.summary}?</p>
               <p className="muted mt-0.5 text-xs">This can't be undone.</p>
               <div className="mt-2 flex gap-2">
@@ -210,13 +213,13 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
         </div>
 
         <form
-          className="border-t border-slate-900/10 p-3 dark:border-white/10"
+          className="border-t border-line p-3"
           onSubmit={(e) => {
             e.preventDefault();
             send(input);
           }}
         >
-          {aiOff && <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">{status.data?.message ?? "You've used today's AI allowance. It resets at midnight UTC."}</p>}
+          {aiOff && <p className="mb-2 text-xs text-warning">{status.data?.message ?? "You've used today's AI allowance. It resets at midnight UTC."}</p>}
           <div className="flex items-end gap-2">
             <label htmlFor="atlas-input" className="sr-only">
               Message Atlas
@@ -244,7 +247,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
           </div>
           <div className="mt-2 flex items-center justify-between">
             <AiAllowance />
-            <span className="faint text-[11px]">Enter to send · Esc to close</span>
+            <span className="faint text-xs">Enter to send · Esc to close</span>
           </div>
         </form>
       </aside>
@@ -256,7 +259,7 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
 function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'assistant'; text: string; actions: AtlasAction[]; error?: string; streaming?: boolean }) {
   if (role === 'user') {
     return (
-      <div className="ml-10 rounded-2xl rounded-br-md bg-violet-600 px-3.5 py-2.5 text-sm text-white">
+      <div className="ml-10 rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-sm text-accent-ink">
         <p className="whitespace-pre-wrap break-words">{text}</p>
       </div>
     );
@@ -265,15 +268,15 @@ function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'ass
   return (
     <div className="mr-6">
       {text && (
-        <div className="rounded-2xl rounded-bl-md bg-slate-900/[0.05] px-3.5 py-2.5 dark:bg-white/[0.06]">
+        <div className="rounded-2xl rounded-bl-md bg-raised px-3.5 py-2.5">
           <Markdown text={text} />
-          {streaming && <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-cyan-400 align-middle" aria-hidden />}
+          {streaming && <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-atlas align-middle" aria-hidden />}
         </div>
       )}
       {shownActions.length > 0 && (
         <ul className="mt-1.5 space-y-1" aria-label="What Atlas did">
           {shownActions.map((a, i) => (
-            <li key={i} className={cn('flex items-start gap-1.5 text-xs', a.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600')}>
+            <li key={i} className={cn('flex items-start gap-1.5 text-xs', a.ok ? 'text-success ' : 'text-danger')}>
               <Check size={13} className="mt-0.5 shrink-0" aria-hidden /> {a.summary}
             </li>
           ))}
@@ -287,7 +290,7 @@ function Bubble({ role, text, actions, error, streaming }: { role: 'user' | 'ass
           </div>
         ))}
       {error && (
-        <p role="alert" className="mt-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-200">
+        <p role="alert" className="mt-1.5 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
           {error}
         </p>
       )}

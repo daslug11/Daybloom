@@ -2,25 +2,34 @@
 name: Daybloom
 description: A free life organiser built around a Brain Dump — capture first, organise later.
 colors:
-  violet-accent: "#7c3aed"
-  violet-accent-soft: "#8b5cf6"
-  violet-ink-dark: "#c4b5fd"
-  indigo-mid: "#6366f1"
-  blue-end: "#3b82f6"
-  pink-glow: "#ec4899"
-  atlas-cyan: "#22d3ee"
-  atlas-cyan-deep: "#0e7490"
-  ink-night: "#08070f"
-  panel-night: "#13111f"
+  canvas-dark: "#0b0b0c"
+  surface-dark: "#151517"
+  raised-dark: "#1d1d20"
+  overlay-dark: "#1a1a1d"
+  line-dark: "#2a2a2e"
+  line-strong-dark: "#3d3d43"
+  control-dark: "#6b6b73"
+  ink-dark: "#f4f4f5"
+  muted-dark: "#a8a8b0"
+  faint-dark: "#8d8d95"
+  canvas-light: "#f3f3f4"
+  surface-light: "#ffffff"
+  raised-light: "#f6f6f7"
+  line-light: "#e3e3e6"
+  line-strong-light: "#cfcfd4"
+  control-light: "#8c8c94"
+  ink-light: "#18181b"
+  muted-light: "#505058"
+  faint-light: "#66666e"
+  danger-dark: "#fb7185"
+  danger-light: "#be123c"
+  warning-dark: "#fbbf24"
+  warning-light: "#a14c06"
+  success-dark: "#4ade80"
+  success-light: "#15803d"
+  atlas-dark: "#5ee3f5"
+  atlas-light: "#0e7490"
   hud-black: "#020409"
-  paper-mist: "#f1f5f9"
-  ink-slate: "#1e293b"
-  muted-slate: "#475569"
-  faint-slate: "#64748b"
-  muted-slate-dark: "#94a3b8"
-  danger-rose: "#f43f5e"
-  caution-amber: "#f59e0b"
-  done-emerald: "#059669"
 typography:
   display:
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
@@ -30,16 +39,15 @@ typography:
     letterSpacing: "-0.025em"
   headline:
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.875rem"
-    fontWeight: 800
-    lineHeight: 1.2
-    letterSpacing: "-0.025em"
+    fontSize: "1.75rem"
+    fontWeight: 600
+    lineHeight: 1.29
+    letterSpacing: "-0.02em"
   title:
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.875rem"
+    fontSize: "1rem"
     fontWeight: 600
-    lineHeight: 1.25
-    letterSpacing: "0.025em"
+    lineHeight: 1.4
   body:
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
@@ -48,25 +56,17 @@ typography:
   label:
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.75rem"
-    fontWeight: 600
-    lineHeight: 1.33
-    letterSpacing: "0.05em"
-  micro:
-    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "11px"
     fontWeight: 500
-    lineHeight: 1.3
+    lineHeight: 1.33
   mono:
-    fontFamily: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace"
-    fontSize: "0.875rem"
-    fontWeight: 300
-    lineHeight: 1.6
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    fontSize: "0.75rem"
+    fontWeight: 400
+    lineHeight: 1.5
 rounded:
-  sm: "6px"
-  md: "8px"
-  lg: "12px"
-  xl: "16px"
-  2xl: "24px"
+  control: "10px"
+  card: "14px"
+  sheet: "20px"
   full: "9999px"
 spacing:
   xs: "4px"
@@ -77,215 +77,206 @@ spacing:
   2xl: "24px"
 components:
   button-primary:
-    backgroundColor: "{colors.violet-accent}"
-    textColor: "#ffffff"
-    rounded: "{rounded.lg}"
-    padding: "10px 16px"
-    typography: "{typography.title}"
+    backgroundColor: "{colors.ink-dark}"
+    textColor: "{colors.canvas-dark}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
   button-ghost:
-    backgroundColor: "rgba(255,255,255,0.05)"
-    textColor: "{colors.ink-slate}"
-    rounded: "{rounded.lg}"
-    padding: "10px 16px"
+    backgroundColor: "{colors.surface-dark}"
+    textColor: "{colors.ink-dark}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
   button-ai:
-    backgroundColor: "rgba(139,92,246,0.10)"
-    textColor: "{colors.violet-ink-dark}"
-    rounded: "{rounded.lg}"
-    padding: "10px 16px"
+    backgroundColor: "rgba(94,227,245,0.10)"
+    textColor: "{colors.atlas-dark}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
   button-danger:
-    backgroundColor: "rgba(244,63,94,0.15)"
-    textColor: "{colors.danger-rose}"
-    rounded: "{rounded.lg}"
-    padding: "10px 16px"
+    backgroundColor: "rgba(251,113,133,0.10)"
+    textColor: "{colors.danger-dark}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
   input:
-    backgroundColor: "rgba(255,255,255,0.05)"
-    textColor: "{colors.ink-slate}"
-    rounded: "{rounded.lg}"
+    backgroundColor: "{colors.surface-dark}"
+    textColor: "{colors.ink-dark}"
+    rounded: "{rounded.control}"
     padding: "10px 14px"
   chip-on:
-    backgroundColor: "rgba(139,92,246,0.20)"
-    textColor: "{colors.violet-ink-dark}"
+    backgroundColor: "{colors.ink-dark}"
+    textColor: "{colors.canvas-dark}"
     rounded: "{rounded.full}"
     padding: "4px 12px"
   chip-off:
-    backgroundColor: "rgba(255,255,255,0.05)"
-    textColor: "{colors.muted-slate-dark}"
+    backgroundColor: "{colors.surface-dark}"
+    textColor: "{colors.muted-dark}"
     rounded: "{rounded.full}"
     padding: "4px 12px"
   card:
-    backgroundColor: "rgba(255,255,255,0.05)"
-    rounded: "{rounded.xl}"
+    backgroundColor: "{colors.surface-dark}"
+    rounded: "{rounded.card}"
     padding: "20px"
   modal:
-    backgroundColor: "{colors.panel-night}"
-    rounded: "{rounded.2xl}"
+    backgroundColor: "{colors.overlay-dark}"
+    rounded: "{rounded.sheet}"
     padding: "24px"
 ---
-
 # Design System: Daybloom
 
-<!-- Captured from the code on 2026-10-29 (Phase 0 baseline). Tokens above describe what ships today.
-     "Direction" notes are the owner's confirmed choices for the foundations phase; they are not implemented yet. -->
+<!-- Updated 2026-10-30 (Phase 2, foundations). Tokens above describe what ships: neutral ink emphasis,
+     semantic colour tokens in src/index.css, mapped to Tailwind in tailwind.config.js. -->
 
 ## Overview
 
 **Creative North Star: "The Clear Head"**
 
-Daybloom exists to get thoughts out of a student's head and into a clear, sorted place. The interface should feel like that moment: nothing competing for attention, the next action obvious, everything else quiet. The confirmed character is **crisp, precise and quick**: a tool you open between lectures, use for thirty seconds and close, never a mood board. Surfaces should feel **tactile and confident**: solid, clearly separated, with buttons that look and feel pressable.
+Daybloom exists to get thoughts out of a student's head and into a clear, sorted place. The interface should feel like that moment: nothing competing for attention, the next action obvious, everything else quiet. The character is **crisp, precise and quick**: a tool you open between lectures, use for thirty seconds and close. Surfaces are **tactile and confident**: solid, clearly separated, with buttons that look and feel pressable.
 
-Today's implementation is dark-first and built on translucent "glass" cards over a violet-tinted near-black with faint violet, blue and pink glows. Violet drives almost everything that carries emphasis, often as a violet→indigo→blue (buttons) or violet→blue→pink (headings, logo) gradient. Cyan belongs to Atlas. The **voice HUD** is the one deliberately bold, theatrical surface: near-black, scanlines, a cyan orb and rotating rings.
-
-**Direction (confirmed by the owner, to implement in the foundations phase):**
-- **Neutral, near-white emphasis instead of violet.** Primary actions, selection and focus move toward white and neutral greys; violet, purple and multi-hue gradients leave the everyday UI.
-- **Cyan means Atlas, and only Atlas.** Orb, plan cards, AI result panels and the HUD.
-- **A neutral (untinted) near-black** for the dark theme, with no background glows.
-- **Tactile surfaces:** solid fills and clear, shallow shadows in place of blur-heavy glass.
-- **The voice HUD stays the single showpiece.** Everything else is calm, clear and focused.
+The system is dark-first on an untinted near-black, with a complete light theme. Emphasis is **ink**: near-white in dark mode, near-black in light mode. There is no brand hue. Colour appears only when it means something: priority and status (danger, warning, success), a calendar's identity, or Atlas (cyan). The **voice HUD** is the one deliberately bold, theatrical surface and keeps its own palette.
 
 **Key Characteristics:**
-- Dark-first, with a complete light theme.
-- One sans family (Inter) for everything outside the HUD; monospace only in the HUD.
+- Dark-first, light theme complete; both themes pass WCAG AA for every text role on every surface.
+- One sans family (Inter) everywhere outside the HUD; the system monospace for keyboard hints and the HUD.
+- Solid surfaces with shallow shadows; no blur, no glass, no gradients, no glows.
 - Dense, card-based app screens (Operate mode); a marketing landing page (Persuade mode).
-- Colour reserved for meaning: priority, status, calendar identity and Atlas.
 
 ## Colors
 
-Today the palette is a violet-led gradient brand on a tinted near-black, with semantic status colours and a reserved cyan for Atlas.
+Every colour is a CSS variable holding RGB channels (`--canvas: 11 11 12`), redefined under `.dark`, and exposed to Tailwind as `rgb(var(--x) / <alpha-value>)`, so `bg-ink/10` works in both themes. Components use roles, never raw palette names.
 
-### Primary
-- **Brand Violet** (`violet-accent`): primary buttons (as the start of a gradient), active nav item tint, selected chips, focus rings, links, inbox badge, AI buttons. Used far beyond 10% of most screens today. *Direction: replace with neutral near-white emphasis.*
-- **Soft Violet / Violet Ink** (`violet-accent-soft`, `violet-ink-dark`): progress bars, light-on-dark link and chip text.
+### Surfaces
+- **Canvas** (`canvas`): page background.
+- **Surface** (`surface`): cards, inputs, ghost buttons.
+- **Raised** (`raised`): hover fills, inset wells, user-neutral bubbles.
+- **Overlay** (`overlay`): modals, menus, the Atlas panel, the command palette.
 
-### Secondary
-- **Gradient Companions** (`indigo-mid`, `blue-end`, `pink-glow`): the second and third stops of the button and heading gradients, and the pink "now" line in the Planner. *Direction: remove from everyday UI; the now-line keeps a single non-violet signal colour.*
+### Lines
+- **Line** (`line`): hairline borders between and around surfaces.
+- **Line strong** (`line-strong`): chip and ghost-button borders, hover borders.
+- **Control** (`control`): input and switch outlines (3:1 against their surface).
 
-### Tertiary
-- **Atlas Cyan** (`atlas-cyan`, `atlas-cyan-deep`): the Atlas orb, plan cards, repeating blocks and the voice HUD.
+### Text
+- **Ink** (`ink`): primary text and the emphasis colour (primary buttons, selected chips, badges, progress).
+- **Muted** (`muted`): secondary text. ≥4.5:1 on every surface.
+- **Faint** (`faint`): tertiary text (timestamps, hints). ≥4.5:1 on every surface.
 
-### Neutral
-- **Night Ink** (`ink-night`): dark theme page background. *Direction: neutral near-black, no tint, no glows.*
-- **Panel Night** (`panel-night`): modal and dialog surface in dark mode.
-- **HUD Black** (`hud-black`): voice HUD background only.
-- **Paper Mist** (`paper-mist`): light theme page background.
-- **Ink Slate** (`ink-slate`): light theme body text.
-- **Muted Slate / Faint Slate** (`muted-slate`, `faint-slate`, `muted-slate-dark`): secondary and tertiary text. The faint tier fails WCAG AA on dark surfaces today.
+### Emphasis
+- **Accent** (`accent`, `accent-ink`): the same as ink and its inverse. Primary buttons, switches on.
 
-### Semantic
-- **Danger Rose** (`danger-rose`): high priority, overdue, destructive actions, errors.
-- **Caution Amber** (`caution-amber`): medium priority, warnings, pending confirmations.
-- **Done Emerald** (`done-emerald`): completed states and the "all done" moments.
+### Meaning
+- **Danger** (`danger`): high priority, overdue, destructive actions, errors, the Planner's now-line.
+- **Warning** (`warning`): medium priority, pinned stars, pending confirmations.
+- **Success** (`success`): low priority, completed states, reached goals.
+- **Atlas** (`atlas`): cyan. Atlas, AI buttons and plan cards only.
+- **Calendar colours** (`CALENDAR_COLORS` in `src/lib/calendars.ts`): eight solid hues (Grape, Ocean, Bubblegum, Sunset, Mint, Plum, Graphite, Ember) used only to identify a calendar: a 15% tint tile with a 35% inset ring, and the border of its events in the Planner.
 
 ### Named Rules
-**The Atlas Colour Rule.** Cyan appears only where Atlas or AI is present. Anything else that is cyan today (including manual repeating blocks) is a bug to fix.
+**The Atlas Colour Rule.** Cyan appears only where Atlas or AI is present. Manual repeating blocks, the time chip and type badges are neutral.
 
 **The Meaning-Only Rule.** Outside the voice HUD, colour must mean something: priority, status, calendar identity or Atlas. Decorative colour is removed.
 
 ## Typography
 
-**Display / Body Font:** Inter (400–900, loaded from Google Fonts), falling back to the system UI font.
-**Mono Font:** JetBrains Mono is named in the config but **not loaded**, so the voice HUD falls back to the system monospace today.
+**Font:** Inter (Google Fonts), with `cv11` and `ss01` features on. **Mono:** the system monospace (nothing to download).
 
-**Character:** One workhorse sans in many weights. Hierarchy comes from weight and size; gradient text on page titles adds decoration rather than hierarchy.
+Headings use `text-wrap: balance`; paragraphs use `text-wrap: pretty`.
 
 ### Hierarchy
 - **Display** (800, 36px → 60px, 1.0): landing hero only.
-- **Headline** (800, 24px → 30px, tight tracking): page titles (rendered as gradient text today) and the dashboard greeting.
-- **Title** (600, 14px, slight tracking): card titles.
-- **Body** (400, 14px, 1.5): almost all app text. Most-used size by a wide margin.
-- **Label** (600, 12px, uppercase, wide tracking): form labels and small section kickers.
-- **Micro** (500, 11px and 10px): chips, timestamps, Planner block text and hints. Used 53 times; the 10px tier is below a comfortable reading size.
+- **Headline** (`.page-title`: 600, 24px → 28px, −0.02em): page titles and the dashboard greeting. Solid ink.
+- **Title** (600, 16px): card and dialog titles (`text-lg` in dialogs).
+- **Body** (400, 14px, 1.5): almost all app text.
+- **Label** (`.label`: 500, 12px, muted, sentence case): form labels and small section headings.
+- **Small** (12px): chips, timestamps, Planner block text. Nothing is smaller than 12px.
+
+Inputs use 16px text on phones (stops iOS zooming on focus) and 14px from 640px up.
 
 ### Named Rules
-**The No-Ornament Type Rule.** Headings are solid colour. Hierarchy comes from size and weight, never gradients. (Today: 77 gradient-text findings per theme.)
+**The No-Ornament Type Rule.** Headings are solid colour. Hierarchy comes from size and weight, never gradients, and labels are never uppercase-tracked.
 
 ## Layout
 
-- **App shell:** a 240px left sidebar (72px collapsed) from 768px up; on phones, a bottom tab bar (Today, Brain Dump, Tasks, Planner, More), with a sticky top bar on both. Content sits in a centred column, padded 16px on phones and 24–32px on desktop.
+- **App shell:** a 240px left sidebar (72px collapsed) from 768px up; on phones, a bottom tab bar (Today, Brain Dump, Tasks, Planner, More), with a top bar on both. Content sits in a centred column, padded 16px on phones and 24–32px on desktop.
 - **Pages:** a page header (title, one-line purpose, actions) followed by cards in a one-column (phone) or two-column (≥1024px) grid with 16px gaps.
-- **Rhythm:** a 4px base step. Common steps are 8px and 12px gaps and 20px card padding; page headers have 24px below.
-- **Planner:** 15-minute rows at 14px each, with a 56px hour gutter. The week view needs at least 760px and scrolls horizontally below that.
-- **Breakpoints:** Tailwind defaults: 640px (sm), 768px (md, sidebar appears), 1024px (lg, two-column grids).
+- **Rhythm:** a 4px base step. Common steps are 8px and 12px gaps and 20px card padding.
+- **Planner:** 15-minute rows at 14px each, with a 56px hour gutter.
+- **Breakpoints:** 640px (sm), 768px (md, sidebar appears), 1024px (lg, two-column grids).
 
 ## Elevation & Depth
 
-Depth today comes mostly from **translucency and blur** (`backdrop-blur-xl` on cards, the top bar and the sidebar), with thin borders. Shadows are rare and inconsistent.
+Depth comes from solid surface steps (canvas → surface → raised / overlay), hairline borders and one shadow scale. Shadows are CSS variables so dark mode can use deeper, blacker shadows plus a 1px top highlight.
 
 ### Shadow Vocabulary
-- **Violet button glow** (`0 8px 30px -8px rgba(124,58,237,0.7)`): primary buttons. Decorative.
-- **Card lift (light theme)** (`shadow-sm`): glass cards in light mode only.
-- **Overlay** (`shadow-2xl`): modals, the Atlas panel and toasts.
-- **Now-line glow** (`0 0 8px 1px rgba(236,72,153,0.7)`): the Planner's current-time line.
+- **card** (`shadow-card`): cards, ghost buttons, Planner blocks.
+- **button** (`shadow-button`): primary buttons; an inset top highlight makes them feel pressable.
+- **pop** (`shadow-pop`): menus, toasts, the floating capture button, the active Planner block.
+- **modal** (`shadow-modal`): dialogs, the Atlas panel, the command palette, the tour card.
 
-*Direction: replace blur-based glass with solid surfaces and one consistent, shallow shadow scale. Remove the coloured glows.*
+Backdrops are a plain black scrim (60% for dialogs, 40% for the Atlas side panel), never blurred.
 
 ## Shapes
 
-Soft, consistently rounded geometry:
-- Pills for chips, badges and avatars (`full`).
-- 12px for buttons, inputs and list rows (`lg`).
-- 16px for cards (`xl`).
-- 24px for modals (`2xl`).
-- 8px for Planner blocks (`md`).
-- 6px for kbd keys (`sm`).
+- **control** (10px): buttons, inputs, icon buttons, small tiles.
+- **card** (14px): cards, menus, toasts.
+- **sheet** (20px): dialogs (top corners only on phones, where they sit as bottom sheets).
+- **full**: chips, badges, avatars, switches.
 
-Borders are hairline: 10% ink in light, 10% white in dark.
+## Motion
+
+Tokens (`tailwind.config.js`), from plan 001:
+- **Easing:** `ease-out` = `cubic-bezier(0.23, 1, 0.32, 1)` (default for UI), `ease-in-out` = `cubic-bezier(0.77, 0, 0.175, 1)` (things moving on screen), `ease-drawer` = `cubic-bezier(0.32, 0.72, 0, 1)` (sheets and panels).
+- **Duration:** `duration-press` 160ms (button press), `duration-fast` 150ms (hover, colour), `duration-base` 200ms (enter/exit).
+- **Press feedback:** every `.btn` scales to 0.97 while pressed.
+- `prefers-reduced-motion` is respected.
 
 ## Components
 
 ### Buttons
-Today: soft and glowing. Direction: tactile and confident.
-- **Shape:** gently rounded (12px).
-- **Primary:** a violet→indigo→blue gradient with white text and a violet glow; brightens on hover; scales to 97% when pressed.
-- **Ghost:** a translucent fill with a hairline border.
-- **Danger:** a rose-tinted fill with rose text.
-- **AI (✨):** a violet-tinted fill, violet border and sparkle icon. It shows the remaining allowance in its tooltip and disables itself at zero.
-- **Icon button:** 36px square, hover tint only.
+- **Primary** (`.btn-primary`): ink fill, inverse text, button shadow. One per area.
+- **Ghost** (`.btn-ghost`): surface fill, strong hairline border, card shadow.
+- **Danger** (`.btn-danger`): danger tint and text.
+- **AI (✨)** (`.btn-ai`): cyan tint, border and text. Shows the remaining allowance in its tooltip and disables itself at zero.
+- **Icon button** (`.icon-btn`): 36px square, muted icon, raised fill on hover.
+- All are at least 40px tall.
 
 ### Chips
-- **Style:** pill, 12px medium text. Off: neutral translucent fill. On: violet tint with violet text.
-- **Use:** filters, focus areas, priority and date chips on tasks (coloured by meaning).
+- **Off** (`.chip-off`): surface fill, strong hairline, muted text. **On** (`.chip-on`): ink fill, inverse text.
+- Task chips (date, time, duration, tags) are neutral; only priority carries colour.
 
 ### Cards / Containers
-- **Corner Style:** 16px.
-- **Background:** translucent white (60% in light, 5% in dark) with backdrop blur and a hairline border.
-- **Internal Padding:** 20px. Every card fades in (250ms, 4px rise) on mount.
-- **Nesting:** cards inside cards are common (the detector flags 62 nested cards in dark mode).
+- `.card`: 14px corners, surface fill, hairline border, card shadow. `.card-hover` strengthens the border on hover.
 
 ### Inputs / Fields
-- **Style:** a translucent fill with a hairline border, 12px radius and 14px text.
-- **Focus:** a violet border plus a soft violet ring.
+- `.input`: surface fill, control outline at 70%, 10px corners. Focus turns the border to ink with a soft ink ring.
+
+### Overlays
+- **Dialogs** (`Modal`), **menus** (`Menu`, rendered in a portal), the **Atlas panel**, the **command palette**, the **tour** and the **voice HUD** all register with one layer stack (`useOverlay`): Escape closes only the top-most layer, Tab stays inside it, and focus returns to the opener on close.
+- **Toasts** live in a polite live region, stay 5s (8s with an action), pause on hover or focus, and have a close button.
 
 ### Navigation
-- **Sidebar:** icon plus label rows. The active row has a violet tint and ring. The Brain Dump row shows a violet inbox-count badge.
-- **Mobile:** a bottom tab bar with 4 primary tabs plus "More", which opens a sheet.
-- **Top bar:** capture field (N), Jump to (⌘K), AI allowance pill, theme toggle and account menu.
+- **Sidebar:** icon plus label rows; the active row is a raised fill with a hairline ring. The Brain Dump row shows an ink inbox-count badge.
+- **Mobile:** a bottom tab bar with 4 primary tabs plus "More".
+- **Top bar:** capture field (N), Jump to (Ctrl/⌘K), AI allowance pill, theme toggle and account menu.
 
 ### Atlas Orb and Panel (signature)
-- **Orb:** a cyan glowing orb button, fixed at the bottom right above the capture "+". It opens a slide-over panel that is 448px wide.
-- **Panel:** user messages in violet bubbles and Atlas messages in neutral bubbles, with "What Atlas did" action lines, confirm cards and plan cards.
+- **Orb:** a cyan orb button, fixed bottom right above the capture "+". Opens a 448px side panel.
+- **Panel:** user messages in ink bubbles, Atlas messages in raised bubbles, "What Atlas did" lines in success/danger, plan cards with a cyan hairline.
 
 ### Voice HUD (signature, the one showpiece)
-Full-screen, near-black and monospace:
-- A grid and scanlines.
-- A cyan radial orb inside three counter-rotating rings, with tick marks and segmented arcs.
-- A waveform canvas.
-- Corner readouts: time, date, next event, tasks left and AI uses left.
-- A boot line typed out letter by letter.
-
-It respects reduced motion.
+Full-screen, near-black and monospace: grid and scanlines, a cyan radial orb inside counter-rotating rings, a waveform, corner readouts and a typed boot line. It keeps its own cyan palette and is excluded from the neutral rules above. It respects reduced motion.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep the dark theme as the default and keep the light theme complete.
-- **Do** keep every page's header as title + one plain sentence saying what the page is for.
-- **Do** use cyan only for Atlas and AI (The Atlas Colour Rule).
-- **Do** respect `prefers-reduced-motion`: the global rule in `index.css` reduces all motion to 0.01ms.
-- **Do** keep the voice HUD as the single bold surface.
+- **Do** use semantic roles (`bg-surface`, `text-muted`, `border-line`) and never raw palette classes.
+- **Do** keep dark as the default and the light theme complete; check contrast in both.
+- **Do** use cyan only for Atlas and AI.
+- **Do** keep every page header as title + one plain sentence saying what the page is for.
+- **Do** register any new overlay with `useOverlay`.
+- **Do** respect `prefers-reduced-motion`.
 
 ### Don't:
-- **Don't** use gradient text, gradient buttons or coloured glows in the everyday UI (confirmed direction).
-- **Don't** add violet or purple emphasis; emphasis moves to neutral near-white (confirmed direction).
-- **Don't** tint the dark background or add background glows (confirmed direction).
-- **Don't** use 10px text for anything a user needs to read.
+- **Don't** use gradient text, gradient buttons, coloured glows or backdrop blur in the everyday UI.
+- **Don't** add violet or any other brand hue; emphasis is ink.
+- **Don't** tint the dark background or add background glows.
+- **Don't** use text smaller than 12px or uppercase-tracked labels.
 - **Don't** invent numbers, testimonials or "insights" in any design (PRODUCT.md commitment).

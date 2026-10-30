@@ -13,7 +13,7 @@ interface CardProps {
 
 export function Card({ children, className, interactive, as: Tag = 'div', ...rest }: CardProps) {
   return (
-    <Tag className={cn('glass relative animate-fade-in p-5', interactive && 'glass-hover', className)} {...rest}>
+    <Tag className={cn('card relative animate-fade-in p-5', interactive && 'card-hover', className)} {...rest}>
       {children}
     </Tag>
   );
@@ -22,7 +22,7 @@ export function Card({ children, className, interactive, as: Tag = 'div', ...res
 export function CardTitle({ icon, children, action, id }: { icon?: ReactNode; children: ReactNode; action?: ReactNode; id?: string }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-2">
-      <h2 id={id} className="flex min-w-0 items-center gap-2 text-sm font-semibold tracking-wide text-slate-800 dark:text-slate-100">
+      <h2 id={id} className="flex min-w-0 items-center gap-2 text-sm font-semibold tracking-wide text-ink">
         {icon}
         <span className="truncate">{children}</span>
       </h2>

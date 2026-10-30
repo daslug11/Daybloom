@@ -32,7 +32,7 @@ function inline(text: string, key: string): ReactNode[] {
           {label}
         </a>,
       );
-    } else if (m[6]) out.push(<span key={k} className="font-medium text-pink-700 dark:text-pink-300">{m[6]}</span>);
+    } else if (m[6]) out.push(<span key={k} className="font-medium text-muted">{m[6]}</span>);
     else if (m[7]) {
       out.push(
         <a key={k} href={m[7]} target="_blank" rel="noopener noreferrer nofollow" onClick={(e) => e.stopPropagation()}>
@@ -83,7 +83,7 @@ export function Markdown({ text, className, onToggleCheck, maxLines }: Props) {
             disabled={!onToggleCheck}
             onChange={() => onToggleCheck?.(idx)}
             onClick={(e) => e.stopPropagation()}
-            className="mt-1 h-3.5 w-3.5 shrink-0 accent-violet-600"
+            className="mt-1 h-3.5 w-3.5 shrink-0 accent-ink"
             aria-label={m[3]}
           />
           <span className={cn(done && 'faint line-through')}>{inline(m[3], `l${idx}`)}</span>

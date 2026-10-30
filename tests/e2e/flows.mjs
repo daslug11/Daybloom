@@ -661,6 +661,62 @@ await flow('plans-voice', browser, {}, async (page) => {
   assert(await hud.isVisible(), 'Escape in the editor closed voice mode');
 });
 
+await flow('overlays', browser, {}, async (page) => {
+  const user = await makeUser('Ola');
+  await logIn(page, user);
+  // Toasts are announced through a polite live region.
+  await page.keyboard.press('n');
+  await page.locator('#capture-text').fill('Start running again');
+  await page.keyboard.press('Control+Enter');
+  const live = page.locator('[role="status"][aria-live="polite"]');
+  await live.getByText('Saved to your Brain Dump inbox').waitFor();
+  // Note menus open above neighbouring cards and their items are clickable (X2).
+  await page.goto(`${BASE}/app/brain-dump`);
+  const note = page.getByRole('article').filter({ hasText: 'Start running again' });
+  await note.getByRole('button', { name: 'Convert' }).click();
+  const menu = page.getByRole('menu', { name: 'Convert' });
+  await menu.waitFor();
+  await page.keyboard.press('ArrowDown');
+  await menu.getByRole('menuitem', { name: /Make habit/ }).click();
+  const habitDialog = page.getByRole('dialog').last();
+  await habitDialog.waitFor();
+  await page.keyboard.press('Escape');
+  await habitDialog.waitFor({ state: 'detached' });
+  // Typing in a dialog keeps focus and every character (X1).
+  await page.goto(`${BASE}/app/tasks`);
+  await page.getByPlaceholder(/Add a task/i).first().fill('Draft essay');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Open task Draft essay' }).click();
+  const editor = page.getByRole('dialog', { name: 'Task' });
+  await editor.waitFor();
+  const title = editor.locator('#task-title');
+  await title.fill('');
+  await title.pressSequentially('Draft the history essay', { delay: 15 });
+  const details = editor.locator('#task-details');
+  await details.click();
+  await details.pressSequentially('Intro, three arguments, conclusion', { delay: 15 });
+  assert((await title.inputValue()) === 'Draft the history essay', `title lost characters: ${await title.inputValue()}`);
+  assert((await details.inputValue()) === 'Intro, three arguments, conclusion', 'details lost characters');
+  // Tab stays inside the dialog.
+  for (let i = 0; i < 30; i++) await page.keyboard.press('Tab');
+  assert(await editor.evaluate((el) => el.contains(document.activeElement)), 'focus escaped the dialog');
+  // Escape closes only the top layer (X3): the palette over nothing, then Atlas stays when a dialog above it closes.
+  await page.keyboard.press('Escape');
+  await editor.waitFor({ state: 'detached' });
+  await page.getByText('Draft the history essay').first().waitFor();
+  await page.keyboard.press('Control+j');
+  const panel = page.getByRole('dialog', { name: 'Atlas assistant' });
+  await panel.waitFor();
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: /command|jump/i });
+  await palette.waitFor();
+  await page.keyboard.press('Escape');
+  await palette.waitFor({ state: 'detached' });
+  assert(await panel.isVisible(), 'Escape in the palette also closed Atlas');
+  await page.keyboard.press('Escape');
+  await panel.waitFor({ state: 'detached' });
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

@@ -50,13 +50,13 @@ export function GettingStarted() {
       >
         Getting started · {done}/{items.length}
       </CardTitle>
-      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-900/10 dark:bg-white/10" aria-hidden>
-        <div className="h-full bg-violet-600 transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
+      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+        <div className="h-full bg-accent transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
       </div>
       <ul className="grid gap-1.5 sm:grid-cols-2">
         {items.map((i) => (
           <li key={i.label} className="flex items-center gap-2 text-sm">
-            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', i.done ? 'border-transparent bg-emerald-600 text-white' : 'border-slate-400')} aria-hidden>
+            <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', i.done ? 'border-transparent bg-success text-canvas' : 'border-control')} aria-hidden>
               {i.done && <Check size={12} strokeWidth={3} />}
             </span>
             <span className={cn('flex-1', i.done && 'faint line-through')}>

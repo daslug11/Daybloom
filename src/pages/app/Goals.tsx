@@ -120,10 +120,15 @@ export default function Goals() {
           A goal here is something measurable: a number you’re working towards, like “Run 100 km” or “Save 2,000”. ✨ Make a plan can break it into milestones.
         </EmptyState>
       )}
-      {active.length > 0 && <div className="grid gap-3 md:grid-cols-2">{active.map(renderGoal)}</div>}
+      {active.length > 0 && (
+        <>
+          <h2 className="sr-only">Active goals</h2>
+          <div className="grid gap-3 md:grid-cols-2">{active.map(renderGoal)}</div>
+        </>
+      )}
       {completed.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-bold">Completed 🏆</h2>
+          <h2 className="mb-3 text-sm font-semibold">Completed 🏆</h2>
           <div className="grid gap-3 md:grid-cols-2">{completed.map(renderGoal)}</div>
         </section>
       )}

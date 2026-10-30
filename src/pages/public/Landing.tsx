@@ -65,9 +65,9 @@ function Feature({ id, eyebrow, title, children, preview, flip }: { id: string; 
   return (
     <section id={id} className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-14 sm:px-6 md:grid-cols-2 md:gap-12">
       <div className={flip ? 'md:order-2' : undefined}>
-        <p className="text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-300">{eyebrow}</p>
-        <h2 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">{title}</h2>
-        <div className="muted mt-3 space-y-3 text-[15px] leading-relaxed">{children}</div>
+        <h2 className="text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">{eyebrow}</h2>
+        <p className="mt-2 text-lg font-medium text-ink">{title}</p>
+        <div className="muted mt-3 max-w-[60ch] space-y-3 text-base leading-relaxed">{children}</div>
       </div>
       <div className={flip ? 'md:order-1' : undefined} aria-label={`${eyebrow} preview`} role="img">
         <div className="pointer-events-none select-none" aria-hidden>
@@ -106,7 +106,7 @@ export default function Landing() {
     <PublicLayout>
       <section className="mx-auto max-w-6xl px-4 pb-10 pt-16 text-center sm:px-6 sm:pt-24">
         <h1 className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl">
-          Get it out of your head. <span className="gradient-text">Get it done.</span>
+          Get it out of your head. <span className="text-muted">Get it done.</span>
         </h1>
         <p className="muted mx-auto mt-5 max-w-2xl text-lg">
           Daybloom is a personal organiser built around a Brain Dump: capture every thought in one place, then turn it into tasks, time on your calendar, habits and goals. An assistant called Atlas can help — by chat or by voice.
@@ -150,10 +150,10 @@ export default function Landing() {
                 <div className="flex gap-3 text-xs">
                   <span className="faint w-12 pt-1 tabular-nums">2 PM</span>
                   <div className="flex-1 space-y-1.5">
-                    <div className="striped flex items-center gap-1 rounded-lg border border-slate-400/30 px-2 py-1.5">
+                    <div className="striped flex items-center gap-1 rounded-lg border border-line-strong px-2 py-1.5">
                       <Lock size={11} /> Team sync · from your calendar
                     </div>
-                    <div className="rounded-lg bg-violet-600 px-2 py-1.5 font-medium text-white">Send the quarterly report · 1h</div>
+                    <div className="rounded-lg bg-accent px-2 py-1.5 font-medium text-accent-ink">Send the quarterly report · 1h</div>
                   </div>
                 </div>
               </Card>
@@ -214,7 +214,7 @@ export default function Landing() {
                 { label: 'Focus time', value: '6h 15m', sub: 'From finished blocks' },
               ].map((t) => (
                 <Card key={t.label} className="!p-4">
-                  <p className="muted text-[11px] font-semibold uppercase tracking-wider">{t.label}</p>
+                  <p className="muted text-xs font-medium">{t.label}</p>
                   <p className="mt-1 text-2xl font-extrabold tabular-nums">{t.value}</p>
                   <p className="muted text-xs">{t.sub}</p>
                 </Card>
@@ -233,14 +233,14 @@ export default function Landing() {
           title="An assistant that can actually do things"
           preview={
             <Card className="space-y-3 !p-4 text-sm">
-              <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-violet-600 px-3 py-2 text-white">Move the report to tomorrow at 10 and add “buy candles” to my list.</div>
+              <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-accent-ink">Move the report to tomorrow at 10 and add “buy candles” to my list.</div>
               <div className="flex gap-2">
                 <OrbGlyph size={24} />
                 <div className="max-w-[85%] space-y-2">
-                  <div className="rounded-2xl rounded-tl-md bg-slate-900/5 px-3 py-2 dark:bg-white/[0.06]">Done. The report is now tomorrow at 10:00, and “Buy candles” is on your list. Anything else, Alex?</div>
-                  <div className="faint flex flex-wrap gap-1.5 text-[11px]">
-                    <span className="rounded-full border border-cyan-500/30 px-2 py-0.5">✓ Rescheduled task</span>
-                    <span className="rounded-full border border-cyan-500/30 px-2 py-0.5">✓ Added task</span>
+                  <div className="rounded-2xl rounded-tl-md bg-raised px-3 py-2">Done. The report is now tomorrow at 10:00, and “Buy candles” is on your list. Anything else, Alex?</div>
+                  <div className="faint flex flex-wrap gap-1.5 text-xs">
+                    <span className="rounded-full border border-atlas/30 px-2 py-0.5">✓ Rescheduled task</span>
+                    <span className="rounded-full border border-atlas/30 px-2 py-0.5">✓ Added task</span>
                   </div>
                 </div>
               </div>
@@ -265,7 +265,7 @@ export default function Landing() {
           ].map((s) => (
             <li key={s.n}>
               <Card className="h-full">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-sm font-bold text-white">{s.n}</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-ink">{s.n}</span>
                 <h3 className="mt-3 font-bold">{s.title}</h3>
                 <p className="muted mt-1 text-sm">{s.body}</p>
               </Card>
@@ -278,7 +278,7 @@ export default function Landing() {
         <h2 className="text-center text-2xl font-extrabold tracking-tight sm:text-3xl">Questions</h2>
         <div className="mt-8 space-y-2">
           {FAQ.map((f) => (
-            <details key={f.q} className="glass group p-4">
+            <details key={f.q} className="card group p-4">
               <summary className="cursor-pointer list-none font-semibold marker:hidden">
                 <span className="flex items-center justify-between gap-3">
                   {f.q}

@@ -23,21 +23,21 @@ export function SyncStatusPill({ className }: { className?: string }) {
       aria-live="polite"
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1 text-xs font-medium',
-        bad ? 'border-rose-500/30 bg-rose-500/10' : 'border-slate-900/10 bg-white/60 dark:border-white/10 dark:bg-white/5',
+        bad ? 'border-danger/30 bg-danger/10' : 'border-line bg-surface',
         className,
       )}
     >
       {syncing ? (
         <>
-          <Loader2 size={13} className="animate-spin text-violet-500" aria-hidden /> Syncing {syncedCalendars.length} calendar{syncedCalendars.length === 1 ? '' : 's'}…
+          <Loader2 size={13} className="animate-spin text-ink" aria-hidden /> Syncing {syncedCalendars.length} calendar{syncedCalendars.length === 1 ? '' : 's'}…
         </>
       ) : bad ? (
-        <Link to="/app/calendars" className="flex items-center gap-1.5 text-rose-700 hover:underline dark:text-rose-300">
+        <Link to="/app/calendars" className="flex items-center gap-1.5 text-danger hover:underline">
           <AlertTriangle size={13} aria-hidden /> {requestError ? 'Calendar sync failed' : `${errorCount} calendar${errorCount === 1 ? '' : 's'} failed to sync`}
         </Link>
       ) : (
         <>
-          <CheckCircle2 size={13} className="text-emerald-600" aria-hidden /> Synced {lastSync ? timeAgo(lastSync) : ''} · {events.length} event{events.length === 1 ? '' : 's'}
+          <CheckCircle2 size={13} className="text-success" aria-hidden /> Synced {lastSync ? timeAgo(lastSync) : ''} · {events.length} event{events.length === 1 ? '' : 's'}
         </>
       )}
       <button onClick={() => sync()} disabled={syncing} className="icon-btn h-6 w-6 rounded-full" aria-label="Sync calendars now" title="Sync now">

@@ -8,6 +8,7 @@ import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useProfile, useUpdateProfile } from '../../hooks/useProfile';
 import { useTimer } from '../../hooks/useTimer';
 import { NAV } from '../../lib/nav';
+import { useOverlay } from '../../hooks/useOverlay';
 import { cn } from '../../lib/utils';
 
 interface Command {
@@ -29,6 +30,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const update = useUpdateProfile();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const panel = useRef<HTMLDivElement>(null);
+  useOverlay({ open, onEscape: onClose, container: panel });
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,10 +105,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   let lastGroup = '';
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[12vh]">
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div role="dialog" aria-modal="true" aria-label="Command palette" className="relative w-full max-w-xl animate-fade-in overflow-hidden rounded-2xl border border-slate-900/10 bg-white shadow-2xl dark:border-white/10 dark:bg-[#13111f]">
-        <div className="flex items-center gap-3 border-b border-slate-900/10 px-4 dark:border-white/10">
-          <Search size={18} className="text-violet-500" aria-hidden />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden />
+      <div ref={panel} role="dialog" aria-modal="true" aria-label="Command palette" className="relative w-full max-w-xl animate-fade-in overflow-hidden rounded-card border border-line bg-overlay shadow-modal">
+        <div className="flex items-center gap-3 border-b border-line px-4">
+          <Search size={18} className="text-ink" aria-hidden />
           <input
             autoFocus
             value={query}
@@ -120,7 +123,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 run(commands[active]);
-              } else if (e.key === 'Escape') onClose();
+              }
             }}
             role="combobox"
             aria-expanded="true"
@@ -128,7 +131,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             aria-activedescendant={`palette-${active}`}
             aria-label="Type a command or search"
             placeholder="Go to a page, run an action, or type something to add…"
-            className="w-full bg-transparent py-4 text-base outline-none placeholder:text-slate-400"
+            className="w-full bg-transparent py-4 text-base outline-none placeholder:text-faint"
           />
           <kbd className="kbd">Esc</kbd>
         </div>
@@ -138,7 +141,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             lastGroup = c.group;
             return (
               <div key={c.id}>
-                {header && <div className="faint px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider">{header}</div>}
+                {header && <div className="faint px-3 pb-1 pt-3 text-xs font-medium">{header}</div>}
                 <button
                   id={`palette-${i}`}
                   role="option"
@@ -146,7 +149,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                   data-index={i}
                   onMouseMove={() => setActive(i)}
                   onClick={() => run(c)}
-                  className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm', i === active ? 'bg-violet-500/15 text-violet-900 dark:text-white' : 'text-slate-700 dark:text-slate-300')}
+                  className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm', i === active ? 'bg-ink/[0.06] text-ink' : 'text-ink ')}
                 >
                   <span className="opacity-70" aria-hidden>
                     {c.icon}

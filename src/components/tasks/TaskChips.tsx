@@ -4,27 +4,27 @@ import { formatDue, formatDuration, formatTime } from '../../lib/quickAdd';
 import type { Priority } from '../../lib/types';
 import { cn } from '../../lib/utils';
 
-export const PRIORITY_STYLES: Record<Priority, { label: string; chip: string; block: string }> = {
+export const PRIORITY_STYLES: Record<Priority, { label: string; chip: string; dot: string }> = {
   high: {
     label: 'High',
-    chip: 'border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-300',
-    block: 'from-rose-500/90 to-fuchsia-600/90',
+    chip: 'border-danger/30 bg-danger/10 text-danger',
+    dot: 'bg-danger',
   },
   medium: {
     label: 'Medium',
-    chip: 'border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300',
-    block: 'from-amber-500/90 to-orange-500/90',
+    chip: 'border-warning/40 bg-warning/10 text-warning',
+    dot: 'bg-warning',
   },
   low: {
     label: 'Low',
-    chip: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-    block: 'from-emerald-500/90 to-teal-500/90',
+    chip: 'border-success/40 bg-success/10 text-success',
+    dot: 'bg-success',
   },
 };
 
 function Chip({ icon, children, className }: { icon: ReactNode; children: ReactNode; className: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold', className)}>
+    <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold', className)}>
       {icon}
       {children}
     </span>
@@ -41,28 +41,28 @@ interface Props {
   size?: number;
 }
 
-/** Colored pills for a task's date / time / duration / tags / priority. */
+/** Pills for a task's date / time / duration / tags / priority. Only priority is coloured: colour means something. */
 export function TaskChips({ due, time, tags, priority, duration, className, size = 11 }: Props) {
   if (!due && !time && !tags?.length && !priority && !duration) return null;
   return (
     <div className={cn('flex flex-wrap gap-1', className)}>
       {due && (
-        <Chip icon={<CalendarDays size={size} />} className="border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-300">
+        <Chip icon={<CalendarDays size={size} />} className="border-line-strong bg-raised text-ink">
           {formatDue(due)}
         </Chip>
       )}
       {time && (
-        <Chip icon={<Clock size={size} />} className="border-cyan-500/40 bg-cyan-500/15 text-cyan-700 dark:text-cyan-300">
+        <Chip icon={<Clock size={size} />} className="border-line-strong bg-raised text-ink">
           {formatTime(time)}
         </Chip>
       )}
       {duration && (
-        <Chip icon={<Hourglass size={size} />} className="border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300">
+        <Chip icon={<Hourglass size={size} />} className="border-line-strong bg-raised text-ink">
           {formatDuration(duration)}
         </Chip>
       )}
       {tags?.map((t) => (
-        <Chip key={t} icon={<Hash size={size} />} className="border-pink-500/40 bg-pink-500/15 text-pink-700 dark:text-pink-300">
+        <Chip key={t} icon={<Hash size={size} />} className="border-line bg-surface text-muted">
           {t}
         </Chip>
       ))}

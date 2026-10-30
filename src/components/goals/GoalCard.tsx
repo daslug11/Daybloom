@@ -28,14 +28,14 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
   const step = goalStep(Number(goal.target));
   const reached = Number(goal.current) >= Number(goal.target);
   return (
-    <article className="glass p-5" aria-label={goal.title}>
+    <article className="card p-5" aria-label={goal.title}>
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/15 text-2xl" aria-hidden>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-ink/[0.06] text-2xl" aria-hidden>
           {goal.emoji}
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold leading-snug">
-            {goal.title} {goal.emoji} <span className="text-violet-700 dark:text-violet-300">– {pct}%</span>
+            {goal.title} {goal.emoji} <span className="text-ink ">– {pct}%</span>
           </h3>
           <p className="muted text-sm">
             {Number(goal.current).toLocaleString()} of {Number(goal.target).toLocaleString()} {goal.unit}
@@ -48,8 +48,8 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
           </button>
         )}
       </div>
-      <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-900/10 dark:bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${goal.title} progress`}>
-        <div className="h-full rounded-full bg-gradient-to-r from-violet-500 via-blue-500 to-pink-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${goal.title} progress`}>
+        <div className={cn('h-full rounded-full transition-[width] duration-500', reached ? 'bg-success' : 'bg-ink')} style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="faint text-xs">
@@ -69,13 +69,13 @@ export function GoalCard({ goal, milestones = [], openTasks, habits, onBump, onE
         )}
       </div>
       {milestones.length > 0 && (
-        <ul className="mt-4 space-y-1 border-t border-slate-900/5 pt-3 dark:border-white/5" aria-label="Milestones">
+        <ul className="mt-4 space-y-1 border-t border-line pt-3" aria-label="Milestones">
           {milestones.map((m) => (
             <li key={m.id} className="flex items-center gap-2 text-sm">
               <button
                 onClick={() => onToggleMilestone?.(m)}
                 disabled={!onToggleMilestone}
-                className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', m.done ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-400')}
+                className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', m.done ? 'border-ink/40 bg-accent text-accent-ink' : 'border-control')}
                 aria-label={m.done ? `Mark milestone “${m.title}” not done` : `Complete milestone “${m.title}”`}
               >
                 {m.done && <Check size={10} strokeWidth={3} />}

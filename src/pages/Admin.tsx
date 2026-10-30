@@ -102,7 +102,7 @@ export default function Admin() {
               { label: 'Default daily limit', value: d.config.daily_limit_per_user, sub: d.config.allowed_emails == null ? 'AI open to all users' : `AI limited to ${d.config.allowed_emails} allowed emails` },
             ].map((t) => (
               <Card key={t.label} className="!p-4">
-                <p className="muted text-xs font-semibold uppercase tracking-wider">{t.label}</p>
+                <p className="muted text-xs font-medium">{t.label}</p>
                 <p className="mt-1 text-2xl font-extrabold tabular-nums">{t.value}</p>
                 <p className="faint mt-0.5 text-xs">{t.sub}</p>
               </Card>
@@ -124,7 +124,7 @@ export default function Admin() {
               </button>
             </form>
             {found && (
-              <div className="mt-4 rounded-xl border border-slate-900/10 p-3 dark:border-white/10">
+              <div className="mt-4 rounded-xl border border-line p-3">
                 <p className="mb-2 text-sm font-medium">
                   {found.name || '—'} · {found.email}
                 </p>
@@ -138,7 +138,7 @@ export default function Admin() {
             {d.top_users.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="faint text-xs uppercase">
+                  <thead className="faint text-xs">
                     <tr>
                       <th className="py-2 pr-3">User</th>
                       <th className="py-2 pr-3 text-right">Today</th>
@@ -150,12 +150,12 @@ export default function Admin() {
                   </thead>
                   <tbody>
                     {d.top_users.map((u) => (
-                      <tr key={u.user_id} className="border-t border-slate-900/5 dark:border-white/5">
+                      <tr key={u.user_id} className="border-t border-line">
                         <td className="max-w-[220px] truncate py-2 pr-3">{u.email}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">{u.requests_today}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">{u.requests_month}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">{usd(u.cost_usd)}</td>
-                        <td className="py-2 pr-3">{u.blocked ? <span className="text-rose-600">Blocked</span> : u.daily_limit ?? 'Default'}</td>
+                        <td className="py-2 pr-3">{u.blocked ? <span className="text-danger">Blocked</span> : u.daily_limit ?? 'Default'}</td>
                         <td className="py-2 text-right">
                           <button className="link text-xs" onClick={() => setFound({ user_id: u.user_id, email: u.email, name: u.name, daily_limit: u.daily_limit, blocked: u.blocked })}>
                             Edit
