@@ -195,6 +195,18 @@ export default function BrainDump() {
 
   const viewMeta = VIEWS.find((v) => v.id === view)!;
 
+  // APG tabs: ←/→ (and ↑/↓) move to the previous/next view, Home/End to the first/last; the view follows focus.
+  const onTabKey = (e: React.KeyboardEvent) => {
+    const i = VIEWS.findIndex((v) => v.id === view);
+    const keys: Record<string, number> = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1 + VIEWS.length, ArrowUp: i - 1 + VIEWS.length, Home: 0, End: VIEWS.length - 1 };
+    if (!(e.key in keys)) return;
+    e.preventDefault();
+    const to = VIEWS[keys[e.key] % VIEWS.length].id;
+    setQuery('');
+    setView(to);
+    document.getElementById(`view-tab-${to}`)?.focus();
+  };
+
   return (
     <div>
       <PageHeader
@@ -244,12 +256,16 @@ export default function BrainDump() {
       </form>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Views" className="flex flex-wrap gap-1 rounded-xl border border-line p-1">
+        <div role="tablist" aria-label="Views" className="flex flex-wrap gap-1 rounded-xl border border-line p-1" onKeyDown={onTabKey}>
           {VIEWS.map((v) => (
             <button
               key={v.id}
+              id={`view-tab-${v.id}`}
               role="tab"
               aria-selected={!q && view === v.id}
+              aria-controls="view-panel"
+              // Roving tabindex: one Tab stop for the row; the arrow keys move between views.
+              tabIndex={view === v.id ? 0 : -1}
               onClick={() => (setQuery(''), setView(v.id))}
               className={cn('rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-fast', !q && view === v.id ? 'bg-accent text-accent-ink' : 'muted hover:bg-raised')}
             >
@@ -269,90 +285,92 @@ export default function BrainDump() {
         </div>
       </div>
 
-      {!q && (
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <p className="muted mr-auto text-sm">{viewMeta.hint}</p>
-          {view === 'inbox' && counts.inbox > 0 && (
-            <>
-              <button className="btn-primary !py-2" onClick={() => setProcessing(true)}>
-                Process inbox ({counts.inbox})
+      <div role="tabpanel" id="view-panel" aria-labelledby={q ? undefined : `view-tab-${view}`} aria-label={q ? 'Search results' : undefined}>
+        {!q && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <p className="muted mr-auto text-sm">{viewMeta.hint}</p>
+            {view === 'inbox' && counts.inbox > 0 && (
+              <>
+                <button className="btn-primary !py-2" onClick={() => setProcessing(true)}>
+                  Process inbox ({counts.inbox})
+                </button>
+                <AiButton loading={organize.isPending} onClick={() => organize.mutate({}, { onSuccess: (r) => setPanel({ type: 'organize', suggestions: r.result.suggestions }) })} hint="Suggest how to sort every inbox note">
+                  Organize
+                </AiButton>
+              </>
+            )}
+            <AiButton
+              loading={summarize.isPending && !busy}
+              onClick={() => summarize.mutate({ scope: 'week' }, { onSuccess: (r) => setPanel({ type: 'summary', title: 'Your week in notes', summary: r.result.summary, keyPoints: r.result.key_points }) })}
+              hint="Condense the last 7 days of notes"
+            >
+              Summarize week
+            </AiButton>
+            <AiButton loading={patterns.isPending} onClick={() => patterns.mutate({}, { onSuccess: (r) => setPanel({ type: 'patterns', themes: r.result.themes }) })} hint="Spot recurring themes in the last 30 days">
+              Find patterns
+            </AiButton>
+            {lastPanel && !panel && (
+              <button className="btn-ghost" onClick={() => setPanelState(lastPanel)} title="Reopen without using another ✨ action">
+                <History size={15} aria-hidden /> Last ✨ {PANEL_NAME[lastPanel.type]}
               </button>
-              <AiButton loading={organize.isPending} onClick={() => organize.mutate({}, { onSuccess: (r) => setPanel({ type: 'organize', suggestions: r.result.suggestions }) })} hint="Suggest how to sort every inbox note">
-                Organize
-              </AiButton>
-            </>
-          )}
-          <AiButton
-            loading={summarize.isPending && !busy}
-            onClick={() => summarize.mutate({ scope: 'week' }, { onSuccess: (r) => setPanel({ type: 'summary', title: 'Your week in notes', summary: r.result.summary, keyPoints: r.result.key_points }) })}
-            hint="Condense the last 7 days of notes"
-          >
-            Summarize week
-          </AiButton>
-          <AiButton loading={patterns.isPending} onClick={() => patterns.mutate({}, { onSuccess: (r) => setPanel({ type: 'patterns', themes: r.result.themes }) })} hint="Spot recurring themes in the last 30 days">
-            Find patterns
-          </AiButton>
-          {lastPanel && !panel && (
-            <button className="btn-ghost" onClick={() => setPanelState(lastPanel)} title="Reopen without using another ✨ action">
-              <History size={15} aria-hidden /> Last ✨ {PANEL_NAME[lastPanel.type]}
-            </button>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
-      {tags.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-1.5" aria-label="Filter by tag">
-          {tags.map((t) => (
-            <button key={t} className={tag === t ? 'chip-on' : 'chip-off'} onClick={() => setTag(tag === t ? null : t)} aria-pressed={tag === t}>
-              #{t}
-              {tag === t && <X size={12} className="ml-1 inline" aria-label="clear filter" />}
-            </button>
+        {tags.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-1.5" aria-label="Filter by tag">
+            {tags.map((t) => (
+              <button key={t} className={tag === t ? 'chip-on' : 'chip-off'} onClick={() => setTag(tag === t ? null : t)} aria-pressed={tag === t}>
+                #{t}
+                {tag === t && <X size={12} className="ml-1 inline" aria-label="clear filter" />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <QueryState isLoading={notes.isLoading} error={notes.error} onRetry={() => notes.refetch()} />
+        {notes.data && shown.length === 0 &&
+          (q || tag ? (
+            <EmptyState
+              emoji="🔍"
+              title="No notes match"
+              action={
+                <button className="btn-ghost" onClick={clearFilters}>
+                  Clear search and filters
+                </button>
+              }
+            >
+              {q && tag ? `Nothing matches “${query.trim()}” with #${tag}.` : q ? `Nothing matches “${query.trim()}”.` : `No notes in ${viewMeta.label} have #${tag}.`}
+            </EmptyState>
+          ) : view === 'inbox' && all.length > 0 ? (
+            <EmptyState emoji="🌸" title="Inbox zero" className="motion-safe:animate-fade-in">
+              Everything you’ve captured has a place. New thoughts land here — press <kbd className="kbd">N</kbd> any time.
+            </EmptyState>
+          ) : (
+            <EmptyState emoji={viewMeta.empty.emoji} title={viewMeta.empty.title}>
+              {viewMeta.empty.body}
+            </EmptyState>
+          ))}
+        {q && shown.length > 0 && <p className="muted mb-3 text-sm">{shown.length} result{shown.length === 1 ? '' : 's'} across all notes</p>}
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {shown.map((n) => (
+            <NoteCard
+              key={n.id}
+              className={landed(n.id) ? 'motion-safe:animate-fade-in' : undefined}
+              note={n}
+              showState={!!q || view === 'all'}
+              highlight={n.id === focusNote}
+              links={linkText(n.id)}
+              onChange={(patch) => changeNote(n, patch)}
+              onDelete={() => remove(n)}
+              onConvert={(kind) => setConvert({ note: n, kind, selection: selection.current?.noteId === n.id ? selection.current.text : '' })}
+              onAi={(action) => runAi(n, action)}
+              aiBusy={busy?.id === n.id ? busy.action : null}
+              aiDisabled={aiOff}
+            />
           ))}
         </div>
-      )}
-
-      <QueryState isLoading={notes.isLoading} error={notes.error} onRetry={() => notes.refetch()} />
-      {notes.data && shown.length === 0 &&
-        (q || tag ? (
-          <EmptyState
-            emoji="🔍"
-            title="No notes match"
-            action={
-              <button className="btn-ghost" onClick={clearFilters}>
-                Clear search and filters
-              </button>
-            }
-          >
-            {q && tag ? `Nothing matches “${query.trim()}” with #${tag}.` : q ? `Nothing matches “${query.trim()}”.` : `No notes in ${viewMeta.label} have #${tag}.`}
-          </EmptyState>
-        ) : view === 'inbox' && all.length > 0 ? (
-          <EmptyState emoji="🌸" title="Inbox zero" className="motion-safe:animate-fade-in">
-            Everything you’ve captured has a place. New thoughts land here — press <kbd className="kbd">N</kbd> any time.
-          </EmptyState>
-        ) : (
-          <EmptyState emoji={viewMeta.empty.emoji} title={viewMeta.empty.title}>
-            {viewMeta.empty.body}
-          </EmptyState>
-        ))}
-      {q && shown.length > 0 && <p className="muted mb-3 text-sm">{shown.length} result{shown.length === 1 ? '' : 's'} across all notes</p>}
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {shown.map((n) => (
-          <NoteCard
-            key={n.id}
-            className={landed(n.id) ? 'motion-safe:animate-fade-in' : undefined}
-            note={n}
-            showState={!!q || view === 'all'}
-            highlight={n.id === focusNote}
-            links={linkText(n.id)}
-            onChange={(patch) => changeNote(n, patch)}
-            onDelete={() => remove(n)}
-            onConvert={(kind) => setConvert({ note: n, kind, selection: selection.current?.noteId === n.id ? selection.current.text : '' })}
-            onAi={(action) => runAi(n, action)}
-            aiBusy={busy?.id === n.id ? busy.action : null}
-            aiDisabled={aiOff}
-          />
-        ))}
       </div>
 
       {processing && (
