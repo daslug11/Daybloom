@@ -1,8 +1,10 @@
-import { ChevronDown, Command, LogOut, Moon, Plus, Search, Settings as SettingsIcon, Sun } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { ChevronDown, Command, LogOut, Moon, Plus, Search, Settings as SettingsIcon, Sun, Timer } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppActions } from '../../hooks/useAppActions';
 import { useAuth } from '../../hooks/useAuth';
 import { useProfile, useUpdateProfile } from '../../hooks/useProfile';
+import { formatClock, useTimer } from '../../hooks/useTimer';
+import { cn } from '../../lib/utils';
 import { AiAllowance } from '../ui/Ai';
 import { Menu, MenuItem } from '../ui/Menu';
 import { Logo } from './Logo';
@@ -34,6 +36,7 @@ export function TopBar() {
         <span className="hidden text-sm lg:inline">Jump to</span>
         <kbd className="kbd hidden lg:inline-flex">{isMac ? <Command size={10} /> : 'Ctrl'}K</kbd>
       </button>
+      <TimerPill />
       <AiAllowance className="hidden sm:inline-flex" />
       <button
         className="icon-btn"
@@ -44,6 +47,35 @@ export function TopBar() {
       </button>
       <AccountMenu />
     </header>
+  );
+}
+
+/** While a focus block or break is underway, a small link back to it from every page but Focus. */
+function TimerPill() {
+  const timer = useTimer();
+  const { pathname } = useLocation();
+  if (!timer.inProgress || pathname.startsWith('/app/focus')) return null;
+  const what = timer.mode === 'work' ? 'Focus' : 'Break';
+  const clock = formatClock(timer.remaining);
+  return (
+    <Link
+      to="/app/focus"
+      className={cn(
+        'hit inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums transition-colors duration-fast hover:border-line-strong',
+        timer.running ? 'border-line-strong bg-surface text-ink' : 'border-line bg-surface text-muted',
+      )}
+      aria-label={`${what} timer, ${clock} left${timer.running ? '' : ', paused'}. Open Focus`}
+      title={timer.running ? `${what} timer running` : `${what} timer paused`}
+      data-testid="timer-pill"
+    >
+      <Timer size={13} aria-hidden />
+      <span aria-hidden>{clock}</span>
+      {!timer.running && (
+        <span className="hidden sm:inline" aria-hidden>
+          Paused
+        </span>
+      )}
+    </Link>
   );
 }
 

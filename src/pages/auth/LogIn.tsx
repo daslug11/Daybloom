@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { SITE_URL } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
-import { AuthLayout, authMessage, authMessageFromUrl, FormError, SendAgain } from './AuthLayout';
+import { AuthLayout, authMessage, authMessageFromUrl, emailProblem, FieldError, fieldProps, focusFirstInvalid, FormError, hasErrors, SendAgain, type FieldErrors } from './AuthLayout';
 
 export default function LogIn() {
   const [params] = useSearchParams();
@@ -14,11 +14,16 @@ export default function LogIn() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(() => authMessageFromUrl(params.get('error')));
   const [sent, setSent] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const navigate = useNavigate();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    const errs: FieldErrors = { email: emailProblem(email), password: mode === 'password' && !password ? 'Enter your password.' : '' };
+    setFieldErrors(errs);
+    if (hasErrors(errs)) return focusFirstInvalid(formRef.current, errs);
     setBusy(true);
     if (mode === 'password') {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -58,24 +63,34 @@ export default function LogIn() {
         </>
       }
     >
-      <div className="mb-4 flex rounded-xl border border-line p-0.5" role="tablist">
+      {/* A segmented control: two toggle buttons (Tab, then Enter or Space), not a tablist. */}
+      <div className="mb-4 flex rounded-xl border border-line p-0.5" role="group" aria-label="Sign-in method">
         {(
           [
             ['password', 'Password'],
             ['magic', 'Email me a link'],
           ] as const
         ).map(([m, label]) => (
-          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold ${mode === m ? 'bg-accent text-accent-ink' : 'muted'}`}>
+          <button
+            key={m}
+            type="button"
+            aria-pressed={mode === m}
+            onClick={() => {
+              setMode(m);
+              setFieldErrors((f) => ({ ...f, password: '' }));
+            }}
+            className={`flex-1 rounded-lg py-1.5 text-sm font-semibold ${mode === m ? 'bg-accent text-accent-ink' : 'muted'}`}>
             {label}
           </button>
         ))}
       </div>
-      <form onSubmit={submit} className="space-y-4">
+      <form ref={formRef} onSubmit={submit} className="space-y-4" noValidate>
         <div>
           <label className="label" htmlFor="email">
             Email
           </label>
-          <input id="email" type="email" autoComplete="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input id="email" type="email" autoComplete="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} {...fieldProps('email', fieldErrors)} />
+          <FieldError id="email-error" message={fieldErrors.email} />
         </div>
         {mode === 'password' && (
           <div>
@@ -87,11 +102,21 @@ export default function LogIn() {
                 Forgot password?
               </Link>
             </div>
-            <input id="password" type="password" autoComplete="current-password" required className="input" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              {...fieldProps('password', fieldErrors)}
+            />
+            <FieldError id="password-error" message={fieldErrors.password} />
           </div>
         )}
         <FormError message={error} />
-        <button className="btn-primary w-full" disabled={busy || !email || (mode === 'password' && !password)}>
+        <button className="btn-primary w-full" disabled={busy}>
           {busy ? 'One moment…' : mode === 'password' ? 'Log in' : 'Send me a sign-in link'}
         </button>
       </form>

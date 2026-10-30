@@ -18,6 +18,7 @@ import { useAppActions } from '../../hooks/useAppActions';
 import { useUserId } from '../../hooks/useAuth';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useProfile, useToday } from '../../hooks/useProfile';
+import { useToast } from '../../hooks/useToast';
 import { dayIn, greeting, parseKey } from '../../lib/dates';
 import { MOODS } from '../../lib/moods';
 import { formatMinutes, minutesOfDay } from '../../lib/planner';
@@ -67,6 +68,12 @@ export default function Dashboard() {
   const { events, syncing, errorCount, requestError, sync } = useCalendarSync();
   const toggleTask = useToggleTask();
   const toggleHabit = useToggleHabitLog();
+  const toast = useToast();
+  /** One tap logs the habit; the chip leaves the list, so the toast offers the way back. */
+  const logHabit = (h: { id: string; name: string; emoji: string }) => {
+    toggleHabit.mutate({ habit_id: h.id, day: today, done: true });
+    toast(`Logged ${h.emoji} ${h.name} for today.`, { label: 'Undo', onClick: () => toggleHabit.mutate({ habit_id: h.id, day: today, done: false }) });
+  };
   const setMood = useSetMood();
   const { openCapture } = useAppActions();
   const briefingAi = useAi<Briefing>('daily_briefing');
@@ -314,7 +321,7 @@ export default function Dashboard() {
           ) : (
             <div className="flex flex-wrap gap-2">
               {habitsLeft.map((h) => (
-                <button key={h.id} className="chip-off !py-1.5" onClick={() => toggleHabit.mutate({ habit_id: h.id, day: today, done: true })} aria-label={`Mark ${h.name} done today`}>
+                <button key={h.id} className="chip-off !py-1.5" onClick={() => logHabit(h)} aria-label={`Mark ${h.name} done today`}>
                   {h.emoji} {h.name}
                 </button>
               ))}
@@ -324,7 +331,7 @@ export default function Dashboard() {
 
         <Card aria-label="Mood check-in" className="lg:col-span-2">
           <CardTitle icon={<Smile size={16} className="text-muted" />} action={<Link to="/app/mood" className="link text-xs">Mood <ArrowRight size={11} className="inline" /></Link>}>
-            {moodFailed ? 'Mood' : mood ? `Today you’re feeling ${MOODS[mood.score - 1].label.toLowerCase()} ${MOODS[mood.score - 1].emoji}` : 'How are you feeling today?'}
+            {moodFailed ? 'Mood' : mood ? `Today you’re feeling ${(MOODS[mood.score - 1]?.label ?? 'logged').toLowerCase()} ${MOODS[mood.score - 1]?.emoji ?? ''}`.trim() : 'How are you feeling today?'}
           </CardTitle>
           {moodFailed ? (
             <CardError what="today’s check-in" onRetry={() => moodsQ.refetch()} />

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Logo } from '../components/layout/Logo';
 import { Card, CardTitle } from '../components/ui/Card';
 import { ErrorState, Spinner } from '../components/ui/States';
+import { Switch } from '../components/ui/Switch';
 import { useToast } from '../hooks/useToast';
 import { apiFetch, ApiError } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -71,6 +72,8 @@ function UserControls({ user, defaultLimit, onSaved, onCancel }: { user: FoundUs
     },
   });
   const error = save.error ? errorText(save.error, 'Could not save.') : '';
+  // Turning the block on is the consequential change, so the button says exactly that.
+  const blocking = blocked && !user.blocked;
   return (
     <form
       className="space-y-3"
@@ -99,13 +102,20 @@ function UserControls({ user, defaultLimit, onSaved, onCancel }: { user: FoundUs
             aria-describedby={error ? `${id}-error` : undefined}
           />
         </label>
-        <div className="pb-1">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" checked={blocked} onChange={(e) => setBlocked(e.target.checked)} className="h-4 w-4 accent-ink" aria-describedby={`${id}-block`} /> Block AI
-          </label>
-          <p id={`${id}-block`} className="muted text-xs">
-            They keep using Daybloom; ✨ buttons and Atlas are off.
+      </div>
+      <div role="group" aria-labelledby={`${id}-block-label`} aria-describedby={`${id}-block`} className="flex max-w-md items-start justify-between gap-4 rounded-control border border-line bg-raised/50 p-3">
+        <div className="min-w-0">
+          <p id={`${id}-block-label`} className="text-sm font-medium">
+            Block AI
           </p>
+          <p id={`${id}-block`} className="muted text-xs [text-wrap:pretty]">
+            {blocked
+              ? 'While blocked, their ✨ buttons and Atlas are turned off and show that AI is unavailable. Everything else in Daybloom keeps working.'
+              : 'Turns off ✨ buttons and Atlas for this person. Everything else in Daybloom keeps working, and you can unblock them any time.'}
+          </p>
+        </div>
+        <div className="pt-0.5">
+          <Switch label="Block AI" checked={blocked} onChange={setBlocked} disabled={save.isPending} />
         </div>
       </div>
       {error && (
@@ -114,8 +124,8 @@ function UserControls({ user, defaultLimit, onSaved, onCancel }: { user: FoundUs
         </p>
       )}
       <div className="flex gap-2">
-        <button className="btn-primary" disabled={save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save'}
+        <button className={blocking ? 'btn-danger' : 'btn-primary'} disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : blocking ? 'Block user' : 'Save'}
         </button>
         <button type="button" className="btn-ghost" onClick={onCancel} disabled={save.isPending}>
           Cancel

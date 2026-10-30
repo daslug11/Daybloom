@@ -55,6 +55,7 @@ export default function Goals() {
   const pending = useRef(new Map<string, number>());
   const [planFor, setPlanFor] = useState<{ goal: Goal; result: PlanResult } | null>(null);
   const [planning, setPlanning] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState(false);
 
   // Leaving the page commits any delete still waiting for its Undo window.
   const commitDelete = useRef(del.mutate);
@@ -143,14 +144,41 @@ export default function Goals() {
     setEditor(null);
   };
 
+  /**
+   * Saves the plan, then says what was really saved. Milestones left blank aren't created (their
+   * tasks are still added to the goal). Nothing is reported as added until the database has it.
+   */
   const acceptPlan = async () => {
-    if (!planFor) return;
+    if (!planFor || accepting) return;
     const { goal, result } = planFor;
-    const created = await addMilestones.mutateAsync(result.milestones.map((m) => ({ goal_id: goal.id, title: m.title })));
-    const rows = result.milestones.flatMap((m, i) => m.tasks.map((t) => ({ title: t.title, due_date: t.due_date, goal_id: goal.id, milestone_id: created[i]?.id ?? null })));
-    if (rows.length) addTasks.mutate(rows);
-    toast(`Added ${result.milestones.length} milestones and ${rows.length} tasks`, { label: 'View tasks', onClick: () => navigate('/app/tasks') });
+    const named = result.milestones.map((m) => ({ ...m, title: m.title.trim() }));
+    const kept = named.filter((m) => m.title);
+    setAccepting(true);
+    let created: { id: string }[] = [];
+    try {
+      if (kept.length) created = await addMilestones.mutateAsync(kept.map((m) => ({ goal_id: goal.id, title: m.title })));
+    } catch {
+      // useListMutation already showed "could not be saved"; keep the dialog so nothing is lost.
+      setAccepting(false);
+      return;
+    }
+    const idFor = new Map(kept.map((m, i) => [m, created[i]?.id ?? null]));
+    const rows = named.flatMap((m) => m.tasks.filter((t) => t.title.trim()).map((t) => ({ title: t.title.trim(), due_date: t.due_date, goal_id: goal.id, milestone_id: (m.title && idFor.get(m)) || null })));
+    let tasksAdded = 0;
+    let tasksFailed = false;
+    if (rows.length) {
+      try {
+        tasksAdded = (await addTasks.mutateAsync(rows)).length;
+      } catch {
+        tasksFailed = true;
+      }
+    }
+    setAccepting(false);
     setPlanFor(null);
+    const ms = `${created.length} milestone${created.length === 1 ? '' : 's'}`;
+    const ts = `${tasksAdded} task${tasksAdded === 1 ? '' : 's'}`;
+    if (tasksFailed) return toast(`Added ${ms}, but the ${rows.length} task${rows.length === 1 ? '' : 's'} couldn’t be saved. Try ✨ Make a plan again, or add them in Tasks.`);
+    toast(`Added ${ms} and ${ts}`, tasksAdded ? { label: 'View tasks', onClick: () => navigate('/app/tasks') } : undefined);
   };
 
   const renderGoal = (g: Goal) => (
@@ -351,8 +379,12 @@ export default function Goals() {
             <button className="btn-ghost" onClick={() => setPlanFor(null)}>
               Discard
             </button>
-            <button className="btn-primary" onClick={acceptPlan} disabled={!planFor.result.milestones.length}>
-              Add to my goal
+            <button
+              className="btn-primary"
+              onClick={acceptPlan}
+              disabled={accepting || !planFor.result.milestones.some((m) => m.title.trim() || m.tasks.length)}
+            >
+              {accepting ? 'Adding…' : 'Add to my goal'}
             </button>
           </div>
         </Modal>

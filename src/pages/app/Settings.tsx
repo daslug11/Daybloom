@@ -1,4 +1,4 @@
-import { Check, Download, ListChecks, LogOut, MailCheck, Play, Shield, Upload } from 'lucide-react';
+import { Check, Download, Eye, EyeOff, ListChecks, LogOut, MailCheck, Play, Shield, Upload } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { importedFromThisDevice, openLocalImport, useLocalImportPending } from '../../components/onboarding/LocalImportPrompt';
@@ -19,6 +19,10 @@ import { supabase } from '../../lib/supabase';
 import type { Profile, VoiceSettings } from '../../lib/types';
 
 const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'habits', 'habit_logs', 'moods', 'focus_sessions', 'calendar_groups', 'calendars', 'atlas_messages', 'plans', 'block_series', 'series_occurrences'] as const;
+/** Rows per request when exporting. The API caps a single response, so every table is paged until a short page. */
+const EXPORT_PAGE = 1000;
+/** A stable order for paging; tables without an `id` column use their primary key. */
+const EXPORT_ORDER: Partial<Record<(typeof EXPORT_TABLES)[number], string[]>> = { habit_logs: ['habit_id', 'day'], moods: ['day'], series_occurrences: ['series_id', 'day'] };
 
 function Row({ label, hint, children, htmlFor, status }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string; status?: ReactNode }) {
   return (
@@ -60,6 +64,122 @@ function timeZones(): string[] {
 
 type ProfilePatch = Partial<Omit<Profile, 'id' | 'created_at'>>;
 
+/**
+ * A voice slider that keeps its own value while it moves, and saves once: on release
+ * (pointer up, key up, blur) or 300ms after the last change. It only follows the saved
+ * value again once that save has settled, so it never snaps back mid-drag.
+ */
+function VoiceSlider({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onCommit,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format: (v: number) => string;
+  onCommit: (v: number, done: () => void) => void;
+}) {
+  const [local, setLocal] = useState(value);
+  const dirty = useRef(false);
+  const inFlight = useRef(false);
+  const timer = useRef(0);
+  const latest = useRef(value);
+  latest.current = local;
+  // The debounce timer fires from an older render; read the current saved value and callback.
+  const saved = useRef(value);
+  saved.current = value;
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
+
+  useEffect(() => {
+    if (!dirty.current && !inFlight.current) setLocal(value);
+  }, [value]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const commit = () => {
+    window.clearTimeout(timer.current);
+    if (!dirty.current) return;
+    dirty.current = false;
+    if (latest.current === saved.current) return;
+    inFlight.current = true;
+    onCommitRef.current(latest.current, () => {
+      inFlight.current = false;
+      // After a failed save the cache rolls back; follow it on the next tick unless the user is dragging again.
+      window.setTimeout(() => !dirty.current && setLocal(saved.current), 0);
+    });
+  };
+
+  return (
+    <Row label={`${label} · ${format(local)}`} htmlFor={id}>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={local}
+        onChange={(e) => {
+          dirty.current = true;
+          setLocal(Number(e.target.value));
+          window.clearTimeout(timer.current);
+          timer.current = window.setTimeout(commit, 300);
+        }}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+        className="h-6 w-full accent-ink sm:w-48"
+      />
+    </Row>
+  );
+}
+
+/** New-password field with a show/hide toggle and a live 8-character check. */
+function NewPassword({ value, onChange, error }: { value: string; onChange: (v: string) => void; error: string }) {
+  const [show, setShow] = useState(false);
+  const n = value.length;
+  const hint = !n ? 'At least 8 characters.' : n < 8 ? `${8 - n} more character${8 - n === 1 ? '' : 's'} needed.` : 'Long enough.';
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="relative">
+        <input
+          id="s-pass"
+          type={show ? 'text' : 'password'}
+          minLength={8}
+          required
+          className="input pr-11"
+          placeholder="New password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete="new-password"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 's-pass-error s-pass-hint' : 's-pass-hint'}
+        />
+        <button type="button" className="icon-btn absolute right-0.5 top-1/2 h-8 w-8 -translate-y-1/2" aria-label="Show password" aria-pressed={show} onClick={() => setShow((v) => !v)}>
+          {show ? <EyeOff size={15} aria-hidden /> : <Eye size={15} aria-hidden />}
+        </button>
+      </div>
+      {error && (
+        <p id="s-pass-error" className="mt-1.5 text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
+      <p id="s-pass-hint" className={`mt-1 flex items-center gap-1 text-xs ${n >= 8 ? 'text-success' : 'faint'}`}>
+        {n >= 8 && <Check size={12} strokeWidth={3} aria-hidden />}
+        {hint}
+      </p>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user, signOut } = useAuth();
   const { data: profile } = useProfile();
@@ -75,6 +195,7 @@ export default function Settings() {
   const [pendingEmail, setPendingEmail] = useState('');
   const [emailUpdated, setEmailUpdated] = useState(false);
   const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [exported, setExported] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -117,6 +238,9 @@ export default function Settings() {
       onError: () => toast('Couldn’t save that change. Check your connection and try again.'),
     });
   const setVoice = (patch: Partial<VoiceSettings>) => save({ voice: { ...voice, ...patch } });
+  /** A slider save: merges into the voice settings and tells the slider when the save has settled. */
+  const commitVoice = (patch: Partial<VoiceSettings>, done: () => void) =>
+    update.mutate({ voice: { ...voice, ...patch } }, { onError: () => toast('Couldn’t save that change. Check your connection and try again.'), onSettled: done });
 
   const changeEmail = async () => {
     const next = email.trim();
@@ -130,11 +254,20 @@ export default function Settings() {
   };
 
   const changePassword = async () => {
-    if (password.length < 8) return toast('Use at least 8 characters.');
+    if (password.length < 8) {
+      setPasswordError(`Use at least 8 characters (you have ${password.length}).`);
+      document.getElementById('s-pass')?.focus();
+      return;
+    }
+    setPasswordError('');
     setBusy('password');
     const { error } = await supabase.auth.updateUser({ password });
     setBusy(null);
-    if (error) return toast(error.message);
+    if (error) {
+      setPasswordError(error.message);
+      document.getElementById('s-pass')?.focus();
+      return;
+    }
     setPassword('');
     toast('Password updated.');
   };
@@ -143,11 +276,23 @@ export default function Settings() {
     setBusy('export');
     try {
       const out: Record<string, unknown> = { exported_at: new Date().toISOString(), account: { id: user.id, email: user.email, created_at: user.created_at } };
+      const counts: Record<string, number> = {};
       for (const t of EXPORT_TABLES) {
-        const { data, error } = await supabase.from(t).select('*').limit(50_000);
-        if (error) throw error;
-        out[t] = data;
+        const rows: unknown[] = [];
+        for (let from = 0; ; from += EXPORT_PAGE) {
+          let q = supabase.from(t).select('*');
+          for (const col of EXPORT_ORDER[t] ?? ['id']) q = q.order(col, { ascending: true });
+          const { data, error } = await q.range(from, from + EXPORT_PAGE - 1);
+          if (error) throw error;
+          rows.push(...(data ?? []));
+          if (!data || data.length < EXPORT_PAGE) break;
+        }
+        out[t] = rows;
+        counts[t] = rows.length;
       }
+      out.counts = counts;
+      // "Items" are the things you made; the profile row holds your settings, so it isn't counted.
+      const items = Object.entries(counts).reduce((sum, [t, n]) => (t === 'profiles' ? sum : sum + n), 0);
       const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       const file = `daybloom-export-${new Date().toISOString().slice(0, 10)}.json`;
@@ -155,7 +300,7 @@ export default function Settings() {
       a.download = file;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      setExported(file);
+      setExported(`Exported ${items.toLocaleString()} item${items === 1 ? '' : 's'} to ${file}.`);
     } catch {
       toast('Export failed. Please try again.');
     } finally {
@@ -263,12 +408,8 @@ export default function Settings() {
               </button>
             </div>
           </Row>
-          <Row label={`Speed · ${(voice.rate ?? 1).toFixed(2)}×`} htmlFor="s-rate">
-            <input id="s-rate" type="range" min={0.7} max={1.4} step={0.05} value={voice.rate ?? 1} onChange={(e) => setVoice({ rate: Number(e.target.value) })} className="h-6 w-full accent-ink sm:w-48" />
-          </Row>
-          <Row label={`Pitch · ${(voice.pitch ?? 0.85).toFixed(2)}`} htmlFor="s-pitch">
-            <input id="s-pitch" type="range" min={0.5} max={1.5} step={0.05} value={voice.pitch ?? 0.85} onChange={(e) => setVoice({ pitch: Number(e.target.value) })} className="h-6 w-full accent-ink sm:w-48" />
-          </Row>
+          <VoiceSlider id="s-rate" label="Speed" value={voice.rate ?? 1} min={0.7} max={1.4} step={0.05} format={(v) => `${v.toFixed(2)}×`} onCommit={(rate, done) => commitVoice({ rate }, done)} />
+          <VoiceSlider id="s-pitch" label="Pitch" value={voice.pitch ?? 0.85} min={0.5} max={1.5} step={0.05} format={(v) => v.toFixed(2)} onCommit={(pitch, done) => commitVoice({ pitch }, done)} />
           <Row label="Speak replies aloud" hint="In voice mode, Atlas reads its answers out.">
             <Switch label="Speak replies aloud" checked={voice.speak !== false} onChange={(v) => setVoice({ speak: v })} />
           </Row>
@@ -302,11 +443,25 @@ export default function Settings() {
               )}
             </div>
           )}
-          <Row label="Password" hint="At least 8 characters." htmlFor="s-pass">
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void changePassword(); }}>
-              <input id="s-pass" type="password" minLength={8} required className="input" placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+          <Row label="Password" hint="Choose a new password for logging in." htmlFor="s-pass">
+            <form
+              className="flex items-start gap-2"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                void changePassword();
+              }}
+            >
+              <NewPassword
+                value={password}
+                error={passwordError}
+                onChange={(v) => {
+                  setPassword(v);
+                  if (passwordError && v.length >= 8) setPasswordError('');
+                }}
+              />
               <button className="btn-ghost shrink-0" disabled={busy === 'password' || !password}>
-                Update
+                {busy === 'password' ? 'Saving…' : 'Update'}
               </button>
             </form>
           </Row>
@@ -331,7 +486,7 @@ export default function Settings() {
           <CardTitle>Your data</CardTitle>
           <Row
             label="Export everything"
-            hint={exported ? `Downloaded ${exported}.` : 'Every note, task, habit, goal, plan, repeating block, mood, focus session, calendar and Atlas message, as one JSON file.'}
+            hint={exported ? exported : 'Every note, task, habit, goal, plan, repeating block, mood, focus session, calendar and Atlas message, as one JSON file.'}
             status={exported ? <Check size={14} strokeWidth={3} className="text-success" aria-hidden /> : undefined}
           >
             <button className="btn-ghost" onClick={exportData} disabled={busy === 'export'}>
@@ -375,7 +530,7 @@ export default function Settings() {
                 <p>Preparing your export…</p>
               ) : exported ? (
                 <p className="flex items-center gap-1.5">
-                  <Check size={14} strokeWidth={3} className="text-success" aria-hidden /> Exported to {exported}.
+                  <Check size={14} strokeWidth={3} className="text-success" aria-hidden /> {exported}
                 </p>
               ) : (
                 <p>
