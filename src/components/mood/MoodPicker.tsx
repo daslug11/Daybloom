@@ -14,7 +14,7 @@ export function MoodPicker({ value, onPick, size = 'md' }: { value?: number; onP
           title={m.label}
           onClick={() => onPick?.(m.value)}
           className={cn(
-            'flex flex-col items-center gap-1 rounded-2xl transition',
+            'flex flex-col items-center gap-1 rounded-2xl transition-colors duration-fast',
             size === 'md' ? 'px-2 py-2 text-3xl' : 'px-1.5 py-1.5 text-2xl',
             value === m.value ? 'bg-ink/10 ring-2 ring-ink/40' : value ? 'opacity-50 hover:opacity-100' : 'hover:bg-raised ',
           )}

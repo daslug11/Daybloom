@@ -15,26 +15,39 @@ interface Props {
   goalLabel?: string;
   /** Hide due chip (e.g. inside the "Today" section). */
   hideDue?: boolean;
+  /** A plain row for lists inside a card (hairline dividers come from the list). */
+  flat?: boolean;
   className?: string;
 }
 
 /** One task row. Presentational — the landing page renders it with sample data. */
-export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goalLabel, hideDue, className }: Props) {
+export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goalLabel, hideDue, flat, className }: Props) {
   const overdue = !task.done && task.due_date && task.due_date < today;
   const starred = task.top_date === today;
+  // Without an onOpen handler the title is plain text, not a button that does nothing.
+  const Body = onOpen ? 'button' : 'div';
   return (
-    <div className={cn('group flex items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition hover:border-line-strong', className)}>
+    <div
+      className={cn(
+        'group flex items-start gap-3',
+        flat ? 'py-2.5' : 'rounded-control border border-line bg-surface px-3 py-2.5 transition-colors duration-fast hover:border-line-strong',
+        className,
+      )}
+    >
       <button
         onClick={() => onToggle?.(task)}
         className={cn(
-          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition',
-          task.done ? 'border-transparent bg-accent text-accent-ink' : task.priority ? cn('hover:bg-raised', priorityRing[task.priority]) : 'border-control hover:bg-raised',
+          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-fast',
+          task.done ? 'border-transparent bg-accent text-accent-ink' : 'border-control hover:border-ink hover:bg-raised',
         )}
         aria-label={task.done ? `Mark “${task.title}” as not done` : `Complete “${task.title}”`}
       >
         {task.done && <Check size={12} strokeWidth={3} />}
       </button>
-      <button className="min-w-0 flex-1 text-left" onClick={() => onOpen?.(task)} aria-label={`Open task ${task.title}`}>
+      <Body
+        className="min-w-0 flex-1 text-left"
+        {...(onOpen ? { type: 'button' as const, onClick: () => onOpen(task), 'aria-label': `Open task ${task.title}` } : {})}
+      >
         <p className={cn('text-sm font-medium leading-snug', task.done && 'faint line-through')}>{task.title}</p>
         {!task.done && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -64,7 +77,7 @@ export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goal
             )}
           </div>
         )}
-      </button>
+      </Body>
       {onStar && !task.done && (
         <button
           onClick={() => onStar(task)}
@@ -79,11 +92,5 @@ export function TaskItem({ task, today, onToggle, onStar, onOpen, subtasks, goal
     </div>
   );
 }
-
-const priorityRing: Record<string, string> = {
-  high: 'border-danger',
-  medium: 'border-warning',
-  low: 'border-success',
-};
 
 export { PRIORITY_STYLES };

@@ -26,7 +26,7 @@ export function HabitCard({ habit, today, days, streak, goalLabel, onToggle, onE
         <button
           onClick={() => onToggle?.(today)}
           className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl transition',
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl transition-colors duration-fast',
             doneToday ? 'bg-accent text-accent-ink ring-2 ring-ink/40' : 'bg-raised hover:bg-raised',
           )}
           aria-label={doneToday ? `Undo ${habit.name} for today` : `Mark ${habit.name} done today`}

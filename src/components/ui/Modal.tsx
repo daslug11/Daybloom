@@ -14,10 +14,12 @@ interface ModalProps {
   description?: ReactNode;
   /** Stacking layer; dialogs opened from the full-screen voice HUD need one above it. */
   layer?: string;
+  /** Skip the open animation (dialogs opened from keyboard shortcuts). */
+  instant?: boolean;
 }
 
 /** Accessible dialog: focus moves in once, Escape closes only the top-most layer, focus returns on close. */
-export function Modal({ open, onClose, title, description, children, className, layer = 'z-50' }: ModalProps) {
+export function Modal({ open, onClose, title, description, children, className, layer = 'z-50', instant = false }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   useOverlay({ open, onEscape: onClose, container: panel });
 
@@ -32,7 +34,8 @@ export function Modal({ open, onClose, title, description, children, className, 
         aria-label={typeof title === 'string' ? title : undefined}
         tabIndex={-1}
         className={cn(
-          'sheet relative max-h-[92vh] w-full max-w-lg animate-fade-in overflow-y-auto p-6',
+          'sheet relative max-h-[92vh] w-full max-w-lg overflow-y-auto p-6',
+          !instant && 'animate-fade-in',
           className,
         )}
       >

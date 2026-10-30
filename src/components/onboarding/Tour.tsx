@@ -84,7 +84,7 @@ export default function Tour({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[70]" aria-live="polite">
       {rect ? (
         <div
-          className="pointer-events-none absolute rounded-2xl ring-2 ring-ink/40 transition-all duration-200"
+          className="pointer-events-none absolute rounded-2xl ring-2 ring-ink/40 transition-all duration-200 ease-out motion-reduce:transition-none"
           style={{ left: rect.left - pad, top: rect.top - pad, width: rect.width + pad * 2, height: rect.height + pad * 2, boxShadow: '0 0 0 9999px rgba(0,0,0,0.65)' }}
         />
       ) : (

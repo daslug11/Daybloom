@@ -10,7 +10,7 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50',
+        'relative h-5 w-9 shrink-0 rounded-full transition-[color,background-color,border-color,opacity] duration-fast disabled:opacity-50',
         checked ? 'bg-accent' : 'bg-raised ring-1 ring-inset ring-control/70',
       )}
     >

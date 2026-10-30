@@ -85,14 +85,18 @@
   :focus-visible {
     @apply outline-none ring-2 ring-ink/70 ring-offset-2 ring-offset-canvas;
   }
+  /* Reduced motion: no movement, but feedback (colour, opacity, spinners) stays. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+    .animate-fade-in {
+      animation: fade 150ms ease-out both !important;
+    }
+    .btn:active {
+      transform: none !important;
     }
   }
   ::selection {
@@ -230,5 +234,14 @@
   .striped {
     background-color: color-mix(in srgb, var(--stripe, rgba(59, 130, 246, 0.4)) 55%, rgb(var(--surface)));
     background-image: repeating-linear-gradient(135deg, var(--stripe, rgba(59, 130, 246, 0.4)) 0 6px, transparent 6px 12px);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

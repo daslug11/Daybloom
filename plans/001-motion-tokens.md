@@ -1,6 +1,6 @@
 # 001 — Add strong easing and duration tokens, use them for the shared fade and button press
 
-- **Status**: TODO
+- **Status**: DONE (Phase 2)
 - **Commit**: 9799a50
 - **Severity**: MEDIUM
 - **Category**: Cohesion & tokens / Easing & duration

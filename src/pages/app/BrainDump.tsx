@@ -212,7 +212,7 @@ export default function BrainDump() {
               role="tab"
               aria-selected={!q && view === v.id}
               onClick={() => (setQuery(''), setView(v.id))}
-              className={cn('rounded-lg px-3 py-1.5 text-sm font-semibold transition', !q && view === v.id ? 'bg-accent text-accent-ink' : 'muted hover:bg-raised')}
+              className={cn('rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-fast', !q && view === v.id ? 'bg-accent text-accent-ink' : 'muted hover:bg-raised')}
             >
               {v.label}
               <span className="ml-1.5 text-xs opacity-75">{counts[v.id]}</span>

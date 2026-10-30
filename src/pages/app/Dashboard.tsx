@@ -109,93 +109,17 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
         <GettingStarted />
 
-        <Card className="lg:col-span-2" aria-label="Daily briefing">
-          <CardTitle
-            action={
-              briefing.data ? (
-                <AiButton size="sm" loading={briefingAi.isPending} onClick={() => requestBriefing(true)} hint="Rewrite today’s briefing">
-                  Refresh
-                </AiButton>
-              ) : null
-            }
-          >
-            ✨ Daily briefing
-          </CardTitle>
-          {briefing.data ? (
-            <div className="space-y-3 text-sm">
-              <p className="font-medium">{briefing.data.headline}</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {briefing.data.focus.length > 0 && (
-                  <div>
-                    <h3 className="mb-1 text-sm font-semibold">Focus on</h3>
-                    <ul className="list-disc space-y-0.5 pl-5">{briefing.data.focus.map((f, i) => <li key={i}>{f}</li>)}</ul>
-                  </div>
-                )}
-                {briefing.data.heads_up.length > 0 && (
-                  <div>
-                    <h3 className="mb-1 text-sm font-semibold">Heads up</h3>
-                    <ul className="list-disc space-y-0.5 pl-5">{briefing.data.heads_up.map((f, i) => <li key={i}>{f}</li>)}</ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-              <p className="muted text-sm sm:flex-1">A short read of your day — schedule, priorities and anything overdue — written from your own data. Generated once a day when you ask.</p>
-              <AiButton loading={briefingAi.isPending || briefing.isLoading} onClick={() => requestBriefing()} hint="Summarise today from your tasks, schedule and habits">
-                Get today’s briefing
-              </AiButton>
-            </div>
-          )}
-        </Card>
-
-        <Card aria-label="Today's schedule">
-          <CardTitle icon={<CalendarClock size={16} className="text-muted" />} action={<Link to="/app/planner" className="link text-xs">Planner <ArrowRight size={11} className="inline" /></Link>}>
-            Schedule
-          </CardTitle>
-          {(errorCount > 0 || requestError) && (
-            <Link to="/app/calendars" className="mb-3 block rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-              Some calendars didn’t sync — fix on the Calendars page →
-            </Link>
-          )}
-          {allDayToday.length > 0 && <p className="muted mb-2 text-xs">All day: {allDayToday.map((e) => e.title).join(', ')}</p>}
-          {syncing && !schedule.length ? (
-            <LoadingList rows={2} label="Loading your schedule" />
-          ) : schedule.length ? (
-            <ul className="space-y-1.5">
-              {schedule.slice(0, 6).map((i) => {
-                const now = i.start <= minutes && i.end > minutes;
-                return (
-                  <li key={i.key} className={cn('flex items-center gap-3 rounded-xl border px-3 py-2 text-sm', now ? 'border-ink/40 bg-ink/[0.06]' : 'border-line ')}>
-                    <span className="faint w-20 shrink-0 text-xs tabular-nums">{formatMinutes(i.start)}</span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {i.kind === 'event' && <Lock size={11} className="faint mr-1 inline" aria-label="calendar event" />}
-                      {i.kind === 'repeat' && <Repeat size={11} className="faint mr-1 inline" aria-label="repeating block" />}
-                      {i.title}
-                    </span>
-                    {now && <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">Now</span>}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="muted text-sm">
-              Nothing more scheduled today. <Link to="/app/planner" className="link">Block time</Link> for a task, or <Link to="/app/calendars" className="link">sync a calendar</Link>.
-            </p>
-          )}
-        </Card>
-
         <Card aria-label="Today's tasks">
-          <CardTitle icon={<ListChecks size={16} className="text-ink " />} action={<Link to="/app/tasks" className="link text-xs">All tasks <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<ListChecks size={16} className="text-muted" />} action={<Link to="/app/tasks" className="link text-xs">All tasks <ArrowRight size={11} className="inline" /></Link>}>
             Top tasks
           </CardTitle>
           {tasks.isLoading ? (
             <LoadingList rows={3} />
           ) : top.length + due.length ? (
-            <ul className="space-y-1.5">
+            <ul className="-my-2.5 divide-y divide-line">
               {[...top, ...due].slice(0, 6).map((t) => (
                 <li key={t.id}>
-                  <TaskItem task={t} today={today} onToggle={toggleTask} />
+                  <TaskItem flat task={t} today={today} onToggle={toggleTask} />
                 </li>
               ))}
             </ul>
@@ -206,29 +130,8 @@ export default function Dashboard() {
           )}
         </Card>
 
-        <Card aria-label="Habits due today">
-          <CardTitle icon={<Flame size={16} className="text-muted" />} action={<Link to="/app/habits" className="link text-xs">Habits <ArrowRight size={11} className="inline" /></Link>}>
-            Habits · {habits.length - habitsLeft.length}/{habits.length} today
-          </CardTitle>
-          {habits.length === 0 ? (
-            <p className="muted text-sm">
-              No habits yet. <Link to="/app/habits" className="link">Add one</Link> — something small you want to do daily.
-            </p>
-          ) : habitsLeft.length === 0 ? (
-            <p className="text-sm">All done for today. 🎉</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {habitsLeft.map((h) => (
-                <button key={h.id} className="chip-off !py-1.5" onClick={() => toggleHabit.mutate({ habit_id: h.id, day: today, done: true })} aria-label={`Mark ${h.name} done today`}>
-                  {h.emoji} {h.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </Card>
-
         <Card aria-label="Brain dump inbox">
-          <CardTitle icon={<Inbox size={16} className="text-ink " />} action={<Link to="/app/brain-dump" className="link text-xs">Brain Dump <ArrowRight size={11} className="inline" /></Link>}>
+          <CardTitle icon={<Inbox size={16} className="text-muted" />} action={<Link to="/app/brain-dump" className="link text-xs">Brain Dump <ArrowRight size={11} className="inline" /></Link>}>
             Inbox · {inbox.length}
           </CardTitle>
           {inbox.length === 0 ? (
@@ -252,6 +155,103 @@ export default function Dashboard() {
                 Process inbox
               </Link>
             </>
+          )}
+        </Card>
+
+        {briefing.data ? (
+          <Card className="lg:col-span-2" aria-label="Daily briefing">
+            <CardTitle
+              action={
+                <AiButton size="sm" loading={briefingAi.isPending} onClick={() => requestBriefing(true)} hint="Rewrite today’s briefing">
+                  Refresh
+                </AiButton>
+              }
+            >
+              ✨ Daily briefing
+            </CardTitle>
+            <div className="space-y-3 text-sm">
+              <p className="font-medium">{briefing.data.headline}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {briefing.data.focus.length > 0 && (
+                  <div>
+                    <h3 className="mb-1 text-sm font-semibold">Focus on</h3>
+                    <ul className="list-disc space-y-0.5 pl-5">{briefing.data.focus.map((f, i) => <li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+                {briefing.data.heads_up.length > 0 && (
+                  <div>
+                    <h3 className="mb-1 text-sm font-semibold">Heads up</h3>
+                    <ul className="list-disc space-y-0.5 pl-5">{briefing.data.heads_up.map((f, i) => <li key={i}>{f}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <section aria-label="Daily briefing" className="flex flex-col items-start gap-3 rounded-card border border-dashed border-line-strong px-5 py-4 sm:flex-row sm:items-center lg:col-span-2">
+            <p className="muted text-sm sm:flex-1">
+              <span className="font-medium text-ink">✨ Daily briefing.</span> A short read of your day — schedule, priorities and anything overdue — written from your own data when you ask.
+            </p>
+            <AiButton size="sm" loading={briefingAi.isPending || briefing.isLoading} onClick={() => requestBriefing()} hint="Summarise today from your tasks, schedule and habits">
+              Get today’s briefing
+            </AiButton>
+          </section>
+        )}
+
+        <Card aria-label="Today's schedule">
+          <CardTitle icon={<CalendarClock size={16} className="text-muted" />} action={<Link to="/app/planner" className="link text-xs">Planner <ArrowRight size={11} className="inline" /></Link>}>
+            Schedule
+          </CardTitle>
+          {(errorCount > 0 || requestError) && (
+            <Link to="/app/calendars" className="mb-3 block rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+              Some calendars didn’t sync — fix on the Calendars page →
+            </Link>
+          )}
+          {allDayToday.length > 0 && <p className="muted mb-2 text-xs">All day: {allDayToday.map((e) => e.title).join(', ')}</p>}
+          {syncing && !schedule.length ? (
+            <LoadingList rows={2} label="Loading your schedule" />
+          ) : schedule.length ? (
+            <ul className="-my-2 divide-y divide-line">
+              {schedule.slice(0, 6).map((i) => {
+                const now = i.start <= minutes && i.end > minutes;
+                return (
+                  <li key={i.key} className={cn('flex items-center gap-3 py-2 text-sm', now && 'font-medium')}>
+                    <span className="faint w-20 shrink-0 text-xs tabular-nums">{formatMinutes(i.start)}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {i.kind === 'event' && <Lock size={11} className="faint mr-1 inline" aria-label="calendar event" />}
+                      {i.kind === 'repeat' && <Repeat size={11} className="faint mr-1 inline" aria-label="repeating block" />}
+                      {i.title}
+                    </span>
+                    {now && <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-ink">Now</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="muted text-sm">
+              Nothing more scheduled today. <Link to="/app/planner" className="link">Block time</Link> for a task, or <Link to="/app/calendars" className="link">sync a calendar</Link>.
+            </p>
+          )}
+        </Card>
+
+        <Card aria-label="Habits due today">
+          <CardTitle icon={<Flame size={16} className="text-muted" />} action={<Link to="/app/habits" className="link text-xs">Habits <ArrowRight size={11} className="inline" /></Link>}>
+            Habits · {habits.length - habitsLeft.length}/{habits.length} today
+          </CardTitle>
+          {habits.length === 0 ? (
+            <p className="muted text-sm">
+              No habits yet. <Link to="/app/habits" className="link">Add one</Link> — something small you want to do daily.
+            </p>
+          ) : habitsLeft.length === 0 ? (
+            <p className="text-sm">All done for today. 🎉</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {habitsLeft.map((h) => (
+                <button key={h.id} className="chip-off !py-1.5" onClick={() => toggleHabit.mutate({ habit_id: h.id, day: today, done: true })} aria-label={`Mark ${h.name} done today`}>
+                  {h.emoji} {h.name}
+                </button>
+              ))}
+            </div>
           )}
         </Card>
 

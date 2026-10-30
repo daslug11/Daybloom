@@ -692,6 +692,7 @@ await flow('overlays', browser, {}, async (page) => {
   const title = editor.locator('#task-title');
   await title.fill('');
   await title.pressSequentially('Draft the history essay', { delay: 15 });
+  await editor.getByRole('button', { name: /More details/ }).click();
   const details = editor.locator('#task-details');
   await details.click();
   await details.pressSequentially('Intro, three arguments, conclusion', { delay: 15 });

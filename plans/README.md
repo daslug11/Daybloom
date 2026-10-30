@@ -30,8 +30,8 @@ Written by the `improve-animations` skill (Emil Kowalski's animation philosophy)
 | # | Title | Severity | Status |
 |---|---|---|---|
 | 001 | [Motion tokens](001-motion-tokens.md) | MEDIUM | DONE (Phase 2) |
-| 002 | [No motion on frequent/keyboard surfaces](002-no-motion-on-frequent-surfaces.md) | HIGH | TODO |
-| 003 | [Reduced motion keeps feedback](003-reduced-motion-keep-feedback.md) | MEDIUM | TODO |
+| 002 | [No motion on frequent/keyboard surfaces](002-no-motion-on-frequent-surfaces.md) | HIGH | DONE (Phase 3) |
+| 003 | [Reduced motion keeps feedback](003-reduced-motion-keep-feedback.md) | MEDIUM | DONE (Phase 3) |
 | 004 | [Transform, not layout properties](004-transform-not-layout.md) | MEDIUM | TODO |
 | 005 | [Framer Motion transform strings](005-framer-transform-strings.md) | MEDIUM | TODO |
 | 006 | [Missed opportunities](006-missed-opportunities.md) | LOW | TODO |

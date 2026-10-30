@@ -285,13 +285,13 @@ export default function Planner() {
           <div className={cn('card p-4 transition-colors', interaction?.overSidebar && 'border-ink/40 ring-2 ring-ink/30')}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
-                <Inbox size={16} className="text-ink" aria-hidden /> Unscheduled
+                <Inbox size={16} className="text-muted" aria-hidden /> Unscheduled
               </h2>
               <span className="faint text-xs">{unscheduled.length}</span>
             </div>
-            <QuickAddTask className="mb-3 !p-1.5 !shadow-none" placeholder="Add… “review PR 3pm for 30m”" />
-            {interaction?.overSidebar && <div className="mb-2 rounded-xl border-2 border-dashed border-ink/40 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
-            <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1 lg:max-h-[calc(100vh-22rem)]">
+            <QuickAddTask inset className="mb-3" placeholder="Add… “review PR 3pm for 30m”" />
+            {interaction?.overSidebar && <div className="mb-2 rounded-control border-2 border-dashed border-ink/40 p-3 text-center text-xs font-medium">Drop to unschedule</div>}
+            <div className="-mx-1 max-h-56 divide-y divide-line overflow-y-auto px-1 lg:max-h-[calc(100vh-22rem)]">
               {!isLoading && unscheduled.length === 0 && (
                 <p className="muted py-4 text-center text-sm">Everything open is scheduled. Add a task above, or drag a block here to unschedule it.</p>
               )}
@@ -314,8 +314,8 @@ export default function Planner() {
                   onClick={() => setSelectedId((s) => (s === t.id ? null : t.id))}
                   onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelectedId((s) => (s === t.id ? null : t.id)))}
                   className={cn(
-                    'flex cursor-grab items-start gap-2 rounded-xl border bg-surface p-2.5 text-sm active:cursor-grabbing',
-                    selectedId === t.id ? 'border-ink/40 ring-2 ring-ink/40' : 'border-line hover:border-line-strong',
+                    'flex cursor-grab items-start gap-2 rounded-control px-1.5 py-2.5 text-sm transition-colors duration-fast active:cursor-grabbing',
+                    selectedId === t.id ? 'bg-raised ring-2 ring-inset ring-ink' : 'hover:bg-raised',
                     draggingId === t.id && 'opacity-40',
                   )}
                 >

@@ -1,10 +1,11 @@
-import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Pencil, Star, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Copy, ExternalLink, Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { calendarTile, detectCalendarType, isGoogleEmbed } from '../../lib/calendars';
 import type { FeedStatus } from '../../hooks/useCalendarSync';
 import type { CalendarLink } from '../../lib/types';
 import { cn } from '../../lib/utils';
+import { Menu, MenuItem } from '../ui/Menu';
 import { SyncRow } from './SyncToggle';
 import { TypeBadge } from './TypeBadge';
 
@@ -35,7 +36,7 @@ function hostOf(url: string) {
 export function CalendarCard(p: Props) {
   const { calendar: c } = p;
   const [preview, setPreview] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const reduce = useReducedMotion();
   const type = detectCalendarType(c.url);
   const embeddable = isGoogleEmbed(c.url);
 
@@ -44,9 +45,9 @@ export function CalendarCard(p: Props) {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: p.dragging ? 0.4 : 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      initial={false}
+      animate={{ opacity: p.dragging ? 0.4 : 1 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
       className={cn(preview && 'sm:col-span-2')}
     >
       {p.dropBefore && <div className="mb-2 h-0.5 rounded-full bg-ink" />}
@@ -100,27 +101,24 @@ export function CalendarCard(p: Props) {
               {preview ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           )}
-          <button
-            className={action}
-            title="Copy link"
-            aria-label="Copy link"
-            onClick={() => {
-              p.onCopy();
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            }}
-          >
-            {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
-          </button>
-          <button className={action} title="Edit" aria-label="Edit" onClick={p.onEdit}>
-            <Pencil size={15} />
-          </button>
-          <button className={action} title={c.pinned ? 'Unpin' : 'Pin'} aria-label={c.pinned ? 'Unpin' : 'Pin'} onClick={p.onTogglePin}>
-            <Star size={15} className={c.pinned ? 'fill-warning text-warning' : ''} />
-          </button>
-          <button className={cn(action, 'hover:!text-danger')} title="Delete" aria-label="Delete" onClick={p.onDelete}>
-            <Trash2 size={15} />
-          </button>
+          <Menu label={`More actions for ${c.name}`} trigger={<MoreHorizontal size={15} />}>
+            {(close) => (
+              <>
+                <MenuItem onClick={() => (close(), p.onCopy())}>
+                  <Copy size={14} aria-hidden /> Copy link
+                </MenuItem>
+                <MenuItem onClick={() => (close(), p.onEdit())}>
+                  <Pencil size={14} aria-hidden /> Edit
+                </MenuItem>
+                <MenuItem onClick={() => (close(), p.onTogglePin())}>
+                  <Star size={14} aria-hidden /> {c.pinned ? 'Unpin' : 'Pin to top'}
+                </MenuItem>
+                <MenuItem danger onClick={() => (close(), p.onDelete())}>
+                  <Trash2 size={14} aria-hidden /> Delete
+                </MenuItem>
+              </>
+            )}
+          </Menu>
         </div>
 
         <AnimatePresence>

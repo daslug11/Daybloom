@@ -126,7 +126,7 @@ export function AppShell() {
         <div className="fixed bottom-20 right-4 z-30 flex flex-col items-end gap-3 md:bottom-6 md:right-6">
           <button
             onClick={() => openCapture()}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-ink shadow-pop transition hover:bg-accent/90 focus-visible:ring-offset-2"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-ink shadow-pop transition-colors duration-fast hover:bg-accent/90 focus-visible:ring-offset-2"
             aria-label="Capture (N)"
             title="Capture a note or task (N)"
           >

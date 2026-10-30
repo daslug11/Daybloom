@@ -1,6 +1,6 @@
 # 002 — Stop animating keyboard-opened surfaces and every card mount
 
-- **Status**: TODO
+- **Status**: DONE (Phase 3)
 - **Commit**: 9799a50
 - **Severity**: HIGH
 - **Category**: Purpose & frequency

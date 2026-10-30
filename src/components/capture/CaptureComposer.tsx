@@ -123,7 +123,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
     : parsed;
 
   return (
-    <Modal open={open} onClose={close} title="Capture" description="Get it out of your head. Notes land in your Brain Dump inbox to sort later.">
+    <Modal open={open} onClose={close} instant title="Capture" description="Get it out of your head. Notes land in your Brain Dump inbox to sort later.">
       <div className="mb-3 flex rounded-xl border border-line p-0.5" role="tablist" aria-label="What are you capturing?">
         {(
           [
@@ -136,7 +136,7 @@ export function CaptureComposer({ open, onClose, initialMode = 'note', initialTe
             role="tab"
             aria-selected={mode === m}
             onClick={() => setMode(m)}
-            className={cn('flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition', mode === m ? 'bg-accent text-accent-ink' : 'muted')}
+            className={cn('flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition-colors duration-fast', mode === m ? 'bg-accent text-accent-ink' : 'muted')}
           >
             <Icon size={15} aria-hidden /> {label}
           </button>
