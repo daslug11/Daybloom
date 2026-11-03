@@ -19,7 +19,9 @@ export const BLOCK_HELP_ID = 'planner-block-help';
  * Small controls inside blocks keep their visual size but get a bigger invisible hit area
  * (24px with a mouse, 44px on touch) from a pseudo-element, clipped only by the block itself.
  */
-const HIT = "relative before:absolute before:-inset-[5px] before:content-[''] [@media(pointer:coarse)]:before:-inset-[15px]";
+// Small controls inside blocks: a 24px button (WCAG 2.5.8) that takes only its 14px visual's space,
+// plus a 44px area on touch screens.
+const HIT = "relative -m-[5px] flex shrink-0 items-center justify-center p-[5px] before:absolute before:content-[''] [@media(pointer:coarse)]:before:-inset-[10px]";
 /** The block is lifted (being dragged): a little shadow and, motion allowing, a tiny scale. */
 const LIFTED = 'z-40 cursor-grabbing shadow-pop motion-safe:scale-[1.02]';
 /** Focus ring for the block when its main button has keyboard focus (the button itself sits in a clipped box). */
@@ -172,9 +174,11 @@ export function RepeatBlock({ occ, block, lane, lifted, onMoveStart, onResizeSta
           aria-disabled={doneBusy || undefined}
           aria-busy={doneBusy || undefined}
           aria-label={occ.done ? `Mark “${occ.title}” not done` : `Mark “${occ.title}” done`}
-          className={cn(HIT, 'mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas', doneBusy && 'opacity-60')}
+          className={cn(HIT, '-mt-[4px]', doneBusy && 'opacity-60')}
         >
-          {occ.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
+          <span className={cn('flex h-3.5 w-3.5 items-center justify-center rounded border border-control', occ.done && 'border-ink bg-ink text-canvas')}>
+            {occ.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
+          </span>
         </button>
         <button
           className="block-handle min-w-0 flex-1 cursor-[inherit] text-left focus-visible:ring-0"
@@ -232,9 +236,11 @@ export function TaskBlock({ task, block, lane, lifted, fading, onMoveStart, onRe
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onToggleDone}
           aria-label={task.done ? `Mark “${task.title}” not done` : `Complete “${task.title}”`}
-          className={cn(HIT, 'mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-canvas/70', task.done && 'bg-canvas text-ink')}
+          className={cn(HIT, '-mt-[4px]')}
         >
-          {task.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
+          <span className={cn('flex h-3.5 w-3.5 items-center justify-center rounded border border-canvas/70', task.done && 'bg-canvas text-ink')}>
+            {task.done && <Check size={10} strokeWidth={3} className="animate-check-pop" />}
+          </span>
         </button>
         <button
           data-block-handle={task.id}
@@ -255,9 +261,9 @@ export function TaskBlock({ task, block, lane, lifted, fading, onMoveStart, onRe
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onUnschedule}
           aria-label={`Unschedule “${task.title}”`}
-          className={cn(HIT, 'shrink-0 rounded p-0.5 opacity-70 hover:bg-canvas/20 hover:opacity-100 focus:opacity-100')}
+          className={cn(HIT, 'rounded opacity-70 hover:bg-canvas/20 hover:opacity-100 focus:opacity-100')}
         >
-          <X size={11} />
+          <X size={14} />
         </button>
       </div>
       <ResizeHandle compact={block.duration < 30} onPointerDown={onResizeStart} tone="ink" />

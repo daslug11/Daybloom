@@ -1,7 +1,8 @@
 // Screenshots every page (desktop + phone, light + dark) and, with --detect, runs the
 // Impeccable detector against each logged-in page through Chrome's debugging port.
+// With --axe, also runs an axe-core WCAG 2.2 AA scan of each screen.
 //
-//   node tests/visual/capture.mjs --label before [--seed] [--detect] [--only dashboard,tasks]
+//   node tests/visual/capture.mjs --label before [--seed] [--detect] [--axe] [--only dashboard,tasks]
 //
 // Needs the local stack, the mock AI server and the dev server (see README → Tests).
 // Output: test-results/visual/<label>/<theme>-<device>/<page>.jpg and detect-*.json.
@@ -12,6 +13,7 @@ import { localAdmin, PASSWORD, seedAll } from './seed.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
+const { default: AxeBuilder } = await import('@axe-core/playwright');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
@@ -113,6 +115,7 @@ const ids = Object.fromEntries(Object.entries(USERS).map(([k, email]) => [k, lis
 
 const browser = await chromium.launch({ args: [`--remote-debugging-port=${CDP_PORT}`] });
 const detections = {};
+const axe = {};
 const errors = [];
 for (const theme of THEMES) {
   for (const id of Object.values(ids)) if (id) await admin.from('profiles').update({ theme }).eq('id', id);
@@ -137,6 +140,10 @@ for (const theme of THEMES) {
       try {
         await openScreen(page, screen);
         await page.screenshot({ path: `${dir}/${screen.name}.jpg`, type: 'jpeg', quality: 72, fullPage: !!screen.full });
+        if (flag('axe')) {
+          const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+          axe[`${theme}-${device}/${screen.name}`] = r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.map((n) => ({ target: n.target.join(' '), summary: n.failureSummary?.split('\n').slice(0, 2).join(' ') })).slice(0, 8) }));
+        }
         if (flag('detect')) {
           // Only this page may be open while the detector attaches.
           for (const other of Object.values(contexts)) if (other.page !== page) await other.ctx.close();
@@ -155,5 +162,6 @@ for (const theme of THEMES) {
 }
 await browser.close();
 if (flag('detect')) writeFileSync(`${OUT}/detect-pages-${THEMES.join('+')}.json`, JSON.stringify(detections, null, 2));
+if (flag('axe')) writeFileSync(`${OUT}/axe-${THEMES.join('+')}.json`, JSON.stringify(axe, null, 2));
 if (errors.length) console.log('Problems:\n  ' + errors.join('\n  '));
 console.log(`Saved to ${OUT}`);

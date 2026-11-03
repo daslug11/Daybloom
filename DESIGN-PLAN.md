@@ -1,6 +1,6 @@
 # Daybloom design plan
 
-This is the single prioritized plan from design Phase 1. It combines:
+This is the single prioritized plan from design Phase 1. **Outcome:** see [`docs/design/FINAL-REVIEW.md`](docs/design/FINAL-REVIEW.md) (final scores) and [`docs/design/FINAL-REPORT.md`](docs/design/FINAL-REPORT.md) (plain-English summary). It combines:
 
 - an Impeccable `critique` and `audit` of all 17 surfaces, one isolated reviewer each, in [`docs/design/reviews/`](docs/design/reviews/);
 - the `improve-animations` motion audit ([`plans/README.md`](plans/README.md), plans 001–006);

@@ -908,7 +908,7 @@ export default function Planner() {
                                 <Check size={13} />
                               </button>
                               <button
-                                className="relative -my-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-raised"
+                                className="relative -my-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-raised before:absolute before:-inset-1 before:content-[''] [@media(pointer:coarse)]:before:-inset-2.5"
                                 onClick={() => dismissGhosts([g])}
                                 aria-label={`Dismiss suggestion for ${g.title}`}
                               >

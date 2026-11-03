@@ -166,7 +166,11 @@ export default function Focus() {
                         ) : (
                           <div className="h-px w-full bg-line-strong" />
                         )}
-                        <span className={cn('text-xs', isToday ? 'font-semibold text-ink' : 'text-muted')}>{dayName(w.day)}</span>
+                        {/* Narrow columns: the short weekday never wraps; today is marked by weight and a dot. */}
+                        <span className={cn('whitespace-nowrap text-xs', isToday ? 'font-semibold text-ink' : 'text-muted')}>
+                          {parseKey(w.day).toLocaleDateString(undefined, { weekday: 'short' })}
+                        </span>
+                        <span className={cn('h-1 w-1 rounded-full', isToday ? 'bg-ink' : 'bg-transparent')} />
                       </div>
                     );
                   })}

@@ -646,7 +646,8 @@ await flow('plans', browser, {}, async (page) => {
   // 8. Plans section: progress and check-off.
   const progress = page.getByRole('region', { name: 'Plans' }).getByTestId('plan-progress');
   await progress.getByText(/0 of 11 sessions done/).waitFor();
-  await page.getByRole('checkbox', { name: /^Mark done: / }).first().check();
+  // Skipped (conflicting) sessions can't be checked off; which one that is depends on the weekday.
+  await page.getByRole('checkbox', { name: /^Mark done: /, disabled: false }).first().check();
   await progress.getByText(/1 of 11 sessions done/).waitFor();
   await eventually(async () => Number((await admin.from('goals').select('current').eq('id', goal.id).single()).data.current) === 1, 'checking off did not move the linked goal');
   await shot(page, 'plans-section');
