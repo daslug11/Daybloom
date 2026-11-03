@@ -50,9 +50,9 @@ export function IcsHelp() {
   const guide = GUIDES.find((g) => g.id === tab)!;
   return (
     <div>
-      <div className="mb-3 flex flex-wrap gap-1.5" role="tablist">
+      <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Calendar app">
         {GUIDES.map((g) => (
-          <button key={g.id} role="tab" aria-selected={tab === g.id} className={tab === g.id ? 'chip-on' : 'chip-off'} onClick={() => setTab(g.id)}>
+          <button key={g.id} type="button" aria-pressed={tab === g.id} className={tab === g.id ? 'chip-on' : 'chip-off'} onClick={() => setTab(g.id)}>
             {g.label}
           </button>
         ))}

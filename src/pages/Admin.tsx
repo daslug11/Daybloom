@@ -335,7 +335,7 @@ export default function Admin() {
                 <ul className="space-y-1 text-sm">
                   {[...d.daily].reverse().map((r) => (
                     <li key={r.day} className="flex justify-between gap-2 tabular-nums">
-                      <span>{r.day}</span>
+                      <span>{new Date(`${r.day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                       <span className="muted">
                         {r.requests} requests · {usd(r.cost_usd)}
                       </span>
