@@ -23,6 +23,7 @@ Live at **https://daybloom.online**: React and Vite on Vercel, Supabase for acco
 | **Tasks** | Natural-language quick add ("dentist fri 3pm #health !high for 30m"), priorities, due dates, steps, and a top 3 for today. | Read a tricky sentence · Break it down |
 | **Planner** | Day and week timeline in 15-minute steps. Drag to block time and resize blocks. Synced calendar events appear as locked blocks. Repeating blocks run weekly on chosen days until an end date or for a number of weeks; edit or delete "this one only" or every session. | Plan my day/week: suggested blocks you accept or discard |
 | **Plans** | Ask Atlas for a schedule (workouts, study, meal prep, reading, a project timeline). It asks a quick follow-up if needed, checks your Planner and calendar, and shows a plan card listing every session. Edit any session for free, then **Add to Planner** as repeating blocks, with a preview of conflicts (skip, shift or add anyway) and Undo. Planner → Plans tracks progress ("Week 2 of 4 · 5 of 12 sessions done"), check-offs, pausing and removal. Optionally also tracked as a habit and a goal. | Drafting a plan is one Atlas reply; Regenerate is one action; editing, adding and checking off use none |
+| **Spaces** | Your own lists and trackers — a Christmas list, running log, reading list, college applications — built only from Daybloom's building blocks (13 field types, 5 computed fields, 7 views, 7 summary cards). Describe one (to Atlas, in the Brain Dump or on **New Space**), or start from one of 14 templates; you always see a live preview with sample items and can rename, reorder, add or remove fields first. A quick-add bar reads lines like “5k 28:30 felt great” locally, paste a whole list, inline edit, multi-select, swipe on phones, Undo for everything. Link previews, read-only share links (hidden fields stay hidden), habit/goal linking, Planner dates and reminders, ⌘K and a Dashboard card. | Designing or redesigning a Space, ✨ Suggest, ✨ Insights and ✨ Ask are one action each; everything else uses none |
 | **Calendars** | Calendar links in groups, with drag and drop between groups. Read-only ICS sync into the Planner every 10 minutes. | — |
 | **Habits** | Daily check-off, streaks and a 12-week history grid. | Suggest habits from your goals |
 | **Goals** | Numeric targets with milestones and linked tasks and habits. | Make a plan: milestones and first tasks |
@@ -63,8 +64,9 @@ Every AI call runs server-side in `/api`. The browser never sees the API key.
    1. [`supabase/migrations/20261028000001_schema.sql`](supabase/migrations/20261028000001_schema.sql) creates the tables, Row Level Security policies and the profile trigger.
    2. [`supabase/migrations/20261028000002_ai_limits.sql`](supabase/migrations/20261028000002_ai_limits.sql) creates the usage log, limits, cache and admin functions.
    3. [`supabase/migrations/20261029000001_plans.sql`](supabase/migrations/20261029000001_plans.sql) creates plans and repeating Planner blocks.
+   4. [`supabase/migrations/20261104000001_spaces.sql`](supabase/migrations/20261104000001_spaces.sql) creates Spaces (`spaces`, `space_items`, `space_templates`, `space_shares`, a server-only `link_previews` cache), their limits, the habit/goal counting trigger, and the private `space-images` Storage bucket (2 MB, images only) with per-user folder policies.
 
-   **Already deployed?** Run only the migrations you haven't run yet, in order. For the Plans feature, that's file 3.
+   **Already deployed?** Run only the migrations you haven't run yet, in order. For the Plans feature, that's file 3; for Spaces, file 4.
 
    If you use the Supabase CLI, `supabase link` and then `supabase db push` does the same thing.
 
@@ -171,6 +173,7 @@ npm run test:e2e     # browser flows (needs supabase:up, gateway, mock:ai and th
   - Export and account deletion.
   - Planner and goal AI, the admin page and local-data import.
   - Plans: Atlas asks a follow-up and drafts a 4-week workout plan; regenerate, edit a session, add with a conflict (shift), undo, re-add (skip, with a goal), edit one session "this one only", check off a session, and remove the plan with its upcoming blocks. Also the plan card in voice mode.
+  - Spaces: Atlas asks one follow-up and drafts a Christmas list; edit the preview, quick-add “Mom airpods $130 amazon.com”, paste a list of 10, check the budget, share a read-only link (prices and “bought” hidden). A running log from a template linked to a habit and goal, runs logged by quick add and by voice, the chart and personal bests. Swipe/long-press on a phone, and a worst case of 1,000 items, 15 fields and 25 Spaces.
   - Mobile layout, checked for horizontal overflow.
 
   Every flow fails on any console error. Set `E2E_ADMIN_EMAIL` to the dev server's `ADMIN_EMAIL` to include the admin UI flow.
