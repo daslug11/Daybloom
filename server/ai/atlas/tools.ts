@@ -535,7 +535,7 @@ const executors: { [N in ToolName]: Exec<N> } = {
         design: d.design,
         status: 'draft',
         request: input.request.slice(0, 1000),
-        settings: { samples: d.samples },
+        settings: { samples: d.samples, dropped: d.dropped.slice(0, 10) },
       })
       .select('id')
       .single();

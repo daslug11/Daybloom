@@ -1522,6 +1522,224 @@ await flow('worst-case', browser, {}, async (page) => {
   }
 });
 
+// Spaces: a Christmas list made by Atlas, edited in its preview, filled by quick add and a pasted list,
+// budget totals checked, then shared — with prices and "bought" hidden on the shared page.
+await flow('spaces-christmas', browser, {}, async (page) => {
+  const user = await makeUser('Noel');
+  await logIn(page, user);
+  await page.keyboard.press('Control+j');
+  const panel = page.getByRole('dialog', { name: /Atlas/ });
+  const box = panel.getByRole('textbox').first();
+  await box.fill('make me a Christmas list');
+  await page.keyboard.press('Enter');
+  await panel.getByText(/Want a budget for the Christmas list\?/).waitFor({ timeout: 15000 });
+  await box.fill('yes, $500');
+  await page.keyboard.press('Enter');
+  await panel.getByRole('button', { name: 'Open preview' }).click({ timeout: 15000 });
+  await page.waitForURL(/\/app\/spaces\/new\?draft=/);
+  // The preview: the made-up "hologram" field was dropped by validation, with a plain note.
+  await page.getByText(/Left out because Spaces don’t support them/).waitFor();
+  // Edit without AI: rename the Space and a field, switch views.
+  await page.getByLabel('Name', { exact: true }).fill('Christmas 2026');
+  const forField = page.locator('input[value="For"]');
+  await forField.fill('Person');
+  await forField.blur();
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Gallery' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'By person' }).click();
+  await shot(page, 'spaces-preview');
+  await page.getByRole('button', { name: 'Save Space' }).click();
+  await page.waitForURL(/\/app\/spaces\/[0-9a-f-]{36}$/);
+  await page.getByRole('heading', { level: 1, name: 'Christmas 2026' }).waitFor();
+
+  // Quick add, read locally into chips before saving.
+  const quick = page.getByLabel('Add to Christmas 2026');
+  await quick.fill('Mom airpods $130 amazon.com');
+  for (const chip of ['Person: Mom', 'Link: amazon.com']) await page.getByText(chip, { exact: true }).waitFor();
+  await page.locator('#space-quick-add-chips').getByText(/Price: \$130/).waitFor();
+  await page.keyboard.press('Enter');
+  await page.getByRole('listitem', { name: /^airpods/ }).waitFor();
+
+  // Paste a list of 10.
+  await page.getByRole('button', { name: 'Paste a list' }).click();
+  const paste = page.getByRole('dialog', { name: 'Paste a list' });
+  const lines = ['Dad:', '- socks $15', '- wallet $45', 'Sam:', '1. lego set $50', '2. puzzle $20', '3. book $12', 'Grandma:', '• scarf $30', '• candle $18', '• tea sampler $22', '• photo frame $25', '• slippers $20'];
+  await paste.getByLabel('List').fill(lines.join('\n'));
+  await paste.getByText('Preview · 10 items').waitFor();
+  await paste.getByRole('button', { name: 'Add 10 items' }).click();
+  await page.getByText('Added 10 items from your list').waitFor();
+  await eventually(async () => (await admin.from('space_items').select('id').eq('user_id', user.id)).data.length === 11, 'pasted items not saved');
+
+  // Budget: $130 + 15 + 45 + 50 + 20 + 12 + 30 + 18 + 22 + 25 + 20 = $387 of $500.
+  const budget = page.getByRole('listitem').filter({ hasText: 'Budget' }).first();
+  await budget.getByText('$387').waitFor();
+  await budget.getByText(/of \$500 · \$113 left/).waitFor();
+  // Per person: Dad $60.
+  await budget.getByText('$60').waitFor();
+  await shot(page, 'spaces-christmas');
+
+  // Tick one off (counts toward "Bought"), and Undo works.
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'To buy' }).click();
+  await page.getByRole('button', { name: 'Tick off “socks”' }).click();
+  await page.getByRole('listitem').filter({ hasText: 'Bought' }).getByText('1 of 11').waitFor();
+
+  // Share a read-only link.
+  await page.getByRole('button', { name: 'Share' }).click();
+  const share = page.getByRole('dialog', { name: 'Share a read-only link' });
+  await share.getByRole('switch', { name: 'Link sharing' }).click();
+  const link = await share.getByLabel('Share link').inputValue({ timeout: 10000 });
+  assert(/\/s\/[0-9a-f]{64}$/.test(link), `bad share link ${link}`);
+  await page.keyboard.press('Escape');
+  const visitor = await (await page.context().browser().newContext()).newPage();
+  await visitor.goto(link);
+  await visitor.getByRole('heading', { level: 1, name: 'Christmas 2026' }).waitFor();
+  await visitor.getByText('airpods').first().waitFor();
+  const text = await visitor.locator('body').innerText();
+  assert(!/\$\d/.test(text), 'shared page shows prices');
+  assert(!/bought/i.test(text), 'shared page shows bought status');
+  assert(!text.includes('Noel') && !text.includes(user.email), 'shared page shows account info');
+  assert((await visitor.locator('meta[name="robots"]').getAttribute('content'))?.includes('noindex'), 'shared page is indexable');
+  await visitor.screenshot({ path: `${OUT}/spaces-shared.png`, fullPage: true });
+  await visitor.context().close();
+});
+
+// Spaces: a running log from a template, linked to a habit and goal, filled by quick add and by voice;
+// the chart and personal best come from the runs.
+await flow('spaces-running', browser, {}, async (page) => {
+  const user = await makeUser('Ria');
+  const { data: habit } = await admin.from('habits').insert({ user_id: user.id, name: 'Run', emoji: '🏃' }).select('id').single();
+  const { data: goal } = await admin.from('goals').insert({ user_id: user.id, title: 'Run 50 km', emoji: '🎯', target: 50, unit: 'km' }).select('id').single();
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/spaces/new`);
+  await page.getByRole('button', { name: /^Running log Distance/ }).click();
+  await page.getByRole('button', { name: 'Save Space' }).click();
+  await page.waitForURL(/\/app\/spaces\/[0-9a-f-]{36}$/);
+  const spaceId = page.url().split('/').pop();
+
+  // Link the habit and goal (each run adds its distance).
+  await page.getByRole('button', { name: 'Space settings' }).click();
+  await page.getByRole('menuitem', { name: /Settings/ }).click();
+  const settings = page.getByRole('dialog', { name: /Running log/ });
+  await settings.getByLabel('Linked habit').selectOption(habit.id);
+  await settings.getByLabel('Linked goal').selectOption(goal.id);
+  await settings.getByLabel('Each item adds').selectOption('distance');
+  await eventually(async () => (await admin.from('spaces').select('goal_field').eq('id', spaceId).single()).data.goal_field === 'distance', 'goal link not saved');
+  await page.keyboard.press('Escape');
+
+  // Quick add.
+  const quick = page.getByLabel('Add to Running log');
+  await quick.fill('5k 28:30 felt great');
+  for (const chip of ['Distance: 5 km', 'Time: 28:30']) await page.getByText(chip, { exact: true }).waitFor();
+  await page.keyboard.press('Enter');
+  await quick.fill('yesterday 10k 52:10 long run');
+  await page.keyboard.press('Enter');
+  await eventually(async () => (await admin.from('space_items').select('id').eq('space_id', spaceId)).data.length === 2, 'runs not saved');
+
+  // By voice (typed into the voice HUD, the same Atlas tools as speech).
+  await page.keyboard.press('Control+j');
+  await page.getByRole('button', { name: 'Switch to voice mode' }).click();
+  const hud = page.getByRole('dialog', { name: 'Atlas voice mode' });
+  await hud.getByText(/Systems online/).waitFor({ timeout: 10000 });
+  await hud.getByRole('button', { name: 'Type instead' }).click();
+  await hud.getByLabel('Type to Atlas').fill('log a run 3k 16:00 easy');
+  await page.keyboard.press('Enter');
+  await hud.getByText(/Logged, Ria/).waitFor({ timeout: 15000 });
+  await hud.getByRole('button', { name: /Exit voice mode/ }).click();
+  await eventually(async () => (await admin.from('space_items').select('id').eq('space_id', spaceId)).data.length === 3, 'voice run not saved');
+
+  // The habit is ticked for today and yesterday; the goal has all 18 km.
+  const today = new Date().toISOString().slice(0, 10);
+  const logs = (await admin.from('habit_logs').select('day').eq('habit_id', habit.id)).data.map((l) => l.day);
+  assert(logs.includes(today) && logs.length === 2, `habit logs: ${logs.join(', ')}`);
+  await eventually(async () => Number((await admin.from('goals').select('current').eq('id', goal.id).single()).data.current) === 18, 'goal progress is not 18 km');
+
+  // Summary cards: total, longest run, fastest pace, streak.
+  await page.reload();
+  await page.getByRole('listitem').filter({ hasText: 'Total distance' }).getByText('18 km').waitFor();
+  await page.getByRole('listitem').filter({ hasText: 'Longest run' }).getByText('10 km').waitFor();
+  await page.getByRole('listitem').filter({ hasText: 'Fastest pace' }).getByText('5:13/km').waitFor();
+  await page.getByRole('listitem').filter({ hasText: 'Streak' }).getByText('2 days').waitFor();
+  // Chart: bars for both days.
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Distance' }).click();
+  const chart = page.getByRole('img', { name: /Distance over time/ });
+  await chart.waitFor();
+  assert((await chart.locator('rect.fill-current').count()) === 2, 'chart should have 2 bars');
+  await shot(page, 'spaces-running');
+});
+
+// Spaces on a phone: swipe right ticks an item off, long-press selects, bulk delete with Undo.
+await flow('spaces-touch', browser, { hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } }, async (page) => {
+  const user = await makeUser('Tia');
+  const { data: sp } = await admin.from('spaces').insert({ user_id: user.id, name: 'Packing', emoji: '🧳', color: 1, design: { primary: 'item', check: 'packed', fields: [{ key: 'item', name: 'Item', type: 'text' }, { key: 'packed', name: 'Packed', type: 'checkbox' }], views: [{ id: 'list', type: 'checklist', name: 'Checklist' }], summaries: [{ id: 'c', kind: 'count', label: 'Packed', filter: { field: 'packed', value: true } }] } }).select('id').single();
+  await admin.from('space_items').insert(['Passport', 'Charger', 'Socks'].map((item, i) => ({ user_id: user.id, space_id: sp.id, data: { item }, position: i })));
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/spaces/${sp.id}`);
+  const row = page.getByRole('listitem', { name: 'Passport' });
+  await row.waitFor();
+  const b = await row.boundingBox();
+  // Swipe right with pointer events (touch).
+  await row.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: b.x + 40, clientY: b.y + 20, pointerId: 7, isPrimary: true, bubbles: true });
+  for (let dx = 10; dx <= 110; dx += 20) await row.dispatchEvent('pointermove', { pointerType: 'touch', clientX: b.x + 40 + dx, clientY: b.y + 22, pointerId: 7, bubbles: true });
+  await row.dispatchEvent('pointerup', { pointerType: 'touch', clientX: b.x + 150, clientY: b.y + 22, pointerId: 7, bubbles: true });
+  await page.getByRole('listitem', { name: 'Passport, done' }).waitFor();
+  await page.getByRole('listitem').filter({ hasText: 'Packed' }).first().getByText('1 of 3').waitFor();
+  // Long-press selects; then bulk delete and undo.
+  const sock = page.getByRole('listitem', { name: 'Socks' });
+  const sb = await sock.boundingBox();
+  await sock.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: sb.x + 60, clientY: sb.y + 20, pointerId: 8, isPrimary: true, bubbles: true });
+  await sleep(600);
+  await sock.dispatchEvent('pointerup', { pointerType: 'touch', clientX: sb.x + 60, clientY: sb.y + 20, pointerId: 8, bubbles: true });
+  const bar = page.getByRole('toolbar', { name: '1 selected' });
+  await bar.waitFor();
+  await bar.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('listitem', { name: 'Socks' }).waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByRole('listitem', { name: 'Socks' }).waitFor();
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert(over <= 0, `Space page scrolls sideways by ${over}px on a phone`);
+  await shot(page, 'spaces-touch');
+});
+
+// Spaces worst case: 1,000 items with very long names and 15 fields, 25 Spaces, an empty Space, broken links.
+await flow('spaces-worst-case', browser, {}, async (page) => {
+  const user = await makeUser('Max');
+  const fields = [{ key: 'name', name: 'Name with a really very long field label', type: 'text' }, { key: 'done', name: 'Done', type: 'checkbox' }, { key: 'price', name: 'Price', type: 'money', currency: 'EUR' }, { key: 'who', name: 'Who', type: 'person' }, { key: 'link', name: 'Link', type: 'link' }, { key: 'when', name: 'When', type: 'date' }, { key: 'st', name: 'Stage', type: 'status', options: Array.from({ length: 8 }, (_, i) => ({ id: `o${i}`, label: `Option number ${i}`, color: ['gray', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink'][i] })) }, { key: 'r', name: 'Rating', type: 'rating' }, { key: 'tags', name: 'Tags', type: 'tags' }, { key: 'dur', name: 'Time', type: 'duration' }, { key: 'km', name: 'Km', type: 'number', unit: 'km' }, { key: 'pace', name: 'Pace', type: 'computed', compute: { kind: 'pace', fields: ['dur', 'km'] } }, { key: 'left', name: 'Days left', type: 'computed', compute: { kind: 'days_until', fields: ['when'] } }, { key: 'notes', name: 'Notes', type: 'long_text' }, { key: 'img', name: 'Photo', type: 'image' }];
+  const design = { primary: 'name', check: 'done', fields, views: [{ id: 'c', type: 'checklist', name: 'Checklist' }, { id: 't', type: 'table', name: 'Table' }, { id: 'b', type: 'board', name: 'Board', field: 'st' }], summaries: [{ id: 'b', kind: 'budget', label: 'Budget', field: 'price', target: 100, group: 'who' }, { id: 'n', kind: 'count', label: 'Done', filter: { field: 'done', value: true } }] };
+  const { data: big } = await admin.from('spaces').insert({ user_id: user.id, name: 'An extraordinarily long Space name that keeps going and on.', emoji: '🧪', design }).select('id').single();
+  const long = 'Supercalifragilisticexpialidocious-gift-idea-with-no-spaces-at-all-'.repeat(3);
+  const rows = Array.from({ length: 1000 }, (_, i) => ({ user_id: user.id, space_id: big.id, position: i, data: { name: i % 7 ? `Item ${i} ${i % 3 ? '' : long}` : `مرحبا ${i} 🎁`, price: (i % 50) + 0.99, who: `Person ${i % 12}`, link: i % 9 ? undefined : 'https://this-domain-does-not-exist-daybloom.invalid/x', st: `o${i % 8}`, km: i % 13, dur: (i % 13) * 300, when: '2026-12-24', tags: ['a', 'very-long-tag-name'], done: i % 4 === 0 } }));
+  for (let i = 0; i < rows.length; i += 500) assert(!(await admin.from('space_items').insert(rows.slice(i, i + 500))).error, 'seed failed');
+  await admin.from('spaces').insert(Array.from({ length: 24 }, (_, i) => ({ user_id: user.id, name: i ? `Space ${i}` : 'Empty Space', emoji: '📦', design: { primary: 'name', fields: [{ key: 'name', name: 'Name', type: 'text' }], views: [{ id: 't', type: 'table', name: 'Table' }], summaries: [] } })));
+  await logIn(page, user);
+  await page.goto(`${BASE}/app/spaces`);
+  await page.getByText('25 of 25 Spaces').waitFor();
+  assert(await page.getByRole('link', { name: 'New Space' }).getAttribute('aria-disabled') === 'true', 'New Space should be disabled at 25');
+  // Empty Space shows how to start.
+  await page.getByRole('link', { name: 'Empty Space 0 items' }).click();
+  await page.getByText('Add your first item').waitFor();
+  // The big one: windowed rows, smooth scrolling, no sideways scroll.
+  await page.goto(`${BASE}/app/spaces/${big.id}`);
+  await page.getByRole('listitem').filter({ hasText: 'Budget' }).first().waitFor({ timeout: 15000 });
+  const rendered = await page.locator('[role="listitem"][tabindex]').count();
+  assert(rendered < 120, `${rendered} rows rendered for 1,000 items (should be windowed)`);
+  const t0 = Date.now();
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  for (let y = 0; y < height; y += 4000) {
+    await page.mouse.wheel(0, 4000);
+    await sleep(20);
+  }
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.getByRole('listitem', { name: /Item 9\d\d/ }).first().waitFor({ timeout: 5000 });
+  const scrollMs = Date.now() - t0;
+  for (const v of ['Table', 'Board', 'Checklist']) {
+    await page.getByRole('group', { name: 'View' }).getByRole('button', { name: v }).click();
+    await sleep(400);
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert(over <= 0, `${v} view scrolls the page sideways by ${over}px`);
+  }
+  await page.screenshot({ path: `${OUT}/spaces-worst-case.png`, fullPage: false });
+  console.log(`    (scrolled 1,000 items in ${scrollMs}ms)`);
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} flows passed`);

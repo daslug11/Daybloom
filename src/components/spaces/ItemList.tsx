@@ -50,6 +50,11 @@ export const ItemRow = memo(function ItemRow({ item, design, today, selected, se
   const g = useRef<{ x: number; y: number; id: number; swiping: boolean; timer: number | null; long: boolean } | null>(null);
   const preview = item.meta?.previews;
   const pending = item.id.startsWith('temp-');
+  // Only fields with a value take a line; a title alone sits centred in the row.
+  const shownMeta = meta.filter((f) => {
+    const v = f.type === 'computed' ? valueOf(design, f, item, today) : item.values[f.key];
+    return v !== undefined && v !== null && v !== '' && v !== false && !(Array.isArray(v) && !v.length);
+  });
 
   useEffect(() => {
     if (focused && row.current && document.activeElement !== row.current && row.current.closest('[data-rows]')?.contains(document.activeElement)) row.current.focus({ preventScroll: false });
@@ -75,7 +80,11 @@ export const ItemRow = memo(function ItemRow({ item, design, today, selected, se
       s.timer = null;
       if (Math.abs(mx) > Math.abs(my) * 1.4 && !selecting) {
         s.swiping = true;
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        try {
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } catch {
+          /* the pointer already ended */
+        }
       } else {
         g.current = null; // vertical: let the page scroll
         return;
@@ -171,9 +180,9 @@ export const ItemRow = memo(function ItemRow({ item, design, today, selected, se
         )}
         <div className="min-w-0 flex-1">
           <p className={cn('truncate text-sm font-medium leading-5 transition-colors duration-fast', done && 'text-faint line-through decoration-faint/60')}>{title}</p>
-          {meta.length > 0 && (
+          {shownMeta.length > 0 && (
             <div className="mt-0.5 flex h-5 min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
-              {meta.map((f) => (
+              {shownMeta.map((f) => (
                 <span key={f.key} className="flex min-w-0 shrink items-center">
                   <FieldValue design={design} field={f} item={item} today={today} preview={preview?.[f.key]} />
                 </span>

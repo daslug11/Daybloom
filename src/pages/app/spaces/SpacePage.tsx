@@ -452,7 +452,7 @@ function SpaceScreen({ space }: { space: Space }) {
 
 /** What to do first in each view, using this Space's own example line. */
 function ViewEmpty({ space, viewType }: { space: Space; viewType: string }) {
-  const example = quickAddHint(space.design, space.template_id);
+  const example = quickAddHint(space.design, space.template_id, space.name);
   const date = space.design.fields.find((f) => f.type === 'date');
   const body =
     viewType === 'chart'

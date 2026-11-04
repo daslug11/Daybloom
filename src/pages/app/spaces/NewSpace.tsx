@@ -63,7 +63,7 @@ export default function NewSpace() {
   useEffect(() => {
     if (atlasDraft && !draft) {
       setDraft({ name: atlasDraft.name, emoji: atlasDraft.emoji, color: atlasDraft.color, description: atlasDraft.description, design: normalizeDesign(atlasDraft.design).design, samples: atlasDraft.settings.samples ?? [] });
-      setMeta({ request: atlasDraft.request });
+      setMeta({ request: atlasDraft.request, dropped: (atlasDraft.settings as { dropped?: string[] }).dropped });
     }
   }, [atlasDraft, draft]);
 

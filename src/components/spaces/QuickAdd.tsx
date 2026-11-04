@@ -5,7 +5,7 @@
  */
 import { CornerDownLeft, ListPlus } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { parseList, parseQuickAdd, defaultValues, normalizeValues, LIMITS, type ItemValues, type SpaceDesign } from '../../lib/spaces';
+import { parseList, parseQuickAdd, defaultValues, normalizeValues, LIMITS, type Field, type ItemValues, type SpaceDesign } from '../../lib/spaces';
 import { cn } from '../../lib/utils';
 import { Modal } from '../ui/Modal';
 
@@ -27,13 +27,40 @@ const HINTS: Record<string, string> = {
 };
 
 /** An example line built from the Space's own fields, for the placeholder. */
-export function quickAddHint(design: SpaceDesign, templateId?: string | null): string {
+const NAME_HINTS: [RegExp, string][] = [
+  [/christmas|gift|present|secret santa/i, 'christmas'],
+  [/birthday/i, 'birthdays'],
+  [/run|jog/i, 'running'],
+  [/workout|gym|lift/i, 'workouts'],
+  [/read|book/i, 'reading'],
+  [/watch|movie|film|show/i, 'watchlist'],
+  [/pack|trip/i, 'packing'],
+  [/budget|spend|expense/i, 'budget'],
+  [/assignment|homework|class/i, 'assignments'],
+  [/college|universit/i, 'college'],
+  [/job|application/i, 'jobs'],
+  [/meal/i, 'meals'],
+  [/recipe/i, 'recipes'],
+  [/wish/i, 'wishlist'],
+];
+
+/** An example line for the placeholder: the template's own, else one built from the Space's fields. */
+export function quickAddHint(design: SpaceDesign, templateId?: string | null, name = ''): string {
   if (templateId && HINTS[templateId]) return HINTS[templateId];
-  const bits: string[] = ['Something to add'];
+  const guess = NAME_HINTS.find(([re]) => re.test(name))?.[1];
+  const tpl = guess ? HINTS[guess] : null;
+  // Only use a guessed example if this Space can read every part of it.
+  if (tpl) {
+    const types = new Set(design.fields.map((f) => f.type));
+    const needs: [RegExp, Field['type']][] = [[/\$\d/, 'money'], [/\.(com|org)/, 'link'], [/\d:\d\d|\d+ min/, 'duration']];
+    if (needs.every(([re, t]) => !re.test(tpl) || types.has(t))) return tpl;
+  }
+  const bits: string[] = [];
+  if (design.fields.some((f) => f.type === 'person')) bits.push('Sam');
+  bits.push('something');
   for (const f of design.fields) {
     if (f.type === 'money') bits.push('$25');
     else if (f.type === 'date') bits.push('tomorrow');
-    else if (f.type === 'person') bits.unshift('Sam');
     else if (f.type === 'tags') bits.push('#idea');
     else if (f.type === 'duration') bits.push('30 min');
     else if (f.type === 'link') bits.push('example.com');
@@ -82,7 +109,7 @@ export function QuickAdd({ design, today, people, templateId, onAdd, disabled, n
           id="space-quick-add"
           ref={input}
           className="min-w-0 flex-1 bg-transparent py-1.5 text-base outline-none placeholder:text-faint focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm"
-          placeholder={`Add… e.g. ${quickAddHint(design, templateId)}`}
+          placeholder={`Add… e.g. ${quickAddHint(design, templateId, name)}`}
           value={text}
           disabled={disabled}
           maxLength={500}

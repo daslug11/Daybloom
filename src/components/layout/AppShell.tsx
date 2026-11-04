@@ -59,6 +59,7 @@ export function AppShell() {
     setCapture({ open: true, mode: opts.mode ?? 'note', text: opts.text ?? '', voice: !!opts.voice });
   }, []);
   const openAtlas = useCallback((prefill = '') => setAtlas({ open: true, prefill }), []);
+  const closeAtlas = useCallback(() => setAtlas({ open: false, prefill: '' }), []);
   const openVoice = useCallback(() => setVoice(true), []);
   const openPalette = useCallback(() => setPalette(true), []);
   const startTour = useCallback(() => {
@@ -66,7 +67,7 @@ export function AppShell() {
     setTour(true);
   }, [navigate]);
 
-  const actions = useMemo<AppActions>(() => ({ openCapture, openAtlas, openVoice, openPalette, startTour }), [openCapture, openAtlas, openVoice, openPalette, startTour]);
+  const actions = useMemo<AppActions>(() => ({ openCapture, openAtlas, closeAtlas, openVoice, openPalette, startTour }), [openCapture, openAtlas, closeAtlas, openVoice, openPalette, startTour]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

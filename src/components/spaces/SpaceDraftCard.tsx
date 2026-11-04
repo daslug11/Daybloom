@@ -1,11 +1,13 @@
 import { ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSpaces } from '../../hooks/data/spaces';
+import { useAppActions } from '../../hooks/useAppActions';
 import { SpaceIcon } from './fields';
 
 /** The card Atlas shows under a reply when it drafts a Space: opens the live preview. */
 export function SpaceDraftCard({ spaceId }: { spaceId: string }) {
   const navigate = useNavigate();
+  const { closeAtlas } = useAppActions();
   const { data, isLoading } = useSpaces();
   const space = data?.find((s) => s.id === spaceId);
   if (isLoading) return <div className="h-20 animate-pulse rounded-card bg-raised" aria-hidden />;
@@ -20,7 +22,11 @@ export function SpaceDraftCard({ spaceId }: { spaceId: string }) {
           <p className="truncate text-xs text-muted">{space.design.fields.map((f) => f.name).join(' · ')}</p>
         </div>
       </div>
-      <button type="button" className={draft ? 'btn-primary mt-3 w-full' : 'btn-ghost mt-3 w-full'} onClick={() => navigate(draft ? `/app/spaces/new?draft=${space.id}` : `/app/spaces/${space.id}`)}>
+      <button type="button" className={draft ? 'btn-primary mt-3 w-full' : 'btn-ghost mt-3 w-full'} onClick={() => {
+          // The preview needs the whole screen, so the chat panel steps aside.
+          closeAtlas();
+          navigate(draft ? `/app/spaces/new?draft=${space.id}` : `/app/spaces/${space.id}`);
+        }}>
         {draft ? 'Open preview' : 'Open Space'} <ArrowRight size={15} aria-hidden />
       </button>
       {draft && <p className="mt-2 text-center text-xs text-faint">Nothing is saved until you check it and press Save.</p>}
