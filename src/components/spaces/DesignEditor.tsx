@@ -104,7 +104,7 @@ export function DesignEditor({ design, onChange, activeView, onActiveView }: Pro
             )}
           </Menu>
         </div>
-        <ol className="divide-y divide-line rounded-card border border-line">
+        <ol className="-mx-1 divide-y divide-line border-y border-line">
           {design.fields.map((f, i) => (
             <FieldRow key={f.key} field={f} design={design} index={i} onPatch={(p) => setField(f.key, p)} onMove={(d) => move(i, d)} onRemove={() => removeField(f.key)} />
           ))}
@@ -181,8 +181,8 @@ function FieldRow({ field: f, design, index, onPatch, onMove, onRemove }: { fiel
     <li className="px-3 py-2.5">
       <div className="flex items-center gap-2">
         <div className="flex flex-col">
-          <button type="button" className="hit rounded p-0.5 text-muted hover:text-ink disabled:opacity-30" onClick={() => onMove(-1)} disabled={index === 0} aria-label={`Move ${f.name} up`}><ArrowUp size={13} aria-hidden /></button>
-          <button type="button" className="hit rounded p-0.5 text-muted hover:text-ink disabled:opacity-30" onClick={() => onMove(1)} disabled={index === design.fields.length - 1} aria-label={`Move ${f.name} down`}><ArrowDown size={13} aria-hidden /></button>
+          <button type="button" className="hit flex h-6 w-6 items-center justify-center rounded text-muted hover:text-ink disabled:opacity-30" onClick={() => onMove(-1)} disabled={index === 0} aria-label={`Move ${f.name} up`}><ArrowUp size={13} aria-hidden /></button>
+          <button type="button" className="hit flex h-6 w-6 items-center justify-center rounded text-muted hover:text-ink disabled:opacity-30" onClick={() => onMove(1)} disabled={index === design.fields.length - 1} aria-label={`Move ${f.name} down`}><ArrowDown size={13} aria-hidden /></button>
         </div>
         <label htmlFor={`${id}-n`} className="sr-only">Field name</label>
         <input id={`${id}-n`} className="input !py-1.5 min-w-0 flex-1" defaultValue={f.name} maxLength={LIMITS.fieldName} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== f.name && onPatch({ name: e.target.value.trim() })} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
@@ -246,7 +246,7 @@ function OptionsEditor({ field, onPatch }: { field: Field; onPatch: (p: Partial<
     <div className="flex flex-wrap items-center gap-1.5">
       {opts.map((o) => (
         <span key={o.id} className={cn('inline-flex items-center gap-1 rounded-full py-0.5 pl-1 pr-1 ring-1 ring-inset', STATUS_CLASSES[o.color])}>
-          <Menu label={`Colour of ${o.label}`} width={168} align="left" triggerClassName="hit h-4 w-4 rounded-full bg-current opacity-80" trigger={<span className="sr-only">Colour</span>}>
+          <Menu label={`Colour of ${o.label}`} width={168} align="left" triggerClassName="hit flex h-6 w-6 items-center justify-center rounded-full before:block before:h-3.5 before:w-3.5 before:rounded-full before:bg-current before:opacity-80 before:content-['']" trigger={<span className="sr-only">Colour</span>}>
             {(close) => (
               <div className="grid grid-cols-4 gap-1 p-1">
                 {STATUS_COLORS.map((c) => (
@@ -262,7 +262,7 @@ function OptionsEditor({ field, onPatch }: { field: Field; onPatch: (p: Partial<
             maxLength={LIMITS.optionLabel}
             onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== o.label && onPatch({ options: opts.map((x) => (x.id === o.id ? { ...x, label: e.target.value.trim() } : x)) })}
           />
-          <button type="button" className="hit rounded-full p-0.5 opacity-70 hover:opacity-100" onClick={() => opts.length > 1 && onPatch({ options: opts.filter((x) => x.id !== o.id) })} disabled={opts.length <= 1} aria-label={`Remove option ${o.label}`}>
+          <button type="button" className="hit flex h-6 w-6 items-center justify-center rounded-full opacity-70 hover:opacity-100" onClick={() => opts.length > 1 && onPatch({ options: opts.filter((x) => x.id !== o.id) })} disabled={opts.length <= 1} aria-label={`Remove option ${o.label}`}>
             <X size={11} aria-hidden />
           </button>
         </span>

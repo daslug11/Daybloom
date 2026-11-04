@@ -128,7 +128,7 @@ export function QuickAdd({ design, today, people, templateId, onAdd, disabled, n
         <button type="button" className="icon-btn" onClick={() => setPaste('')} aria-label="Paste a list" title="Paste a list">
           <ListPlus size={17} aria-hidden />
         </button>
-        <button type="submit" className="btn-primary !min-h-9 !px-3 !py-1.5" disabled={!text.trim() || disabled}>
+        <button type="submit" className={cn('!min-h-9 !px-3 !py-1.5', text.trim() ? 'btn-primary' : 'btn-ghost')} disabled={!text.trim() || disabled} aria-label="Add">
           <CornerDownLeft size={15} aria-hidden />
           <span className="hidden sm:inline">Add</span>
         </button>

@@ -284,7 +284,7 @@ export function DesignDialog({ space, open, onClose, initial, title, note, items
   const affected = removed.length ? items.filter((i) => removed.some((f) => i.values[f.key] !== undefined)).length : 0;
   return (
     <Modal open={open} onClose={onClose} title={title ?? 'Edit design'} description={note ?? 'The preview uses a few of your own items. Nothing changes until you save.'} className="sm:max-w-6xl">
-      <PreviewEditor draft={draft} onChange={setDraft} />
+      <PreviewEditor draft={draft} onChange={setDraft} customise />
       <div className="sticky bottom-0 -mx-6 -mb-6 mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-line bg-overlay px-6 py-4">
         {removed.length > 0 && <p className="mr-auto text-xs text-warning">Removing {removed.map((f) => `“${f.name}”`).join(', ')} hides that data{affected ? ` on ${affected} item${affected === 1 ? '' : 's'}` : ''}. Undo is in the toast after saving.</p>}
         <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>

@@ -47,7 +47,7 @@ export function StatusPill({ field, value, className }: { field: Field; value: u
 
 export function Stars({ value, className }: { value: number; className?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-px text-warning', className)} aria-label={`${value} out of 5`}>
+    <span role="img" className={cn('inline-flex items-center gap-px text-warning', className)} aria-label={`${value} out of 5`}>
       {Array.from({ length: 5 }, (_, i) => (
         <Star key={i} size={12} aria-hidden className={i < value ? 'fill-current' : 'opacity-30'} />
       ))}
@@ -73,6 +73,8 @@ export function SpaceImage({ value, alt, className }: { value: string; alt: stri
 
 /** Compact, read-only display of one value (used in rows, cards and the share page). */
 export function FieldValue({ design, field, item, today, preview }: { design: SpaceDesign; field: Field; item: Pick<SpaceItem, 'id' | 'values'>; today: string; preview?: LinkPreview }) {
+  // A ticked-off item isn't late: deadlines on finished items stay neutral.
+  const finished = !!design.check && item.values[design.check] === true;
   const v = valueOf(design, field, item, today);
   if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return null;
   switch (field.type) {
@@ -103,8 +105,8 @@ export function FieldValue({ design, field, item, today, preview }: { design: Sp
       );
     case 'computed': {
       const text = formatValue(design, field, v);
-      const late = field.compute?.kind === 'days_until' && typeof v === 'number' && v < 0;
-      const soon = field.compute?.kind === 'days_until' && typeof v === 'number' && v >= 0 && v <= 3;
+      const late = !finished && field.compute?.kind === 'days_until' && typeof v === 'number' && v < 0;
+      const soon = !finished && field.compute?.kind === 'days_until' && typeof v === 'number' && v >= 0 && v <= 3;
       return <span className={cn('text-xs tabular-nums', late ? 'font-medium text-danger' : soon ? 'font-medium text-warning' : 'text-muted')}>{text}</span>;
     }
     default:

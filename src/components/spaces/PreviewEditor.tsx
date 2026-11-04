@@ -3,6 +3,7 @@
  * the real views and summary cards rendered with sample items, next to the
  * design editor. Nothing here uses AI.
  */
+import { ChevronDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useToday } from '../../hooks/useProfile';
 import { SPACE_COLORS, SPACE_EMOJIS, type ItemValues, type SpaceDesign, type SpaceItem } from '../../lib/spaces';
@@ -21,7 +22,9 @@ export interface DraftSpace {
   samples: ItemValues[];
 }
 
-export function PreviewEditor({ draft, onChange, children }: { draft: DraftSpace; onChange: (d: DraftSpace) => void; children?: React.ReactNode }) {
+export function PreviewEditor({ draft, onChange, children, customise = false }: { draft: DraftSpace; onChange: (d: DraftSpace) => void; children?: React.ReactNode; customise?: boolean }) {
+  // First run shows the result, not a schema editor: fields, views and cards open on request.
+  const [editing, setEditing] = useState(customise);
   const { today, tz } = useToday();
   const [view, setView] = useState(draft.design.views[0]?.id);
   const activeView = draft.design.views.find((v) => v.id === view) ?? draft.design.views[0];
@@ -97,7 +100,18 @@ export function PreviewEditor({ draft, onChange, children }: { draft: DraftSpace
           </div>
         </div>
         <div className="card p-4">
-          <DesignEditor design={draft.design} onChange={(design) => onChange({ ...draft, design })} activeView={activeView?.id} onActiveView={setView} />
+          <button type="button" className="flex w-full items-center justify-between gap-3 text-left" aria-expanded={editing} onClick={() => setEditing((e) => !e)}>
+            <span>
+              <span className="block text-sm font-semibold">Customise fields, views and cards</span>
+              <span className="block text-xs text-muted">{draft.design.fields.map((f) => f.name).join(' · ')}</span>
+            </span>
+            <ChevronDown size={16} className={cn('shrink-0 text-muted transition-transform duration-fast', editing && 'rotate-180')} aria-hidden />
+          </button>
+          {editing && (
+            <div className="mt-4 border-t border-line pt-4">
+              <DesignEditor design={draft.design} onChange={(design) => onChange({ ...draft, design })} activeView={activeView?.id} onActiveView={setView} />
+            </div>
+          )}
         </div>
       </section>
     </div>

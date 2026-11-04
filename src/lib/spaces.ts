@@ -77,6 +77,18 @@ export const STATUS_CLASSES: Record<StatusColor, string> = {
   pink: 'bg-[#ec4899]/15 text-[#be185d] dark:text-[#f9a8d4] ring-[#ec4899]/35',
 };
 
+/** Solid dot colours for status options (board columns, menus): ≥3:1 on both themes' surfaces. */
+export const STATUS_DOT: Record<StatusColor, string> = {
+  gray: '#8d8d95',
+  red: '#e11d48',
+  orange: '#ea580c',
+  yellow: '#ca8a04',
+  green: '#16a34a',
+  blue: '#2563eb',
+  purple: '#7c3aed',
+  pink: '#db2777',
+};
+
 export const SPACE_EMOJIS = ['✨', '🎄', '🎁', '🏃', '🏋️', '📚', '🎬', '🧳', '💰', '📝', '🎓', '💼', '🥗', '🍳', '⭐', '🌱', '🎮', '🎵', '✈️', '🏠', '🐶', '💡', '🛒', '🎨'];
 
 // ---------------------------------------------------------------------------

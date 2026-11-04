@@ -21,7 +21,6 @@ import {
   itemTitle,
   normalizeValues,
   peopleIn,
-  spaceColor,
   type ItemValues,
   type Space,
   type SpaceItem,
@@ -89,6 +88,7 @@ function SpaceScreen({ space }: { space: Space }) {
   };
 
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? items.filter((i) => itemText(design, i).includes(q)) : items;
@@ -152,7 +152,8 @@ function SpaceScreen({ space }: { space: Space }) {
     const values = { ...item.values };
     if (on) values[design.check] = true;
     else delete values[design.check];
-    void actions.update([{ id: item.id, values }], on ? `Ticked off “${itemTitle(design, item)}”` : `Unticked “${itemTitle(design, item)}”`);
+    // Ticking is frequent: no toast each time (the row itself shows it); Ctrl/⌘+Z or tapping again undoes it.
+    void actions.update([{ id: item.id, values }], on ? `Ticked off “${itemTitle(design, item)}”` : `Unticked “${itemTitle(design, item)}”`, { quiet: true });
     // All done: one small celebration.
     if (on && items.length >= 3 && items.every((i) => i.id === item.id || i.values[design.check!] === true)) celebrate();
   };
@@ -245,11 +246,11 @@ function SpaceScreen({ space }: { space: Space }) {
     });
   };
 
-  const hex = spaceColor(space.color);
   const checkName = design.check ? design.fields.find((f) => f.key === design.check)?.name : null;
 
   return (
-    <div className={cn(selecting && 'pb-24')}>
+    // Bottom room so the floating Atlas and capture buttons never cover the last row.
+    <div className={cn('pb-20 md:pb-8', selecting && 'pb-36')}>
       {/* Header: the Space's emoji and colour make it feel like its own place. */}
       <div className="mb-1">
         <Link to="/app/spaces" className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink">
@@ -260,7 +261,6 @@ function SpaceScreen({ space }: { space: Space }) {
         <SpaceIcon emoji={space.emoji} color={space.color} size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className="page-title truncate">{space.name}</h1>
-          <span aria-hidden className="mt-1 block h-1 w-10 rounded-full" style={{ background: hex }} />
           <p className="muted mt-0.5 line-clamp-2 text-sm">{space.description || `${items.length} item${items.length === 1 ? '' : 's'}`}</p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -302,7 +302,7 @@ function SpaceScreen({ space }: { space: Space }) {
         <ErrorState message="The items in this Space didn’t load." onRetry={() => itemsQ.refetch()} />
       ) : (
         <div className="space-y-4">
-          <SummaryCards design={design} items={items} today={today} tz={tz} spaceId={space.id} />
+          {items.length > 0 && <SummaryCards design={design} items={items} today={today} tz={tz} spaceId={space.id} />}
           <div>
             <QuickAdd design={design} today={today} people={people} templateId={space.template_id} onAdd={add} name={space.name} />
           </div>
@@ -317,11 +317,16 @@ function SpaceScreen({ space }: { space: Space }) {
               </div>
             )}
             <div className="ml-auto flex items-center gap-1.5">
+              {items.length > 8 && !searchOpen && (
+                <button type="button" className="icon-btn sm:hidden" aria-label="Search this Space" onClick={() => setSearchOpen(true)}>
+                  <Search size={16} aria-hidden />
+                </button>
+              )}
               {items.length > 8 && (
-                <label className="relative">
+                <label className={cn('relative', !searchOpen && 'max-sm:hidden')}>
                   <span className="sr-only">Search this Space</span>
                   <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" aria-hidden />
-                  <input className="input !w-40 !py-1.5 !pl-8 sm:!w-48" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} type="search" />
+                  <input className="input !w-40 !py-1.5 !pl-8 sm:!w-48" placeholder="Search" autoFocus={searchOpen} value={query} onChange={(e) => setQuery(e.target.value)} type="search" />
                 </label>
               )}
               {items.length > 0 && ['checklist', 'grouped', 'table', 'board', 'gallery'].includes(view.type) && (
@@ -463,7 +468,7 @@ function ViewEmpty({ space, viewType }: { space: Space; viewType: string }) {
           ? 'Add a link or a photo to an item and it shows as a card here.'
           : 'Type in the bar above and press Enter, or paste a whole list at once.';
   return (
-    <EmptyState emoji={space.emoji} title="Add your first item" className="card">
+    <EmptyState emoji={space.emoji} title="Add your first item" className="card" level={2}>
       <p>{body}</p>
       <p className="mt-2">
         Try: <span className="kbd !text-xs">{example}</span>

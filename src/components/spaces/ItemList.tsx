@@ -169,13 +169,12 @@ export const ItemRow = memo(function ItemRow({ item, design, today, selected, se
               e.stopPropagation();
               h.onToggle?.(item);
             }}
-            className={cn(
-              'hit flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,background-color,border-color] duration-press ease-out motion-safe:active:scale-[0.85]',
-              done ? 'border-transparent bg-accent text-accent-ink' : 'border-control hover:border-ink',
-            )}
+            className="hit group/check -m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-transform duration-press ease-out motion-safe:active:scale-[0.85]"
             aria-label={done ? `Mark “${title}” as not done` : `Tick off “${title}”`}
           >
-            {done && <Check size={12} strokeWidth={3} className="animate-check-pop" />}
+            <span aria-hidden className={cn('flex h-5 w-5 items-center justify-center rounded-full border-2 transition-[background-color,border-color] duration-press ease-out', done ? 'border-transparent bg-accent text-accent-ink' : 'border-control group-hover/check:border-ink')}>
+              {done && <Check size={12} strokeWidth={3} className="animate-check-pop" />}
+            </span>
           </button>
         )}
         <div className="min-w-0 flex-1">

@@ -39,7 +39,7 @@ function PinnedRow({ space }: { space: Space }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{space.name}</span>
           <span className="block truncate text-xs text-muted">
-            {items.isLoading ? 'Loading…' : items.error ? 'Couldn’t load' : r ? `${first.label}: ${r.display}${r.sub ? ` · ${r.sub}` : ''}` : `${items.data?.length ?? 0} items`}
+            {items.isLoading ? 'Loading…' : items.error ? 'Couldn’t load' : r ? `${first.label}: ${r.display}${r.sub ? ` ${r.sub}` : ''}` : `${items.data?.length ?? 0} items`}
           </span>
         </span>
         {r?.ratio !== undefined && (first.kind === 'progress' || first.kind === 'budget') && (

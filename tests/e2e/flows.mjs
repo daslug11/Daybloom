@@ -1541,6 +1541,7 @@ await flow('spaces-christmas', browser, {}, async (page) => {
   await page.getByText(/Left out because Spaces don’t support them/).waitFor();
   // Edit without AI: rename the Space and a field, switch views.
   await page.getByLabel('Name', { exact: true }).fill('Christmas 2026');
+  await page.getByRole('button', { name: /Customise fields, views and cards/ }).click();
   const forField = page.locator('input[value="For"]');
   await forField.fill('Person');
   await forField.blur();

@@ -75,7 +75,7 @@ async function sharedSpace(token: string) {
   }
 
   return json(
-    { space: { name: space.name, emoji: space.emoji, color: space.color, description: space.description, design }, items },
+    { space: { name: space.name, emoji: space.emoji, color: space.color, description: '', design }, items },
     200,
     { ...NOINDEX, 'cache-control': 'private, max-age=30' },
   );

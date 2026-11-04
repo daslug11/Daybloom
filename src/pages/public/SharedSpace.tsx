@@ -58,7 +58,6 @@ export default function SharedSpace() {
             <SpaceIcon emoji={q.data.space.emoji} color={q.data.space.color} size="lg" />
             <div className="min-w-0">
               <h1 className="page-title">{q.data.space.name}</h1>
-              {q.data.space.description && <p className="muted mt-1 text-sm">{q.data.space.description}</p>}
               <p className="faint mt-1 text-xs">Shared read-only · {items.length} item{items.length === 1 ? '' : 's'}</p>
             </div>
           </header>

@@ -1,6 +1,6 @@
 /** The seven Space views. All of them render from the design; none is custom code. */
 import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   chartSeries,
   fieldByKey,
@@ -10,8 +10,7 @@ import {
   groupItems,
   itemTitle,
   NUMERIC_TYPES,
-  spaceColor,
-  STATUS_CLASSES,
+  STATUS_DOT,
   valueOf,
   type Field,
   type ItemValues,
@@ -21,7 +20,7 @@ import {
 } from '../../lib/spaces';
 import { cn } from '../../lib/utils';
 import { Menu, MenuItem } from '../ui/Menu';
-import { FieldInput, FieldValue, SpaceIcon, SpaceImage, StatusPill } from './fields';
+import { FieldInput, FieldValue, SpaceImage, StatusPill } from './fields';
 import { ItemRow, ROW_HEIGHT, rowFields, useRowFocus, VirtualRows, type RowHandlers } from './ItemList';
 
 export interface ViewProps {
@@ -40,8 +39,23 @@ export interface ViewProps {
   empty: ReactNode;
 }
 
+/** True below 640px: wide views fall back to rows there. */
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return narrow;
+}
+
 export function SpaceView(props: ViewProps) {
+  const narrow = useNarrow();
   if (!props.items.length) return <>{props.empty}</>;
+  // On a phone a table would hide most columns off-screen; rows show the key values instead.
+  if (narrow && props.view.type === 'table') return <ChecklistView {...props} />;
   switch (props.view.type) {
     case 'checklist':
       return <ChecklistView {...props} />;
@@ -70,6 +84,7 @@ function ChecklistView({ design, items, today, selection, selecting, handlers, r
   const open = check ? items.filter((i) => i.values[check] !== true) : items;
   const done = check ? items.filter((i) => i.values[check] === true) : [];
   const rows = showDone ? [...open, ...done] : open;
+  const doneWord = (design.fields.find((f) => f.key === check)?.name ?? 'done').toLowerCase();
   const { focus, setFocus } = useRowFocus(rows.length, ROW_HEIGHT, box);
   return (
     <div className="card overflow-hidden" ref={box} data-rows>
@@ -86,7 +101,7 @@ function ChecklistView({ design, items, today, selection, selecting, handlers, r
       {done.length > 0 && (
         <button type="button" onClick={() => setShowDone((s) => !s)} className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-medium text-muted hover:bg-raised" aria-expanded={showDone}>
           <ChevronDown size={14} className={cn('transition-transform duration-fast', !showDone && '-rotate-90')} aria-hidden />
-          {showDone ? `Hide done (${done.length})` : `Show done (${done.length})`}
+          {showDone ? `Hide ${doneWord} (${done.length})` : `Show ${doneWord} (${done.length})`}
         </button>
       )}
     </div>
@@ -297,7 +312,7 @@ function TableCell(props: {
           <>
             {field.options?.map((o) => (
               <MenuItem key={o.id} onClick={() => (close(), handlers.onUpdate(item, { ...item.values, [field.key]: o.id }))}>
-                <span className={cn('h-2.5 w-2.5 rounded-full ring-1 ring-inset', STATUS_CLASSES[o.color])} aria-hidden />
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_DOT[o.color] }} aria-hidden />
                 {o.label}
               </MenuItem>
             ))}
@@ -313,7 +328,7 @@ function TableCell(props: {
     ) : field.type === 'rating' && !readOnly ? (
       <span className="flex">
         {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} type="button" tabIndex={-1} className="p-px text-warning" aria-label={`${n} stars`} onClick={(e) => (e.stopPropagation(), handlers.onUpdate(item, { ...item.values, [field.key]: n }))}>
+          <button key={n} type="button" tabIndex={-1} className="flex h-6 w-6 items-center justify-center text-warning" aria-label={`${n} stars`} onClick={(e) => (e.stopPropagation(), handlers.onUpdate(item, { ...item.values, [field.key]: n }))}>
             <span className={Number(item.values[field.key] ?? 0) >= n ? '' : 'opacity-30'}>★</span>
           </button>
         ))}
@@ -395,7 +410,7 @@ function BoardView({ design, view, items, today, handlers, readOnly, selection, 
               }}
             >
               <header className="flex items-center gap-2 px-3 py-2.5">
-                {opt ? <span className={cn('h-2.5 w-2.5 rounded-full ring-1 ring-inset', STATUS_CLASSES[opt.color])} aria-hidden /> : null}
+                {opt ? <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_DOT[opt.color] }} aria-hidden /> : null}
                 <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{g.label}</h3>
                 <span className="text-xs tabular-nums text-muted">{g.items.length}</span>
               </header>
@@ -462,13 +477,16 @@ function BoardView({ design, view, items, today, handlers, readOnly, selection, 
 // ---------------------------------------------------------------------------
 // Gallery: cards with an image or a link preview
 // ---------------------------------------------------------------------------
-function GalleryView({ design, view, items, today, handlers, readOnly, emoji, color, selection, selecting }: ViewProps) {
+function GalleryView({ design, view, items, today, handlers, readOnly, emoji, selection, selecting }: ViewProps) {
   const field = fieldByKey(design, view.field);
   const link = design.fields.find((f) => f.type === 'link');
   const { meta, trailing } = rowFields(design, [view.field ?? '']);
   const [limit, setLimit] = useState(60);
+  // No pictures anywhere yet: compact cards instead of rows of empty frames.
+  const hasMedia = items.some((i) => (field?.type === 'image' && typeof i.values[field.key] === 'string') || (link && i.meta?.previews?.[link.key]?.image));
   return (
     <>
+      {!hasMedia && !readOnly && <p className="mb-3 text-xs text-muted">Add a {field?.type === 'image' ? 'photo' : 'link'} to an item and its picture shows here.</p>}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {items.slice(0, limit).map((item) => {
           const img = field?.type === 'image' ? item.values[field.key] : undefined;
@@ -484,21 +502,21 @@ function GalleryView({ design, view, items, today, handlers, readOnly, emoji, co
               className={cn('card group cursor-pointer overflow-hidden outline-none transition-[border-color,transform] duration-fast hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ink/60 active:scale-[0.99]', selection.has(item.id) && 'border-ink/60')}
               aria-label={itemTitle(design, item)}
             >
-              <div className="relative aspect-[4/3] overflow-hidden border-b border-line bg-raised">
+              {hasMedia && <div className="relative aspect-[4/3] overflow-hidden border-b border-line bg-raised">
                 {typeof img === 'string' ? (
                   <SpaceImage value={img} alt="" className="h-full w-full" />
                 ) : remote ? (
                   <img src={remote} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="h-full w-full object-cover" onError={(e) => ((e.currentTarget.style.display = 'none'))} />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center" style={{ background: `${spaceColor(color)}14` }}>
-                    <SpaceIcon emoji={emoji} color={color} size="lg" />
+                  <div className="flex h-full w-full items-center justify-center text-3xl opacity-60" aria-hidden>
+                    {emoji}
                   </div>
                 )}
                 {design.check && item.values[design.check] === true && <span className="absolute left-2 top-2 rounded-full bg-ink px-2 py-0.5 text-xs font-semibold text-canvas">✓ {fieldByKey(design, design.check)?.name}</span>}
-              </div>
+              </div>}
               <div className="p-3">
                 <div className="flex items-start gap-2">
-                  <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold leading-snug">{itemTitle(design, item)}</h3>
+                  <h3 className={cn('line-clamp-2 min-w-0 flex-1 text-sm font-semibold leading-snug', !hasMedia && design.check && item.values[design.check] === true && 'text-faint line-through')}>{itemTitle(design, item)}</h3>
                   {trailing && <span className="shrink-0 text-sm font-medium tabular-nums">{formatValue(design, trailing, valueOf(design, trailing, item, today))}</span>}
                 </div>
                 {preview?.ok && preview.title && preview.title !== itemTitle(design, item) && <p className="mt-0.5 line-clamp-1 text-xs text-muted">{preview.title}</p>}
@@ -558,7 +576,7 @@ function CalendarView({ design, view, items, today, handlers, readOnly }: ViewPr
   };
   const monthItems = [...byDay.entries()].filter(([d]) => d.startsWith(month)).sort(([a], [b]) => a.localeCompare(b));
   const chip = (i: SpaceItem) => (
-    <button key={i.id} type="button" disabled={readOnly} onClick={() => handlers.onOpen(i)} className={cn('block w-full truncate rounded-md bg-ink/[0.07] px-1.5 py-0.5 text-left text-xs hover:bg-ink/[0.12]', design.check && i.values[design.check] === true && 'text-faint line-through')}>
+    <button key={i.id} type="button" disabled={readOnly} onClick={() => handlers.onOpen(i)} className={cn('block min-h-6 w-full truncate rounded-md bg-ink/[0.07] px-1.5 py-1 text-left text-xs hover:bg-ink/[0.12]', design.check && i.values[design.check] === true && 'text-faint line-through')}>
       {itemTitle(design, i)}
     </button>
   );
@@ -585,7 +603,11 @@ function CalendarView({ design, view, items, today, handlers, readOnly }: ViewPr
           {WEEK.map((w) => <span key={w} role="columnheader" className="py-1">{w}</span>)}
         </div>
         <div className="grid grid-cols-7 gap-px overflow-hidden rounded-control border border-line bg-line">
-          {cells.map((d, k) => {
+          {Array.from({ length: cells.length / 7 }, (_, w) => (
+            // One row per week (display: contents keeps the 7-column grid).
+            <div key={w} role="row" className="contents">
+          {cells.slice(w * 7, w * 7 + 7).map((d, j) => {
+            const k = w * 7 + j;
             const list = d ? byDay.get(d) ?? [] : [];
             return (
               <div key={k} role="gridcell" aria-label={d ? `${formatDay(d, { month: 'long', day: 'numeric' })}, ${list.length} items` : undefined} className={cn('min-h-[92px] bg-surface p-1.5', !d && 'bg-raised/50')}>
@@ -601,6 +623,8 @@ function CalendarView({ design, view, items, today, handlers, readOnly }: ViewPr
               </div>
             );
           })}
+            </div>
+          ))}
         </div>
       </div>
       {undated.length > 0 && <p className="mt-3 text-xs text-muted">{undated.length} item{undated.length === 1 ? ' has' : 's have'} no {field.name.toLowerCase()} and {undated.length === 1 ? 'isn’t' : 'aren’t'} shown here.</p>}
@@ -620,26 +644,33 @@ const RANGES = [
 
 function ChartView({ design, view, items, today }: ViewProps) {
   const [range, setRange] = useState('90');
+  const [asTable, setAsTable] = useState(false);
   const all = useMemo(() => chartSeries(design, view, items, today), [design, view, items, today]);
   const days = RANGES.find((r) => r.id === range)!.days;
-  const start = new Date(Date.parse(`${today}T12:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
-  const pts = all.filter((p) => p.day >= start);
+  const rangeStart = new Date(Date.parse(`${today}T12:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+  const pts = all.filter((p) => p.day >= rangeStart);
   const yField = fieldByKey(design, view.y);
   const yLabel = view.agg === 'count' || !yField ? 'Items' : yField.name;
   const fmt = (n: number) => (view.agg === 'count' || !view.y ? String(Math.round(n)) : formatAs(design, view.y, n));
+  const pace = yField?.compute?.kind === 'pace';
+  // The x-axis spans the range you picked (or all your data), ending today.
+  const from = range === 'all' ? (pts[0]?.day ?? today) : rangeStart;
   const W = 640;
-  const H = 220;
-  const pad = { l: 8, r: 8, t: 16, b: 28 };
+  const H = 200;
+  const barW = Math.max(3, Math.min(20, (W / Math.max(1, (Date.parse(today) - Date.parse(from)) / 86_400_000 + 1)) * 0.7));
+  const padX = barW / 2 + 4;
+  const top = 8;
+  const bottom = H - 4;
   const max = Math.max(...pts.map((p) => p.value), 0) || 1;
-  const min = yField?.compute?.kind === 'pace' ? Math.min(...pts.map((p) => p.value)) * 0.9 : 0;
-  const t0 = pts.length ? Date.parse(pts[0].day) : 0;
-  const t1 = pts.length ? Date.parse(pts[pts.length - 1].day) : 1;
-  const x = (d: string) => (pts.length === 1 ? W / 2 : pad.l + ((Date.parse(d) - t0) / (t1 - t0 || 1)) * (W - pad.l - pad.r));
-  const y = (v: number) => pad.t + (1 - (v - min) / (max - min || 1)) * (H - pad.t - pad.b);
-  const barW = Math.max(3, Math.min(24, ((W - pad.l - pad.r) / Math.max(1, pts.length)) * 0.6));
+  const min = pace && pts.length ? Math.min(...pts.map((p) => p.value)) * 0.9 : 0;
+  const t0 = Date.parse(from);
+  const t1 = Date.parse(today);
+  const x = (d: string) => (t1 === t0 ? W / 2 : padX + ((Date.parse(d) - t0) / (t1 - t0)) * (W - padX * 2));
+  const y = (v: number) => top + (1 - (v - min) / (max - min || 1)) * (bottom - top);
   const [hover, setHover] = useState<number | null>(null);
   const shown = hover !== null ? pts[hover] : pts[pts.length - 1];
-  const best = pts.length ? (yField?.compute?.kind === 'pace' ? Math.min(...pts.map((p) => p.value)) : Math.max(...pts.map((p) => p.value))) : null;
+  const best = pts.length ? (pace ? Math.min(...pts.map((p) => p.value)) : Math.max(...pts.map((p) => p.value))) : null;
+  const mid = min + (max - min) / 2;
 
   return (
     <div className="card p-4">
@@ -649,7 +680,7 @@ function ChartView({ design, view, items, today }: ViewProps) {
           <p className="text-xl font-semibold tabular-nums">{shown ? fmt(shown.value) : '—'}</p>
           <p className="text-xs text-faint">{shown ? formatDay(shown.day, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Nothing in this range'}</p>
         </div>
-        <div className="flex gap-1" role="group" aria-label="Range">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Range">
           {RANGES.map((r) => (
             <button key={r.id} type="button" aria-pressed={range === r.id} onClick={() => setRange(r.id)} className={range === r.id ? 'chip-on' : 'chip-off'}>{r.label}</button>
           ))}
@@ -657,27 +688,54 @@ function ChartView({ design, view, items, today }: ViewProps) {
       </div>
       {pts.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">No entries with a date in this range.</p>
+      ) : asTable ? (
+        <div className="max-h-72 overflow-y-auto rounded-control border border-line">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-raised text-xs text-muted"><tr><th className="px-3 py-2 text-left font-medium">Day</th><th className="px-3 py-2 text-right font-medium">{yLabel}</th></tr></thead>
+            <tbody>
+              {[...pts].reverse().map((p) => (
+                <tr key={p.day} className="border-t border-line"><td className="px-3 py-1.5">{formatDay(p.day, { weekday: 'short', month: 'short', day: 'numeric' })}</td><td className="px-3 py-1.5 text-right tabular-nums">{fmt(p.value)}{p.value === best ? ' · best' : ''}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full touch-pan-y" role="img" aria-label={`${yLabel} over time: ${pts.slice(-12).map((p) => `${formatDay(p.day)} ${fmt(p.value)}`).join(', ')}`} onPointerLeave={() => setHover(null)}>
-          <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} stroke="rgb(var(--line-strong))" />
-          {best !== null && <line x1={pad.l} x2={W - pad.r} y1={y(best)} y2={y(best)} stroke="rgb(var(--ink) / 0.25)" strokeDasharray="3 4" />}
-          {view.chart === 'bar'
-            ? pts.map((p, i) => <rect key={p.day} x={x(p.day) - barW / 2} y={y(p.value)} width={barW} height={Math.max(1, H - pad.b - y(p.value))} rx={2} className={cn('fill-current transition-opacity duration-fast', hover === null || hover === i ? 'text-ink' : 'text-ink/40')} />)
-            : (
-              <>
-                <polyline points={pts.map((p) => `${x(p.day)},${y(p.value)}`).join(' ')} fill="none" stroke="rgb(var(--ink))" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                {pts.map((p, i) => <circle key={p.day} cx={x(p.day)} cy={y(p.value)} r={hover === i ? 5 : 3} className="fill-current text-ink" />)}
-              </>
-            )}
-          {/* Invisible hover/touch targets per point. */}
-          {pts.map((p, i) => (
-            <rect key={`h${p.day}`} x={x(p.day) - Math.max(barW, 10) / 2} y={0} width={Math.max(barW, 10)} height={H} fill="transparent" onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)} />
-          ))}
-          <text x={pad.l} y={H - 8} className="fill-current text-xs text-faint">{formatDay(pts[0].day)}</text>
-          <text x={W - pad.r} y={H - 8} textAnchor="end" className="fill-current text-xs text-faint">{formatDay(pts[pts.length - 1].day)}</text>
-        </svg>
+        <div className="flex gap-2">
+          {/* Labels are HTML (not SVG text), so they stay 12px at any width. */}
+          <div className="flex w-14 shrink-0 flex-col justify-between py-0.5 text-right text-xs tabular-nums text-faint" aria-hidden>
+            <span className="truncate">{fmt(max)}</span>
+            <span className="truncate">{fmt(mid)}</span>
+            <span className="truncate">{fmt(min)}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-48 w-full touch-pan-y" role="img" aria-label={`${yLabel} over time: ${pts.slice(-12).map((p) => `${formatDay(p.day)} ${fmt(p.value)}`).join(', ')}`} onPointerLeave={() => setHover(null)}>
+              {[top, (top + bottom) / 2, bottom].map((gy) => (
+                <line key={gy} x1={0} x2={W} y1={gy} y2={gy} stroke="rgb(var(--line))" vectorEffect="non-scaling-stroke" />
+              ))}
+              {best !== null && <line x1={0} x2={W} y1={y(best)} y2={y(best)} stroke="rgb(var(--ink) / 0.35)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />}
+              {view.chart === 'bar'
+                ? pts.map((p, i) => <rect key={p.day} x={x(p.day) - barW / 2} y={y(p.value)} width={barW} height={Math.max(1, bottom - y(p.value))} rx={2} className={cn('fill-current transition-opacity duration-fast', hover === null || hover === i ? 'text-ink/80' : 'text-ink/35')} />)
+                : (
+                  <>
+                    <polyline points={pts.map((p) => `${x(p.day)},${y(p.value)}`).join(' ')} fill="none" stroke="rgb(var(--ink) / 0.8)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                    {pts.map((p, i) => <circle key={p.day} cx={x(p.day)} cy={y(p.value)} r={hover === i ? 5 : 3} className="fill-current text-ink" vectorEffect="non-scaling-stroke" />)}
+                  </>
+                )}
+              {pts.map((p, i) => (
+                <rect key={`h${p.day}`} x={x(p.day) - Math.max(barW, 12) / 2} y={0} width={Math.max(barW, 12)} height={H} fill="transparent" onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)} />
+              ))}
+            </svg>
+            <div className="mt-1 flex justify-between text-xs text-faint" aria-hidden>
+              <span>{formatDay(from)}</span>
+              <span>Today</span>
+            </div>
+          </div>
+        </div>
       )}
-      {best !== null && <p className="mt-1 text-xs text-faint">Dashed line: your {yField?.compute?.kind === 'pace' ? 'fastest' : 'best'} day in this range ({fmt(best)}).</p>}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        {best !== null && !asTable ? <p className="text-xs text-faint">Dashed line: your {pace ? 'fastest' : 'best'} day in this range ({fmt(best)}).</p> : <span />}
+        {pts.length > 0 && <button type="button" className="link text-xs" onClick={() => setAsTable((t) => !t)}>{asTable ? 'Show chart' : 'Show as table'}</button>}
+      </div>
     </div>
   );
 }

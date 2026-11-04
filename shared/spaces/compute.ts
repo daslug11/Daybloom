@@ -93,7 +93,7 @@ export function formatValue(design: SpaceDesign, field: Field, value: unknown): 
     case 'money':
       return isNum(value) ? formatMoney(value, field.currency) : '';
     case 'number':
-      return isNum(value) ? `${formatNumber(value)}${field.unit ? ` ${field.unit}` : ''}` : '';
+      return isNum(value) ? `${formatNumber(value)}${field.unit ? (field.unit === '%' ? '%' : ` ${field.unit}`) : ''}` : '';
     case 'duration':
       return isNum(value) ? formatDuration(value) : '';
     case 'rating':

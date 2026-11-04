@@ -54,6 +54,7 @@ export default function NewSpace() {
   const [draft, setDraft] = useState<DraftSpace | null>(null);
   const [meta, setMeta] = useState<{ template_id?: string; request?: string; follow_up?: DesignResult['follow_up']; dropped?: string[] }>({});
   const [answer, setAnswer] = useState('');
+  const [allTemplates, setAllTemplates] = useState(false);
   const draftId = params.get('draft');
   const atlasDraft = draftId ? spaces.data?.find((s) => s.id === draftId && s.status === 'draft') : undefined;
   const activeCount = spaces.data?.filter((s) => s.status === 'active').length ?? 0;
@@ -208,7 +209,7 @@ export default function NewSpace() {
               <span className="muted mt-0.5 block text-xs leading-snug">A simple checklist you shape yourself.</span>
             </span>
           </button>
-          {TEMPLATES.map((t) => (
+          {(allTemplates ? TEMPLATES : TEMPLATES.slice(0, 5)).map((t) => (
             <button key={t.id} type="button" disabled={full} onClick={() => startTemplate(t.id)} className="card card-hover flex items-start gap-3 p-4 text-left transition-transform duration-press ease-out active:scale-[0.99] disabled:opacity-50">
               <SpaceIcon emoji={t.emoji} color={t.color} />
               <span className="min-w-0">
@@ -218,6 +219,11 @@ export default function NewSpace() {
             </button>
           ))}
         </div>
+        {!allTemplates && (
+          <button type="button" className="btn-ghost mt-3" onClick={() => setAllTemplates(true)}>
+            Show all {TEMPLATES.length} templates
+          </button>
+        )}
       </section>
 
       {yours.length > 0 && (
