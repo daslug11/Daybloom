@@ -13,7 +13,13 @@ export const handleSpacesRequest = handle(async (req) => {
   const url = new URL(req.url);
   if (req.method === 'GET') {
     const token = url.searchParams.get('share') ?? '';
-    return sharedSpace(token);
+    try {
+      return await sharedSpace(token);
+    } catch (err) {
+      // E.g. the Spaces migration hasn't been run yet, or the server's keys are missing: say so plainly.
+      console.error('[spaces share]', err);
+      return json({ error: 'Shared Spaces aren’t available right now.' }, 503, NOINDEX);
+    }
   }
   if (req.method !== 'POST') return methodNotAllowed(['GET', 'POST']);
   const auth = await requireUser(req);
@@ -48,7 +54,8 @@ const NOINDEX = { 'x-robots-tag': 'noindex, nofollow, noarchive', 'referrer-poli
 async function sharedSpace(token: string) {
   if (!/^[0-9a-f]{48,128}$/.test(token)) return json({ error: 'This link isn’t valid.' }, 404, NOINDEX);
   const svc = serviceClient();
-  const { data: share } = await svc.from('space_shares').select('space_id, enabled').eq('token', token).maybeSingle();
+  const { data: share, error: shareError } = await svc.from('space_shares').select('space_id, enabled').eq('token', token).maybeSingle();
+  if (shareError) throw new Error(`share lookup failed: ${shareError.message}`);
   if (!share || !share.enabled) return json({ error: 'This link has been turned off or doesn’t exist.' }, 404, NOINDEX);
   const { data: space } = await svc.from('spaces').select('id, name, emoji, color, description, design, status').eq('id', share.space_id).maybeSingle();
   if (!space || space.status === 'draft') return json({ error: 'This link has been turned off or doesn’t exist.' }, 404, NOINDEX);
