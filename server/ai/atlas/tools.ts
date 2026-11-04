@@ -17,10 +17,13 @@ import { availabilityText, busyBetween, MAX_PLAN_SESSIONS, MAX_PLAN_WEEKS, norma
 import { planEndDate, WEEKDAYS } from '../../data/recurrence.js';
 import { addDays, dayIn, hhmm, minutesOnDay, parseHhmm } from '../../data/time.js';
 import { serviceClient } from '../../supabase.js';
+import { itemTitle, normalizeValues, type SpaceDesign } from '../../../shared/spaces/index.js';
+import { designForAtlas } from '../../spaces/ai.js';
+import { fieldsText, itemLine, knownPeople, remapValues, rowDesign, spaceItems, summariesText, valuesFrom, SPACE_COLUMNS, ITEM_COLUMNS, type ItemRow, type SpaceRow } from '../../spaces/data.js';
 
 export interface ToolEvent {
   /** Shown to the user under Atlas's reply ("Added task “Call the bank”"). */
-  action?: { tool: string; summary: string; ok: boolean; plan_id?: string };
+  action?: { tool: string; summary: string; ok: boolean; plan_id?: string; space_id?: string };
   /** A change that needs the user's explicit confirmation. */
   confirm?: { id: string; summary: string };
 }
@@ -86,7 +89,31 @@ const schemas = {
   list_goals: z.object({}),
   update_goal: z.object({ goal: ref, add: z.number().optional(), set: z.number().min(0).optional() }),
   get_calendar: z.object({ start_date: day, end_date: day }),
-  delete_item: z.object({ kind: z.enum(['task', 'note', 'habit', 'goal']), item: ref }),
+  delete_item: z.object({ kind: z.enum(['task', 'note', 'habit', 'goal', 'space', 'space_item']), item: ref }),
+  list_spaces: z.object({}),
+  get_space: z.object({ space: ref, search: z.string().max(80).optional() }),
+  create_space: z.object({
+    request: z.string().min(3).max(500).describe("what the Space is for, in the user's words, plus any answer to your follow-up (e.g. budget $500)"),
+  }),
+  add_space_items: z.object({
+    space: ref,
+    items: z
+      .array(
+        z.object({
+          text: z.string().max(500).optional().describe('one item in plain words, e.g. "Mom airpods $130" or "5k 28:30 felt great"'),
+          values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe('field name → value, when you know it exactly'),
+        }),
+      )
+      .min(1)
+      .max(50),
+  }),
+  update_space_item: z.object({
+    item: ref,
+    text: z.string().max(500).optional(),
+    values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional().describe('field name → new value (null clears)'),
+  }),
+  move_space_item: z.object({ item: ref, to_space: ref }),
+  check_space_item: z.object({ item: ref, done: z.boolean().default(true) }),
   check_availability: z.object({ start_date: day.optional(), weeks: z.number().int().min(1).max(MAX_PLAN_WEEKS).default(4) }),
   create_plan: z.object({
     title: z.string().min(1).max(120),
@@ -126,7 +153,15 @@ const descriptions: Record<ToolName, string> = {
   list_goals: 'List goals with refs (G1…) and progress.',
   update_goal: 'Change goal progress: add to it, or set it.',
   get_calendar: 'Synced calendar events, task blocks and recurring blocks between two dates (max 14 days).',
-  delete_item: 'Ask the user to confirm deleting a task, note, habit or goal. Nothing is deleted until they press Delete.',
+  delete_item: 'Ask the user to confirm deleting a task, note, habit, goal, Space or Space item. Nothing is deleted until they press Delete.',
+  list_spaces: "The user's Spaces (custom lists and trackers) with refs (S1…), their fields and summary cards (totals, budgets, bests).",
+  get_space: "One Space's summary cards and items with refs (I1…). Use for questions like \"how much have I spent on Christmas?\" and before changing items.",
+  create_space:
+    'Design a new Space (a list or tracker: gift list, running log, reading list…) from building blocks. It appears as a preview card the user can edit and save; nothing is saved until they do.',
+  add_space_items: 'Add items to a Space. Prefer `text` per item (read with the Space\'s fields, like the app\'s quick add); use `values` for exact field values.',
+  update_space_item: 'Change an item in a Space (text is re-read; values override).',
+  move_space_item: 'Move an item to another Space (matching fields carry over).',
+  check_space_item: 'Tick an item off (or untick with done=false) in a Space that has a checkbox.',
   check_availability: 'Busy times (task blocks, recurring blocks, calendar events) by weekday for a period. Call before create_plan. start_date defaults to tomorrow.',
   create_plan:
     'Draft a weekly plan (workouts, study, meal prep, reading, project…) as a card the user can edit and add to their Planner. Each session repeats weekly on its day for `weeks` weeks. Nothing is scheduled until the user adds it.',
@@ -164,6 +199,24 @@ async function resolveTask(ctx: Ctx, value: string): Promise<TaskRow | null> {
 }
 
 const UNKNOWN = (kind: string) => `Unknown ${kind} reference. List ${kind}s first to get valid refs.`;
+
+async function resolveSpace(ctx: Ctx, value: string): Promise<SpaceRow | null> {
+  const id = ctx.refs.resolve('S', value);
+  if (!id) return null;
+  const { data } = await ctx.db.from('spaces').select(SPACE_COLUMNS).eq('id', id).neq('status', 'draft').maybeSingle();
+  return (data as SpaceRow) ?? null;
+}
+
+async function resolveItem(ctx: Ctx, value: string): Promise<{ item: ItemRow; space: SpaceRow; design: SpaceDesign } | null> {
+  const id = ctx.refs.resolve('I', value);
+  if (!id) return null;
+  const { data } = await ctx.db.from('space_items').select(ITEM_COLUMNS).eq('id', id).maybeSingle();
+  if (!data) return null;
+  const item = data as unknown as ItemRow;
+  const { data: sp } = await ctx.db.from('spaces').select(SPACE_COLUMNS).eq('id', item.space_id).maybeSingle();
+  if (!sp) return null;
+  return { item, space: sp as SpaceRow, design: rowDesign(sp) };
+}
 
 const planStart = (ctx: Ctx, d?: string) => (d && d > ctx.now.day ? d : addDays(ctx.now.day, 1));
 
@@ -401,15 +454,25 @@ const executors: { [N in ToolName]: Exec<N> } = {
   },
 
   async delete_item(ctx, input) {
-    const kindRef = { task: 'T', note: 'N', habit: 'H', goal: 'G' } as const;
-    const table = { task: 'tasks', note: 'notes', habit: 'habits', goal: 'goals' }[input.kind];
+    const kindRef = { task: 'T', note: 'N', habit: 'H', goal: 'G', space: 'S', space_item: 'I' } as const;
+    const table = { task: 'tasks', note: 'notes', habit: 'habits', goal: 'goals', space: 'spaces', space_item: 'space_items' }[input.kind];
     const id = ctx.refs.resolve(kindRef[input.kind], input.item);
-    if (!id) return fail(UNKNOWN(input.kind));
-    const label = input.kind === 'note' ? 'body' : input.kind === 'habit' ? 'name' : 'title';
-    const { data } = await ctx.db.from(table).select(`id, ${label}`).eq('id', id).maybeSingle();
-    if (!data) return fail(`That ${input.kind} no longer exists.`);
-    const name = clip(String((data as Record<string, unknown>)[label]).replace(/\s+/g, ' '), 60);
-    const summary = `Delete ${input.kind} “${name}”`;
+    if (!id) return fail(input.kind === 'space_item' ? 'Unknown item reference. Use get_space first to get valid refs.' : UNKNOWN(input.kind));
+    let name: string;
+    if (input.kind === 'space_item') {
+      const { data } = await ctx.db.from('space_items').select('id, values:data, space_id').eq('id', id).maybeSingle();
+      if (!data) return fail('That item no longer exists.');
+      const { data: sp } = await ctx.db.from('spaces').select('design, name').eq('id', data.space_id).maybeSingle();
+      name = `${sp ? itemTitle(rowDesign(sp), data as never) : 'item'}${sp ? ` from ${sp.name}` : ''}`;
+    } else {
+      const label = input.kind === 'note' ? 'body' : input.kind === 'habit' || input.kind === 'space' ? 'name' : 'title';
+      const { data } = await ctx.db.from(table).select(`id, ${label}`).eq('id', id).maybeSingle();
+      if (!data) return fail(`That ${input.kind} no longer exists.`);
+      name = String((data as Record<string, unknown>)[label]);
+    }
+    name = clip(name.replace(/\s+/g, ' '), 60);
+    const what = input.kind === 'space_item' ? 'item' : input.kind === 'space' ? 'Space (and all its items)' : input.kind;
+    const summary = `Delete ${what} “${name}”`;
     const { data: pending, error } = await serviceClient()
       .from('atlas_pending_actions')
       .insert({ user_id: ctx.userId, kind: 'delete', payload: { table, id, kind: input.kind, name }, summary })
@@ -420,6 +483,136 @@ const executors: { [N in ToolName]: Exec<N> } = {
       content: `Waiting for the user to press Delete on: ${summary}. Nothing is deleted yet — tell them you've asked for confirmation.`,
       events: [{ confirm: { id: pending.id, summary } }],
     };
+  },
+
+  async list_spaces(ctx) {
+    const { data } = await ctx.db.from('spaces').select(SPACE_COLUMNS).eq('status', 'active').order('sort').limit(25);
+    const spaces = (data ?? []) as SpaceRow[];
+    if (!spaces.length) return ok('No Spaces yet. You can create one with create_space.');
+    const lines = await Promise.all(
+      spaces.map(async (sp) => {
+        const design = rowDesign(sp);
+        const items = await spaceItems(ctx, sp.id);
+        return `${ctx.refs.ref('S', sp.id)} ${sp.emoji} ${sp.name} (${items.length} item${items.length === 1 ? '' : 's'}) · fields: ${design.fields.map((f) => `${f.name} (${f.type})`).join(', ')} · ${summariesText(design, items, ctx.now.day, ctx.tz)}`;
+      }),
+    );
+    return ok(lines.join('\n'));
+  },
+
+  async get_space(ctx, input) {
+    const sp = await resolveSpace(ctx, input.space);
+    if (!sp) return fail(UNKNOWN('space'));
+    const design = rowDesign(sp);
+    const all = await spaceItems(ctx, sp.id);
+    let items = all;
+    const total = items.length;
+    if (input.search) {
+      const q = input.search.toLowerCase();
+      items = items.filter((i) => itemLine(null, design, i, ctx.now.day).toLowerCase().includes(q));
+    }
+    const shown = items.slice(-40);
+    return ok(
+      [
+        `${sp.emoji} ${sp.name} — ${total} item${total === 1 ? '' : 's'}${input.search ? `, ${items.length} matching` : ''}.`,
+        `Fields: ${fieldsText(design)}`,
+        `Cards: ${summariesText(design, all, ctx.now.day, ctx.tz)}`,
+        shown.length ? `Items${shown.length < items.length ? ` (latest ${shown.length})` : ''}:\n${shown.map((i) => itemLine(ctx, design, i, ctx.now.day)).join('\n')}` : 'No items.',
+      ].join('\n'),
+    );
+  },
+
+  async create_space(ctx, input) {
+    const { count } = await ctx.db.from('spaces').select('id', { count: 'exact', head: true }).eq('status', 'active');
+    if ((count ?? 0) >= 25) return fail('The user already has 25 active Spaces (the maximum). They need to archive one first.');
+    const d = await designForAtlas(ctx, input.request);
+    const { data, error } = await ctx.db
+      .from('spaces')
+      .insert({
+        name: d.name,
+        emoji: d.emoji,
+        color: d.color,
+        description: d.description,
+        design: d.design,
+        status: 'draft',
+        request: input.request.slice(0, 1000),
+        settings: { samples: d.samples },
+      })
+      .select('id')
+      .single();
+    if (error) return fail(`Could not prepare the Space: ${error.message}`);
+    return {
+      content: `Drafted the Space "${d.name}" with fields ${d.design.fields.map((f) => f.name).join(', ')}. The user sees a preview card with Open preview — they can rename, reorder or remove fields and switch views, then save. Don't list the fields; reply with one short sentence.`,
+      events: [{ action: { tool: 'create_space', summary: `Drafted Space “${d.emoji} ${d.name}”`, ok: true, space_id: data.id } }],
+    };
+  },
+
+  async add_space_items(ctx, input) {
+    const sp = await resolveSpace(ctx, input.space);
+    if (!sp) return fail(UNKNOWN('space'));
+    const design = rowDesign(sp);
+    const existing = await spaceItems(ctx, sp.id);
+    const people = knownPeople(design, existing);
+    const rows = input.items
+      .map((it) => valuesFrom(design, it, ctx.now.day, people))
+      .filter((v) => Object.keys(v).length)
+      .map((data, i) => ({ space_id: sp.id, data, position: Date.now() / 1000 + i / 1000 }));
+    if (!rows.length) return fail('None of those items had anything to save.');
+    const { data, error } = await ctx.db.from('space_items').insert(rows).select(ITEM_COLUMNS);
+    if (error) return fail(`Could not add to ${sp.name}: ${error.message}`);
+    const added = (data ?? []) as unknown as ItemRow[];
+    const names = added.slice(0, 3).map((i) => `“${itemTitle(design, i)}”`).join(', ');
+    return ok(
+      `Added ${added.length} item${added.length === 1 ? '' : 's'} to ${sp.name}:\n${added.map((i) => itemLine(ctx, design, i, ctx.now.day)).join('\n')}\nCards now: ${summariesText(design, [...existing, ...added], ctx.now.day, ctx.tz)}`,
+      `Added ${added.length === 1 ? names : `${added.length} items`} to ${sp.emoji} ${sp.name}`,
+      'add_space_items',
+    );
+  },
+
+  async update_space_item(ctx, input) {
+    const found = await resolveItem(ctx, input.item);
+    if (!found) return fail('Unknown item reference. Use get_space first to get valid refs.');
+    const { item, space, design } = found;
+    const people = knownPeople(design, [item]);
+    const fromText = input.text ? valuesFrom(design, { text: input.text }, ctx.now.day, people) : {};
+    const next: Record<string, unknown> = { ...item.values, ...fromText };
+    for (const [k, v] of Object.entries(input.values ?? {})) {
+      const f = design.fields.find((x) => x.key === k || x.name.toLowerCase() === k.toLowerCase());
+      if (!f) continue;
+      if (v === null) delete next[f.key];
+      else next[f.key] = v;
+    }
+    const data = normalizeValues(design, next);
+    const { error } = await ctx.db.from('space_items').update({ data }).eq('id', item.id);
+    if (error) return fail(`Could not update it: ${error.message}`);
+    return ok(`Updated: ${itemLine(ctx, design, { id: item.id, values: data }, ctx.now.day)}`, `Updated “${itemTitle(design, { id: item.id, values: data })}” in ${space.emoji} ${space.name}`, 'update_space_item');
+  },
+
+  async move_space_item(ctx, input) {
+    const found = await resolveItem(ctx, input.item);
+    if (!found) return fail('Unknown item reference. Use get_space first to get valid refs.');
+    const to = await resolveSpace(ctx, input.to_space);
+    if (!to) return fail(UNKNOWN('space'));
+    if (to.id === found.space.id) return fail('It is already in that Space.');
+    const toDesign = rowDesign(to);
+    const data = remapValues(found.design, toDesign, found.item.values);
+    const { error } = await ctx.db.from('space_items').update({ space_id: to.id, data, position: Date.now() / 1000 }).eq('id', found.item.id);
+    if (error) return fail(`Could not move it: ${error.message}`);
+    const title = itemTitle(found.design, found.item);
+    return ok(`Moved “${title}” from ${found.space.name} to ${to.name}.`, `Moved “${title}” to ${to.emoji} ${to.name}`, 'move_space_item');
+  },
+
+  async check_space_item(ctx, input) {
+    const found = await resolveItem(ctx, input.item);
+    if (!found) return fail('Unknown item reference. Use get_space first to get valid refs.');
+    const { item, space, design } = found;
+    if (!design.check) return fail(`${space.name} has no checkbox to tick.`);
+    const data = { ...item.values };
+    if (input.done) data[design.check] = true;
+    else delete data[design.check];
+    const { error } = await ctx.db.from('space_items').update({ data }).eq('id', item.id);
+    if (error) return fail(`Could not update it: ${error.message}`);
+    const title = itemTitle(design, item);
+    return ok(`${input.done ? 'Ticked off' : 'Unticked'} “${title}” in ${space.name}.`, `${input.done ? 'Ticked off' : 'Unticked'} “${title}” in ${space.emoji} ${space.name}`, 'check_space_item');
   },
 
   async check_availability(ctx, input) {
@@ -468,7 +661,7 @@ export async function runTool(ctx: Ctx, name: string, rawInput: unknown): Promis
 
 /** Runs a confirmed pending action. Called without any AI involvement. */
 export async function executePending(ctx: Ctx, payload: { table: string; id: string; kind: string; name: string }) {
-  const allowed = ['tasks', 'notes', 'habits', 'goals'];
+  const allowed = ['tasks', 'notes', 'habits', 'goals', 'spaces', 'space_items'];
   if (!allowed.includes(payload.table)) throw new Error('bad pending action');
   const { data, error } = await ctx.db.from(payload.table).delete().eq('id', payload.id).select('id');
   if (error) throw error;

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AuthedRequest } from '../auth.js';
+import type { TokenUsage } from '../ai/config.js';
 import { syncUserCalendars } from '../calendar/sync.js';
 import type { SyncedEvent } from '../calendar/types.js';
 import { expandSeries, type OccurrenceRow, type SeriesRow } from './recurrence.js';
@@ -15,6 +16,8 @@ export interface Ctx {
   now: ReturnType<typeof nowIn>;
   /** The user's message in an Atlas chat (saved with plans so they can be regenerated). */
   request?: string;
+  /** Tokens used by model calls made inside an Atlas tool (billed to the Atlas reply). */
+  extraUsage?: TokenUsage[];
 }
 
 export interface TaskRow {

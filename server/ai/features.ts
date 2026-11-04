@@ -16,6 +16,7 @@ import { availabilityText, busyBetween, clampWeeks, normalizeSessions, recurring
 import { planEndDate, sessionLine, type PlanSession } from '../data/recurrence.js';
 import { addDays, dayIn, hhmm, minutesOnDay, parseHhmm, weekStart } from '../data/time.js';
 import { HttpError } from '../http.js';
+import { SPACE_FEATURES } from '../spaces/ai.js';
 import { cached, runStructured, type AiResult } from './run.js';
 
 // ---------------------------------------------------------------------------
@@ -78,8 +79,9 @@ const OrganizeOut = z.object({
   suggestions: z.array(
     z.object({
       note: z.string().describe('note ref like N1'),
-      kind: z.string().describe('task | reminder | idea | journal | reference'),
+      kind: z.string().describe('task | reminder | idea | journal | reference | space'),
       title: z.string().describe('short task or idea title, ≤ 80 chars'),
+      space: z.string().nullable().describe('Space ref like S1 when kind is space, else null'),
       due_date: date.nullable().describe('only for reminders/tasks with a clear date'),
       reason: z.string().describe('≤ 12 words'),
     }),
@@ -88,23 +90,36 @@ const OrganizeOut = z.object({
 
 async function organizeInbox(auth: AuthedRequest) {
   const ctx = await loadCtx(auth);
-  const { data } = await ctx.db.from('notes').select('id, body').eq('state', 'inbox').order('created_at').limit(25);
+  const [{ data }, { data: spaces }] = await Promise.all([
+    ctx.db.from('notes').select('id, body').eq('state', 'inbox').order('created_at').limit(25),
+    ctx.db.from('spaces').select('id, name, emoji').eq('status', 'active').order('sort').limit(25),
+  ]);
   if (!data?.length) throw new HttpError(400, 'Your inbox is empty — nothing to organize.');
   const list = data.map((n) => `${ctx.refs.ref('N', n.id)}: ${clip(n.body.replace(/\s+/g, ' '), 400)}`).join('\n');
+  const spaceList = (spaces ?? []).map((sp) => `${ctx.refs.ref('S', sp.id)} ${sp.emoji} ${clip(sp.name, 60)}`).join('\n');
   const { result, remaining } = await runStructured(auth, 'organize_inbox', {
-    system: system(ctx, 'Sort brain-dump notes. kind: task = something to do; reminder = a task tied to a date/time; idea = something to maybe pursue later; journal = feelings/reflection; reference = info to keep.'),
-    prompt: `Classify each inbox note exactly once.\n${list}`,
+    system: system(
+      ctx,
+      `Sort brain-dump notes. kind: task = something to do; reminder = a task tied to a date/time; idea = something to maybe pursue later; journal = feelings/reflection; reference = info to keep${spaceList ? '; space = an entry that clearly belongs in one of the user\'s Spaces (a gift idea for a gift list, a book for a reading list, a run for a running log) — set space to its ref' : ''}.`,
+    ),
+    prompt: `Classify each inbox note exactly once.\n${list}${spaceList ? `\nThe user's Spaces:\n${spaceList}` : ''}`,
     schema: OrganizeOut,
   });
   const seen = new Set<string>();
   const suggestions = result.suggestions
-    .map((s) => ({
-      note_id: ctx.refs.resolve('N', s.note),
-      kind: oneOf(s.kind, ['task', 'reminder', 'idea', 'journal', 'reference'] as const, 'idea'),
-      title: cleanTitle(s.title, 120),
-      due_date: isDay(s.due_date) ? s.due_date : null,
-      reason: cleanTitle(s.reason, 120),
-    }))
+    .map((s) => {
+      const spaceId = ctx.refs.resolve('S', s.space);
+      const kind = oneOf(s.kind, ['task', 'reminder', 'idea', 'journal', 'reference', 'space'] as const, 'idea');
+      return {
+        note_id: ctx.refs.resolve('N', s.note),
+        // "space" only counts when it names one of the user's real Spaces.
+        kind: kind === 'space' && !spaceId ? ('idea' as const) : kind,
+        space_id: kind === 'space' ? spaceId : null,
+        title: cleanTitle(s.title, 120),
+        due_date: isDay(s.due_date) ? s.due_date : null,
+        reason: cleanTitle(s.reason, 120),
+      };
+    })
     .filter((s) => s.note_id && !seen.has(s.note_id) && seen.add(s.note_id));
   return { result: { suggestions }, remaining, cached: false };
 }
@@ -555,6 +570,7 @@ export const FEATURES = {
   daily_briefing: dailyBriefing,
   reflect,
   weekly_summary: weeklySummary,
+  ...SPACE_FEATURES,
 } satisfies Record<string, (auth: AuthedRequest, input: Record<string, unknown>) => Promise<AiResult<unknown>>>;
 
 export type FeatureName = keyof typeof FEATURES;

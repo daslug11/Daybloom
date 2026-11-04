@@ -3,6 +3,7 @@ import { handleAdminRequest } from './admin.js';
 import { handleAtlasRequest } from './ai/atlas/handler.js';
 import { handleAiRequest } from './ai/handler.js';
 import { handleSyncRequest } from './calendar/sync.js';
+import { handleSpacesRequest } from './spaces/handler.js';
 
 /** Every API route; used by the Vite dev/preview server. Vercel uses the files in /api. */
 export const API_ROUTES: Record<string, (req: Request) => Promise<Response>> = {
@@ -11,4 +12,5 @@ export const API_ROUTES: Record<string, (req: Request) => Promise<Response>> = {
   '/api/account': handleAccountRequest,
   '/api/admin': handleAdminRequest,
   '/api/calendar-sync': handleSyncRequest,
+  '/api/spaces': handleSpacesRequest,
 };
