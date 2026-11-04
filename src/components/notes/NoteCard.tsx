@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, ArrowRightLeft, Lightbulb, ListTodo, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Sparkles, Trash2 } from 'lucide-react';
+import { Shapes, Archive, ArchiveRestore, ArrowRightLeft, Lightbulb, ListTodo, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { timeAgo } from '../../lib/dates';
 import type { Note } from '../../lib/types';
@@ -29,6 +29,8 @@ interface Props {
   onChange?: (patch: Partial<Note>) => void;
   onDelete?: () => void;
   onConvert?: (kind: ConvertKind) => void;
+  /** Send the note (or the text selected in it) to one of the user's Spaces. */
+  onSendToSpace?: () => void;
   onAi?: (action: NoteAiAction) => void;
   aiBusy?: NoteAiAction | null;
   aiDisabled?: boolean;
@@ -36,7 +38,7 @@ interface Props {
 }
 
 /** A Brain Dump note with its actions. Presentational: all changes go through callbacks. */
-export function NoteCard({ note, links, showState, highlight, onChange, onDelete, onConvert, onAi, aiBusy, aiDisabled, className }: Props) {
+export function NoteCard({ note, links, showState, highlight, onChange, onDelete, onConvert, onSendToSpace, onAi, aiBusy, aiDisabled, className }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
   const progress = checklistProgress(note.body);
@@ -128,6 +130,11 @@ export function NoteCard({ note, links, showState, highlight, onChange, onDelete
                       <Icon size={15} className="text-muted" aria-hidden /> {label}
                     </MenuItem>
                   ))}
+                  {onSendToSpace && (
+                    <MenuItem onClick={() => (close(), onSendToSpace())}>
+                      <Shapes size={15} className="text-muted" aria-hidden /> Send to a Space
+                    </MenuItem>
+                  )}
                 </>
               )}
             </Menu>

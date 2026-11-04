@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { apiFetch } from '../../lib/api';
 import {
@@ -347,4 +347,23 @@ export function useAddToSpace() {
 /** Link preview through our server (no AI). */
 export function fetchLinkPreview(url: string) {
   return apiFetch<{ preview: LinkPreview }>('/api/spaces', { action: 'preview', url }).then((r) => r.preview);
+}
+
+/** Items from Spaces set to show in the Planner, by day (their chosen date field). */
+export function useSpaceEntries() {
+  const uid = useUserId();
+  const spaces = useActiveSpaces().data ?? [];
+  const planned = spaces.filter((s) => s.settings.planner_field && s.design.fields.some((f) => f.key === s.settings.planner_field));
+  const results = useQueries({
+    queries: planned.map((s) => ({ queryKey: spaceItemsKey(uid, s.id), queryFn: () => fetchItems(s.id), staleTime: 15_000, enabled: !!uid })),
+  });
+  const byDay = new Map<string, { space: Space; item: SpaceItem }[]>();
+  planned.forEach((space, i) => {
+    const key = space.settings.planner_field!;
+    for (const item of results[i]?.data ?? []) {
+      const d = item.values[key];
+      if (typeof d === 'string') byDay.set(d, [...(byDay.get(d) ?? []), { space, item }]);
+    }
+  });
+  return byDay;
 }

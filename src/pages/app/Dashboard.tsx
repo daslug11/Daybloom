@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MoodPicker } from '../../components/mood/MoodPicker';
 import { GettingStarted } from '../../components/onboarding/Checklist';
+import { PinnedSpacesCard } from '../../components/spaces/PinnedSpaces';
 import { TaskItem } from '../../components/tasks/TaskItem';
 import { AiButton } from '../../components/ui/Ai';
 import { Card, CardTitle } from '../../components/ui/Card';
@@ -328,6 +329,8 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
+
+        <PinnedSpacesCard />
 
         <Card aria-label="Mood check-in" className="lg:col-span-2">
           <CardTitle icon={<Smile size={16} className="text-muted" />} action={<Link to="/app/mood" className="link text-xs">Mood <ArrowRight size={11} className="inline" /></Link>}>

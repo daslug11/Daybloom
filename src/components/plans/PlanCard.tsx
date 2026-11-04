@@ -1,6 +1,8 @@
-import { CalendarPlus, CalendarRange, Check, Pencil, Undo2, X } from 'lucide-react';
+import { CalendarPlus, CalendarRange, Check, Pencil, Shapes, Undo2, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useSpaceActions, useSpaces } from '../../hooks/data/spaces';
+import { normalizeDesign, templateById } from '../../lib/spaces';
 import { weeksLabel, type PlanSession } from '../../../server/data/recurrence';
 import { usePlanActions, usePlans } from '../../hooks/data/plans';
 import { useAi } from '../../hooks/useAi';
@@ -123,6 +125,7 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
             See it in Planner → Plans
           </Link>
         )}
+        {plan.status !== 'dismissed' && <LogSpaceButton plan={plan} className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} />}
         {plan.status === 'dismissed' && (
           <button className={hud ? HUD_GHOST : 'btn-ghost !px-3 !py-1.5 text-xs'} onClick={() => run(actions.setStatus(plan, 'draft'))}>
             <Undo2 size={13} /> Restore
@@ -133,5 +136,68 @@ function PlanCardBody({ plan, variant }: { plan: Plan; variant: 'chat' | 'hud' }
       {dialog === 'edit' && <PlanEditor plan={plan} onClose={() => setDialog(null)} layer={layer} />}
       {dialog === 'add' && <AddPlanDialog plan={plan} onClose={() => setDialog(null)} layer={layer} />}
     </section>
+  );
+}
+
+/**
+ * "Make a log Space": a matching Space (running log, workout log or study log) to log
+ * each session in, linked to the plan's habit and goal. A template, so no AI.
+ */
+function LogSpaceButton({ plan, className }: { plan: Plan; className: string }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const spaces = useSpaces();
+  const { create } = useSpaceActions();
+  const tag = `plan:${plan.id.replace(/-/g, '').slice(0, 32)}`;
+  const existing = spaces.data?.find((s) => s.template_id === tag && s.status !== 'draft');
+  if (existing) {
+    return (
+      <button className={className} onClick={() => navigate(`/app/spaces/${existing.id}`)}>
+        <Shapes size={13} aria-hidden /> Open log
+      </button>
+    );
+  }
+  const make = async () => {
+    const text = `${plan.title} ${plan.summary} ${plan.sessions.map((x) => x.title).join(' ')}`.toLowerCase();
+    const kind = /\b(run|running|jog|5k|10k|marathon)\b/.test(text) ? 'running' : /\b(study|revis|exam|read|learn|homework|course|practice)\w*/.test(text) ? 'study' : 'workouts';
+    const tpl = kind === 'study' ? null : templateById(kind)!;
+    const design = tpl
+      ? tpl.design
+      : normalizeDesign({
+          primary: 'session',
+          fields: [
+            { key: 'session', name: 'Session', type: 'text' },
+            { key: 'date', name: 'Date', type: 'date', default_today: true },
+            { key: 'time', name: 'Time spent', type: 'duration' },
+            { key: 'topic', name: 'Topic', type: 'tags' },
+            { key: 'focus', name: 'Focus', type: 'rating' },
+            { key: 'notes', name: 'Notes', type: 'long_text' },
+          ],
+          views: [{ type: 'table', name: 'Log' }, { type: 'chart', name: 'Time', field: 'date', y: 'time', chart: 'bar', agg: 'sum' }, { type: 'calendar', name: 'Calendar', field: 'date' }],
+          summaries: [{ kind: 'total', label: 'Total time', field: 'time' }, { kind: 'streak', label: 'Streak', field: 'date' }, { kind: 'count', label: 'Sessions' }],
+        }).design;
+    const saved = await create
+      .mutateAsync({
+        space: {
+          name: `${plan.title} log`.slice(0, 60),
+          emoji: tpl?.emoji ?? '📖',
+          color: tpl?.color ?? 1,
+          description: `Log each session of “${plan.title}”.`,
+          design,
+          template_id: tag,
+          habit_id: plan.habit_id,
+          goal_id: plan.goal_id,
+          settings: {},
+        },
+      })
+      .catch(() => null);
+    if (saved) {
+      toast(`Made “${saved.name}”. Log each session there.`, { label: 'Open', onClick: () => navigate(`/app/spaces/${saved.id}`) });
+    }
+  };
+  return (
+    <button className={className} onClick={make} disabled={create.isPending} title="A Space to log each session in (no AI)">
+      <Shapes size={13} aria-hidden /> Make a log Space
+    </button>
   );
 }

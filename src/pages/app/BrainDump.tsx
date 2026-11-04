@@ -7,6 +7,7 @@ import { ConvertDialog, type ConvertKind } from '../../components/notes/ConvertD
 import { NoteCard, type NoteAiAction } from '../../components/notes/NoteCard';
 import { movedLabel } from '../../components/notes/outcomes';
 import { ProcessInbox } from '../../components/notes/ProcessInbox';
+import { SendToSpaceDialog } from '../../components/spaces/SpaceDialogs';
 import { AiAllowance, AiButton } from '../../components/ui/Ai';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState, QueryState } from '../../components/ui/States';
@@ -74,6 +75,7 @@ export default function BrainDump() {
   const [tag, setTag] = useState<string | null>(null);
   const [processing, setProcessing] = useState(params.get('process') === '1');
   const [convert, setConvert] = useState<{ note: Note; kind: ConvertKind; selection: string } | null>(null);
+  const [sendNote, setSendNote] = useState<{ note: Note; selection: string } | null>(null);
   const [busy, setBusy] = useState<{ id: string; action: NoteAiAction } | null>(null);
   const [panel, setPanelState] = useState<Panel | null>(null);
   // The last ✨ result stays reopenable after closing, until its suggestion is acted on.
@@ -377,6 +379,7 @@ export default function BrainDump() {
               onChange={(patch) => changeNote(n, patch)}
               onDelete={() => remove(n)}
               onConvert={(kind) => setConvert({ note: n, kind, selection: selection.current?.noteId === n.id ? selection.current.text : '' })}
+              onSendToSpace={() => setSendNote({ note: n, selection: selection.current?.noteId === n.id ? selection.current.text : '' })}
               onAi={(action) => runAi(n, action)}
               aiBusy={busy?.id === n.id ? busy.action : null}
               aiDisabled={aiOff}
@@ -396,6 +399,15 @@ export default function BrainDump() {
         />
       )}
       {convert && <ConvertDialog note={convert.note} kind={convert.kind} selection={convert.selection} onClose={() => setConvert(null)} />}
+      <SendToSpaceDialog
+        open={!!sendNote}
+        text={sendNote ? sendNote.selection || sendNote.note.body : ''}
+        onClose={() => setSendNote(null)}
+        onSent={() => {
+          // Sending a whole inbox note files it (like converting it); sending a selection leaves the note alone.
+          if (sendNote && !sendNote.selection && sendNote.note.state === 'inbox') changeNote(sendNote.note, { state: 'archived' });
+        }}
+      />
       {panel?.type === 'organize' && <OrganizePanel suggestions={panel.suggestions} onClose={closePanel} />}
       {panel?.type === 'extract' && <ExtractPanel note={panel.note} actions={panel.actions} onClose={closePanel} />}
       {panel?.type === 'summary' && <SummaryPanel title={panel.title} summary={panel.summary} keyPoints={panel.keyPoints} onClose={closePanel} />}

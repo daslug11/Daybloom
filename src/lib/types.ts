@@ -146,6 +146,8 @@ export interface AtlasAction {
   ok: boolean;
   /** Set when Atlas drafted a plan in this reply — shown as a plan card. */
   plan_id?: string;
+  /** Set when Atlas drafted a Space — shown as a preview card. */
+  space_id?: string;
 }
 
 export type PlanStatus = 'draft' | 'active' | 'paused' | 'dismissed';

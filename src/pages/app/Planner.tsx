@@ -22,6 +22,9 @@ import { useUserId } from '../../hooks/useAuth';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useToday } from '../../hooks/useProfile';
 import { useToast } from '../../hooks/useToast';
+import { Link } from 'react-router-dom';
+import { useSpaceEntries } from '../../hooks/data/spaces';
+import { itemTitle, spaceColor } from '../../lib/spaces';
 import { CALENDAR_COLORS } from '../../lib/calendars';
 import { parseKey } from '../../lib/dates';
 import {
@@ -97,6 +100,7 @@ export default function Planner() {
   const toggle = useToggleTask();
   const toast = useToast();
   const { today, minutes: nowMinutes } = useToday(15_000);
+  const spaceEntries = useSpaceEntries();
   const planDay = useAi<{ blocks: Ghost[] }>('plan_day');
   const planWeek = useAi<{ blocks: Ghost[] }>('plan_week');
 
@@ -766,6 +770,7 @@ export default function Planner() {
                 {days.map((d) => {
                   const date = parseKey(d);
                   const allDay = allDayEventsOn(events, d);
+                  const entries = spaceEntries.get(d) ?? [];
                   return (
                     <div key={d} className="min-w-0 flex-1 border-l border-line px-1.5 py-2">
                       <button
@@ -796,6 +801,22 @@ export default function Planner() {
                           </button>
                         );
                       })}
+                      {entries.slice(0, 4).map(({ space, item }) => {
+                        const done = !!space.design.check && item.values[space.design.check] === true;
+                        return (
+                          <Link
+                            key={item.id}
+                            to={`/app/spaces/${space.id}`}
+                            className={cn('mt-1 flex w-full items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-left text-xs font-medium hover:bg-raised', done && 'text-faint line-through')}
+                            style={{ borderColor: `${spaceColor(space.color)}80`, background: `${spaceColor(space.color)}14` }}
+                            title={`${itemTitle(space.design, item)} · ${space.name}`}
+                            aria-label={`${space.name}: ${itemTitle(space.design, item)}${done ? ', done' : ''}`}
+                          >
+                            <span aria-hidden className="shrink-0">{space.emoji}</span> <span className="truncate">{itemTitle(space.design, item)}</span>
+                          </Link>
+                        );
+                      })}
+                      {entries.length > 4 && <p className="mt-0.5 text-center text-xs text-faint">+{entries.length - 4} from Spaces</p>}
                     </div>
                   );
                 })}

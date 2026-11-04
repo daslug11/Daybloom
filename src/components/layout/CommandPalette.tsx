@@ -1,8 +1,12 @@
-import { Bot, CalendarPlus, ExternalLink, Inbox, ListChecks, Mic, Moon, PlayCircle, RefreshCw, Search, Settings as SettingsIcon, Timer } from 'lucide-react';
+import { Bot, CalendarPlus, ExternalLink, Inbox, ListChecks, Mic, Moon, PlayCircle, Plus, RefreshCw, Search, Settings as SettingsIcon, Shapes, Timer } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useCalendars } from '../../hooks/data/calendars';
+import { useActiveSpaces, useAddToSpace } from '../../hooks/data/spaces';
+import { useToday } from '../../hooks/useProfile';
+import { useToast } from '../../hooks/useToast';
+import { defaultValues, itemTitle, normalizeValues, parseQuickAdd } from '../../lib/spaces';
 import { useAppActions } from '../../hooks/useAppActions';
 import { useCalendarSync } from '../../hooks/useCalendarSync';
 import { useProfile, useUpdateProfile } from '../../hooks/useProfile';
@@ -28,6 +32,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const timer = useTimer();
   const { data: profile } = useProfile();
   const update = useUpdateProfile();
+  const spaces = useActiveSpaces().data ?? [];
+  const addToSpace = useAddToSpace();
+  const toast = useToast();
+  const { today } = useToday();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
@@ -66,6 +74,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         keywords: 'appearance mode',
         run: () => update.mutate({ theme: profile?.theme === 'light' ? 'dark' : 'light' }),
       },
+      { id: 'new-space', group: 'Spaces', label: 'New Space', icon: <Plus size={16} />, keywords: 'list tracker create template', run: () => navigate('/app/spaces/new') },
+      ...spaces.map((sp) => ({ id: `space-${sp.id}`, group: 'Spaces', label: `${sp.emoji} ${sp.name}`, icon: <Shapes size={16} />, keywords: 'space open list tracker', run: () => navigate(`/app/spaces/${sp.id}`) })),
       { id: 'add-calendar', group: 'Calendars', label: 'Add calendar', icon: <CalendarPlus size={16} />, keywords: 'new link', run: () => navigate('/app/calendars?add=1') },
       ...(sync.syncedCalendars.length
         ? [{ id: 'sync', group: 'Calendars', label: 'Check calendars again', icon: <RefreshCw size={16} />, keywords: 'refresh ics feed', run: () => sync.sync() }]
@@ -83,13 +93,35 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (!q) return list;
     const lower = q.toLowerCase();
     const matches = list.filter((c) => `${c.label} ${c.keywords ?? ''}`.toLowerCase().includes(lower));
+    // Quick add to a Space: "christmas: Mom airpods $130" goes straight to that Space; otherwise offer the first few.
+    const named = q.match(/^([^:]{2,40}):\s*(.+)$/);
+    const target = named ? spaces.find((sp) => sp.name.toLowerCase().startsWith(named[1].trim().toLowerCase())) : undefined;
+    const text = target && named ? named[2] : q;
+    const spaceAdds = (target ? [target] : spaces.slice(0, 3)).map((sp) => ({
+      id: `add-space-${sp.id}`,
+      group: 'Add',
+      label: `Add to ${sp.emoji} ${sp.name}: “${text}”`,
+      icon: <Plus size={16} />,
+      run: () => {
+        const values = normalizeValues(sp.design, { ...defaultValues(sp.design, today), ...parseQuickAdd(text, sp.design, { today }).values });
+        addToSpace.mutate(
+          { space: sp, values: [values] },
+          {
+            onSuccess: (rows) => toast(`Added “${itemTitle(sp.design, rows[0])}” to ${sp.emoji} ${sp.name}.`, { label: 'Open', onClick: () => navigate(`/app/spaces/${sp.id}`) }),
+            onError: () => toast('That couldn’t be added. Please try again.'),
+          },
+        );
+      },
+    }));
     return [
       ...matches,
+      ...(target ? spaceAdds : []),
       { id: 'add-task', group: 'Add', label: `Add task: “${q}”`, icon: <ListChecks size={16} />, run: () => openCapture({ mode: 'task', text: q }) },
       { id: 'add-note', group: 'Add', label: `Capture note: “${q}”`, icon: <Inbox size={16} />, run: () => openCapture({ mode: 'note', text: q }) },
       { id: 'ask', group: 'Add', label: `Ask Atlas: “${q}”`, icon: <Bot size={16} />, run: () => openAtlas(q) },
+      ...(target ? [] : spaceAdds),
     ];
-  }, [query, calendars, sync, timer, profile?.theme, navigate, openCapture, openAtlas, openVoice, startTour, update]);
+  }, [query, spaces, today, addToSpace, toast, calendars, sync, timer, profile?.theme, navigate, openCapture, openAtlas, openVoice, startTour, update]);
 
   useEffect(() => setActive(0), [query]);
   useEffect(() => {

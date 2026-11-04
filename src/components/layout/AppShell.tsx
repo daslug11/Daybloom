@@ -11,6 +11,8 @@ import { MobileNav } from './MobileNav';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
+// Space date reminders: a toast (and a browser notification if allowed) while the app is open.
+const SpaceReminders = lazy(() => import('../spaces/PinnedSpaces').then((m) => ({ default: m.SpaceReminders })));
 const AtlasPanel = lazy(() => import('../atlas/AtlasPanel'));
 const VoiceHud = lazy(() => import('../atlas/VoiceHud'));
 const Tour = lazy(() => import('../onboarding/Tour'));
@@ -167,6 +169,7 @@ export function AppShell() {
           )}
           {(idle || palette) && <CommandPalette open={palette} onClose={() => setPalette(false)} />}
           {idle && <LocalImportPrompt />}
+          {idle && <SpaceReminders />}
         </Suspense>
         <FocusOverlay />
         <Suspense fallback={null}>

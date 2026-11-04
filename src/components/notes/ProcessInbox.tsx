@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, MoreHorizontal, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, MoreHorizontal, Shapes, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNotes, useUpdateNote } from '../../hooks/data/notes';
 import { timeAgo } from '../../lib/dates';
@@ -6,6 +6,7 @@ import type { Note } from '../../lib/types';
 import { LoadingList } from '../ui/States';
 import { Menu, MenuItem } from '../ui/Menu';
 import { Modal } from '../ui/Modal';
+import { SendToSpaceDialog } from '../spaces/SpaceDialogs';
 import { ConvertDialog, type ConvertKind } from './ConvertDialog';
 import { Markdown, toggleCheckLine } from './Markdown';
 import { OUTCOMES, STATE_LABEL, type Outcome } from './outcomes';
@@ -14,7 +15,7 @@ import { OUTCOMES, STATE_LABEL, type Outcome } from './outcomes';
 const MAIN = OUTCOMES.slice(0, 6);
 const EXTRA = OUTCOMES.slice(6);
 
-type Decision = Outcome['id'] | 'delete';
+type Decision = Outcome['id'] | 'delete' | 'space';
 const TALLY: Record<Decision, [string, string]> = {
   task: ['task', 'tasks'],
   block: ['time block', 'time blocks'],
@@ -25,6 +26,7 @@ const TALLY: Record<Decision, [string, string]> = {
   reference: ['reference', 'references'],
   archive: ['archived', 'archived'],
   delete: ['deleted', 'deleted'],
+  space: ['sent to a Space', 'sent to Spaces'],
 };
 
 interface Props {
@@ -48,6 +50,7 @@ export function ProcessInbox({ onClose, onChange, onDelete }: Props) {
   }, [notes.data, queue]);
   const [index, setIndex] = useState(0);
   const [convert, setConvert] = useState<ConvertKind | null>(null);
+  const [sending, setSending] = useState(false);
   // What was decided for each note, so the summary is a real count (and Back + a new choice replaces the old one).
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const body = useRef<HTMLDivElement>(null);
@@ -89,7 +92,7 @@ export function ProcessInbox({ onClose, onChange, onDelete }: Props) {
   keys.current = { choose, back, next };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (convert || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      if (convert || sending || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const dialog = body.current?.closest('[role="dialog"]');
       const active = document.activeElement as HTMLElement | null;
       if (!dialog || (active && active !== document.body && !dialog.contains(active))) return;
@@ -103,13 +106,14 @@ export function ProcessInbox({ onClose, onChange, onDelete }: Props) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [convert]);
+  }, [convert, sending]);
 
   // An honest summary: only count decisions that still hold (an Undo puts the note back in the inbox).
   const counted = Object.entries(decisions).filter(([id, d]) => {
     const n = byId.get(id);
     if (d === 'delete') return !n;
     if (!n) return false;
+    if (d === 'space') return n.state === 'archived';
     const o = OUTCOMES.find((x) => x.id === d);
     return o?.state ? n.state === o.state : true;
   });
@@ -230,6 +234,9 @@ export function ProcessInbox({ onClose, onChange, onDelete }: Props) {
                     </>
                   )}
                 </Menu>
+                <button className="btn-ghost !px-3" onClick={() => setSending(true)}>
+                  <Shapes size={14} aria-hidden /> Send to a Space
+                </button>
                 <button className="btn-ghost ml-auto !px-3" onClick={next} aria-keyshortcuts="ArrowRight">
                   Skip <ArrowRight size={14} aria-hidden />
                 </button>
@@ -241,6 +248,18 @@ export function ProcessInbox({ onClose, onChange, onDelete }: Props) {
           )}
         </div>
       </Modal>
+      {current && (
+        <SendToSpaceDialog
+          open={sending}
+          text={current.body}
+          onClose={() => setSending(false)}
+          onSent={() => {
+            onChange(current, { state: 'archived' });
+            decide(current.id, 'space');
+            next();
+          }}
+        />
+      )}
       {convert && current && (
         <ConvertDialog
           note={current}
