@@ -11,6 +11,8 @@ import { MobileNav } from './MobileNav';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
+// Space date reminders: a toast (and a browser notification if allowed) while the app is open.
+const SpaceReminders = lazy(() => import('../spaces/PinnedSpaces').then((m) => ({ default: m.SpaceReminders })));
 const AtlasPanel = lazy(() => import('../atlas/AtlasPanel'));
 const VoiceHud = lazy(() => import('../atlas/VoiceHud'));
 const Tour = lazy(() => import('../onboarding/Tour'));
@@ -57,6 +59,7 @@ export function AppShell() {
     setCapture({ open: true, mode: opts.mode ?? 'note', text: opts.text ?? '', voice: !!opts.voice });
   }, []);
   const openAtlas = useCallback((prefill = '') => setAtlas({ open: true, prefill }), []);
+  const closeAtlas = useCallback(() => setAtlas({ open: false, prefill: '' }), []);
   const openVoice = useCallback(() => setVoice(true), []);
   const openPalette = useCallback(() => setPalette(true), []);
   const startTour = useCallback(() => {
@@ -64,7 +67,7 @@ export function AppShell() {
     setTour(true);
   }, [navigate]);
 
-  const actions = useMemo<AppActions>(() => ({ openCapture, openAtlas, openVoice, openPalette, startTour }), [openCapture, openAtlas, openVoice, openPalette, startTour]);
+  const actions = useMemo<AppActions>(() => ({ openCapture, openAtlas, closeAtlas, openVoice, openPalette, startTour }), [openCapture, openAtlas, closeAtlas, openVoice, openPalette, startTour]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -167,6 +170,7 @@ export function AppShell() {
           )}
           {(idle || palette) && <CommandPalette open={palette} onClose={() => setPalette(false)} />}
           {idle && <LocalImportPrompt />}
+          {idle && <SpaceReminders />}
         </Suspense>
         <FocusOverlay />
         <Suspense fallback={null}>

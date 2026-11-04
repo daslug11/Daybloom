@@ -18,7 +18,7 @@ import { loadVoices, pickVoice, speak, speechInputSupported, speechOutputSupport
 import { supabase } from '../../lib/supabase';
 import type { Profile, VoiceSettings } from '../../lib/types';
 
-const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'habits', 'habit_logs', 'moods', 'focus_sessions', 'calendar_groups', 'calendars', 'atlas_messages', 'plans', 'block_series', 'series_occurrences'] as const;
+const EXPORT_TABLES = ['profiles', 'notes', 'tasks', 'goals', 'milestones', 'habits', 'habit_logs', 'moods', 'focus_sessions', 'calendar_groups', 'calendars', 'atlas_messages', 'plans', 'block_series', 'series_occurrences', 'spaces', 'space_items', 'space_templates', 'space_shares'] as const;
 /** Rows per request when exporting. The API caps a single response, so every table is paged until a short page. */
 const EXPORT_PAGE = 1000;
 /** A stable order for paging; tables without an `id` column use their primary key. */
@@ -486,7 +486,7 @@ export default function Settings() {
           <CardTitle>Your data</CardTitle>
           <Row
             label="Export everything"
-            hint={exported ? exported : 'Every note, task, habit, goal, plan, repeating block, mood, focus session, calendar and Atlas message, as one JSON file.'}
+            hint={exported ? exported : 'Every note, task, habit, goal, plan, repeating block, Space and its items, mood, focus session, calendar and Atlas message, as one JSON file. (Uploaded images stay in your account; their file names are included.)'}
             status={exported ? <Check size={14} strokeWidth={3} className="text-success" aria-hidden /> : undefined}
           >
             <button className="btn-ghost" onClick={exportData} disabled={busy === 'export'}>

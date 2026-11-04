@@ -153,6 +153,8 @@ async function chat(auth: AuthedRequest, message: string, voice: boolean): Promi
         console.error('[atlas]', err);
         send({ t: 'error', message: httpErr.message });
       } finally {
+        // Tokens from model calls made inside tools (designing a Space) are billed to this reply.
+        for (const u of c.extraUsage ?? []) usage = addUsage(usage, u);
         // A failed reply that changed nothing is refunded; tokens are always recorded.
         await finishAi(ticket, usage, succeeded || actions.length > 0);
         if (reply.trim()) {

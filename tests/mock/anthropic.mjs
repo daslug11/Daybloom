@@ -31,7 +31,13 @@ export function startMockAnthropic(port = 0) {
     if (body.output_config?.format) {
       const prompt = [systemText(body), ...body.messages.map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))].join('\n');
       ROOT = body.output_config.format.schema;
-      const value = ROOT.properties?.sessions ? weeklyPlan(prompt) : generate(ROOT, prompt, '');
+      const value = ROOT.properties?.sessions
+        ? weeklyPlan(prompt)
+        : ROOT.properties?.fields && ROOT.properties?.views
+          ? spaceDesign(prompt)
+          : ROOT.properties?.items && /Suggest new items/.test(prompt)
+            ? spaceSuggest(prompt)
+            : generate(ROOT, prompt, '');
       return send(res, 200, message([{ type: 'text', text: JSON.stringify(value) }], 'end_turn', body));
     }
     const plan = atlasStep(body);
@@ -150,6 +156,104 @@ function weeklyPlan(prompt) {
 }
 
 // ---------------------------------------------------------------------------
+// Spaces: a designer that reads keywords from the request
+// ---------------------------------------------------------------------------
+function spaceDesign(prompt) {
+  const want = (prompt.match(/(?:The user wants|Change requested): ([^\n]+)/)?.[1] ?? '').toLowerCase();
+  const budget = Number(want.match(/\$\s?(\d+)/)?.[1] ?? want.match(/(\d+)\s?(?:dollars|usd)/)?.[1] ?? 0);
+  if (/christmas|gift|present/.test(want)) {
+    return {
+      name: /christmas/.test(want) ? 'Christmas list' : 'Gift list',
+      emoji: '🎄',
+      color: 'ember',
+      description: 'Gifts for everyone, with a budget.',
+      primary: 'gift',
+      check: 'bought',
+      fields: [
+        { key: 'gift', name: 'Gift', type: 'text', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+        { key: 'for', name: 'For', type: 'person', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+        { key: 'price', name: 'Price', type: 'money', options: null, currency: 'USD', unit: null, compute: null, default_today: null, private: true },
+        { key: 'link', name: 'Link', type: 'link', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+        { key: 'bought', name: 'Bought', type: 'checkbox', options: null, currency: null, unit: null, compute: null, default_today: null, private: true },
+        { key: 'magic', name: 'Sparkle', type: 'hologram', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+      ],
+      views: [
+        { type: 'grouped', name: 'By person', field: 'for', y: null, chart: null, agg: null },
+        { type: 'checklist', name: 'To buy', field: null, y: null, chart: null, agg: null },
+        { type: 'gallery', name: 'Gallery', field: 'link', y: null, chart: null, agg: null },
+      ],
+      summaries: [
+        ...(budget ? [{ kind: 'budget', label: 'Budget', field: 'price', target: budget, group: 'for', filter: null, best: null }] : []),
+        { kind: 'total', label: 'Total planned', field: 'price', target: null, group: null, filter: null, best: null },
+        { kind: 'count', label: 'Bought', field: null, target: null, group: null, filter: { field: 'bought', value: 'true' }, best: null },
+      ],
+      samples: [
+        { values: [{ field: 'gift', value: 'Cozy scarf' }, { field: 'for', value: 'Grandma' }, { field: 'price', value: '35' }] },
+        { values: [{ field: 'gift', value: 'Board game' }, { field: 'for', value: 'Sam' }, { field: 'price', value: '40' }] },
+      ],
+      follow_up: budget ? null : { question: 'Want a budget for the Christmas list?', kind: 'budget', amount: 500 },
+    };
+  }
+  if (/run|jog/.test(want)) {
+    return {
+      name: 'Running log',
+      emoji: '🏃',
+      color: 'mint',
+      description: 'Every run with distance, time and pace.',
+      primary: 'notes',
+      check: null,
+      fields: [
+        { key: 'date', name: 'Date', type: 'date', options: null, currency: null, unit: null, compute: null, default_today: true, private: null },
+        { key: 'distance', name: 'Distance', type: 'number', options: null, currency: null, unit: 'km', compute: null, default_today: null, private: null },
+        { key: 'time', name: 'Time', type: 'duration', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+        { key: 'pace', name: 'Pace', type: 'computed', options: null, currency: null, unit: null, compute: { kind: 'pace', fields: ['time', 'distance'], target: null }, default_today: null, private: null },
+        { key: 'notes', name: 'Notes', type: 'long_text', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+      ],
+      views: [
+        { type: 'table', name: 'Runs', field: null, y: null, chart: null, agg: null },
+        { type: 'chart', name: 'Distance', field: 'date', y: 'distance', chart: 'bar', agg: 'sum' },
+      ],
+      summaries: [
+        { kind: 'total', label: 'Total distance', field: 'distance', target: null, group: null, filter: null, best: null },
+        { kind: 'best', label: 'Longest run', field: 'distance', target: null, group: null, filter: null, best: 'max' },
+      ],
+      samples: [{ values: [{ field: 'distance', value: '5' }, { field: 'time', value: '28:30' }, { field: 'notes', value: 'Easy' }] }],
+      follow_up: null,
+    };
+  }
+  // Redesign: keep the current fields and add one named in the request ("add a size field").
+  const current = prompt.match(/Fields: ([^\n]+)\./)?.[1];
+  if (current) {
+    const fields = [...current.matchAll(/(\w+) "([^"]+)" \(([a-z_]+)/g)].map((m) => ({ key: m[1], name: m[2], type: m[3] === 'money' ? 'money' : m[3], options: null, currency: null, unit: null, compute: null, default_today: null, private: null }));
+    const add = want.match(/add (?:a |an )?(\w+)/)?.[1];
+    if (add) fields.push({ key: add, name: add[0].toUpperCase() + add.slice(1), type: 'text', options: null, currency: null, unit: null, compute: null, default_today: null, private: null });
+    return { name: 'Redesigned', emoji: '✨', color: 'ocean', description: '', primary: fields[0]?.key ?? 'name', check: null, fields, views: [{ type: 'table', name: 'Table', field: null, y: null, chart: null, agg: null }], summaries: [], samples: [], follow_up: null };
+  }
+  const name = want.replace(/^(make|create|build|start)( me)?( a| an)? /, '').split(/\s+/).slice(0, 3).join(' ') || 'list';
+  return {
+    name: name[0].toUpperCase() + name.slice(1),
+    emoji: '📝',
+    color: 'ocean',
+    description: 'A simple list.',
+    primary: 'name',
+    check: 'done',
+    fields: [
+      { key: 'name', name: 'Name', type: 'text', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+      { key: 'done', name: 'Done', type: 'checkbox', options: null, currency: null, unit: null, compute: null, default_today: null, private: null },
+    ],
+    views: [{ type: 'checklist', name: 'Checklist', field: null, y: null, chart: null, agg: null }],
+    summaries: [],
+    samples: [],
+    follow_up: null,
+  };
+}
+
+function spaceSuggest(prompt) {
+  const primary = prompt.match(/Fields: (\w+) "/)?.[1] ?? 'name';
+  return { items: ['Warm socks', 'Photo book', 'Candle set'].map((v) => ({ values: [{ field: primary, value: v }] })), note: 'Ideas based on your notes.' };
+}
+
+// ---------------------------------------------------------------------------
 // Atlas: scripted conversations
 // ---------------------------------------------------------------------------
 let toolCounter = 0;
@@ -213,6 +317,15 @@ function atlasStep(body) {
     if ((m = intent.match(/^(?:complete|finish)[: ]+(.+)$/i))) return tool('list_tasks', { filter: 'open', search: m[1] });
     if ((m = intent.match(/^delete (?:task )?(.+)$/i))) return tool('list_tasks', { filter: 'open', search: m[1] });
     if ((m = intent.match(/^schedule (.+) at (\d{1,2}:\d{2})$/i))) return tool('list_tasks', { filter: 'open', search: m[1] });
+    if (/^(?:log a run|add to [^:]+:|how much have i spent)/i.test(intent)) return tool('list_spaces', {});
+    if (/\b(christmas list|gift list|running log|make me a \w+ (?:list|log|tracker))\b/i.test(intent)) {
+      if (/christmas|gift/i.test(intent) && !/\$\d|budget|no budget/i.test(intent)) return say(`Lovely idea, ${name}. Want a budget for the Christmas list?`);
+      return tool('create_space', { request: intent });
+    }
+    if (/^(?:yes|yeah|sure)[,!. ]*.*\$\d+/i.test(intent) || /^no(?:,| )?(?:budget|thanks)/i.test(intent)) {
+      const prior = userTexts(messages).slice(-2, -1)[0] ?? 'a Christmas list';
+      return tool('create_space', { request: `${prior}. ${intent}` });
+    }
     if (/^log (?:habit )?(.+)$/i.test(intent)) return tool('list_habits', {});
     if (/process (?:my )?inbox/i.test(intent)) return tool('list_notes', { view: 'inbox' });
     if (/what('s| is) (on )?today|my day/i.test(lower)) return tool('get_today', {});
@@ -254,6 +367,23 @@ function atlasStep(body) {
     const ref = resultText.match(/\b(N\d+)\b/)?.[1];
     return ref ? tool('process_note', { note: ref, action: 'keep_as_idea' }) : say('Your inbox is already clear.');
   }
+  if (used?.name === 'list_spaces') {
+    if ((m = intent.match(/^log a run:? (.+)$/i))) {
+      const ref = findRef(resultText, 'S', 'run');
+      return ref ? tool('add_space_items', { space: ref, items: [{ text: m[1] }] }) : say("You don't have a running log yet.");
+    }
+    if ((m = intent.match(/^add to ([^:]+): (.+)$/i))) {
+      const ref = findRef(resultText, 'S', m[1]);
+      return ref ? tool('add_space_items', { space: ref, items: m[2].split(/;\s*/).map((text) => ({ text })) }) : say("I couldn't find that Space.");
+    }
+    if (/how much have i spent/i.test(intent)) {
+      const ref = findRef(resultText, 'S', intent.match(/on (\w+)/i)?.[1] ?? '');
+      return ref ? tool('get_space', { space: ref }) : say("I couldn't find that Space.");
+    }
+  }
+  if (used?.name === 'get_space') return say(`Here's where it stands, ${name}: ${resultText.split('\n').find((l) => l.startsWith('Cards:'))?.slice(7) ?? ''}`);
+  if (used?.name === 'add_space_items') return say(`Logged, ${name}. ${resultText.split('\n')[0]}`);
+  if (used?.name === 'create_space') return say(`Here's a preview of your ${resultText.match(/Space "([^"]+)"/)?.[1] ?? 'Space'}, ${name}. Adjust anything you like, then save it.`);
   if (used?.name === 'check_availability') return tool('create_plan', planFrom(userTexts(messages)));
   if (used?.name === 'create_plan') {
     const p = planFrom(userTexts(messages));

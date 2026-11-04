@@ -5,6 +5,7 @@ export type CaptureMode = 'note' | 'task';
 export interface AppActions {
   openCapture: (opts?: { mode?: CaptureMode; text?: string; voice?: boolean }) => void;
   openAtlas: (prefill?: string) => void;
+  closeAtlas: () => void;
   openVoice: () => void;
   openPalette: () => void;
   startTour: () => void;

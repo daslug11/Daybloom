@@ -10,7 +10,7 @@ web
 
 Primary: **students and young adults** handling classes, deadlines, side projects, jobs and new routines. They need structure without a steep learning curve. They are regular people, not productivity enthusiasts, and won't learn a system before getting value.
 
-Daybloom is used by one person organising their own life. There are no teams, sharing or shared workspaces.
+Daybloom is used by one person organising their own life. There are no teams or shared workspaces; the only sharing is an optional read-only link to a single Space (for example a wishlist).
 
 ## Product Purpose
 
@@ -47,6 +47,7 @@ Daybloom is a free life organiser: a single place to get everything out of your 
 - **Tasks:** natural-language quick add, priorities, due dates, steps, today's top 3.
 - **Planner:** day and week timeline in 15-minute steps, synced events, repeating blocks.
 - **Plans:** schedules drafted by Atlas, such as workout or study plans, added to the Planner as repeating blocks.
+- **Spaces:** custom lists and trackers (gift lists, running logs, reading lists, applications…) designed from a fixed set of building blocks, never code. Made by describing them (Atlas, Brain Dump, New Space) or from 14 templates, always previewed first. Everyday use (quick add, paste, editing, check-off, link previews) uses no AI. Optional read-only share link per Space; date reminders while the app is open.
 - **The rest:** Calendars, Habits with streaks, Goals with milestones, Focus (Pomodoro), Mood check-ins, Weekly Review, Settings.
 
 **Accounts:** email and password or magic link, plus email verification, password reset, and changing email or password. Onboarding is followed by a skippable tour and a Getting started checklist.
@@ -60,7 +61,7 @@ Daybloom is a free life organiser: a single place to get everything out of your 
 - Global daily and monthly spend caps pause AI for everyone, with the message "AI is resting until tomorrow 🌙".
 - Editing, adding and checking off things never uses AI.
 
-**Not built and not decided:** paid tiers, sharing or collaboration, native mobile apps, notifications.
+**Not built and not decided:** paid tiers, collaboration or shared editing, native mobile apps, push notifications when Daybloom is closed.
 
 ## Brand Commitments
 

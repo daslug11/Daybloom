@@ -170,9 +170,12 @@ Every colour is a CSS variable holding RGB channels (`--canvas: 11 11 12`), rede
 - **Calendar colours** (`CALENDAR_COLORS` in `src/lib/calendars.ts`): eight solid hues (Grape, Ocean, Bubblegum, Sunset, Mint, Plum, Graphite, Ember) used only to identify a calendar: a 15% tint tile with a 35% inset ring, and the border of its events in the Planner.
 
 ### Named Rules
+- **Space colours** (`SPACE_COLORS` in `shared/spaces/blocks.ts`): the same eight hues, used only to identify a Space: its emoji tile (15% tint, 35% ring), a short bar under its title, its sidebar row and its Planner entries.
+- **Status colours** (`STATUS_CLASSES` in `src/lib/spaces.ts`): eight user-chosen tints for a Space's status options (gray, red, orange, yellow, green, blue, purple, pink), always a tinted pill with readable text and a hairline ring. They carry the meaning the user gave them, like priority does elsewhere. None is cyan.
+
 **The Atlas Colour Rule.** Cyan appears only where Atlas or AI is present. Manual repeating blocks, the time chip and type badges are neutral.
 
-**The Meaning-Only Rule.** Outside the voice HUD, colour must mean something: priority, status, calendar identity or Atlas. Decorative colour is removed.
+**The Meaning-Only Rule.** Outside the voice HUD, colour must mean something: priority, status, calendar or Space identity, or Atlas. Decorative colour is removed.
 
 ## Typography
 
@@ -261,6 +264,13 @@ Tokens (`tailwind.config.js`), from plan 001:
 - **Sidebar:** icon plus label rows; the active row is a raised fill with a hairline ring. The Brain Dump row shows an ink inbox-count badge.
 - **Mobile:** a bottom tab bar with 4 primary tabs plus "More".
 - **Top bar:** capture field (N), Jump to (Ctrl/⌘K), AI allowance pill, theme toggle and account menu.
+
+### Spaces
+- **Header:** the Space's emoji tile (lg), title, a 40px bar in its colour, description; Share, ✨ Smart and ⋯ on the right.
+- **Rows** (checklist, grouped): fixed 60px, round check-off on the left (same press-and-pop as tasks), title plus one line of the fields that have values, the money/number/pace value right-aligned. Swipe right ticks off, swipe left opens actions, long-press selects (touch). Lists over 120 rows render in a window.
+- **Quick add:** one card with the input, a paste-a-list button and Add; what it understood appears below as neutral chips before saving.
+- **Summary cards:** label, big tabular number, one line of context, an optional `scaleX` meter (danger when over budget, success when a target is reached).
+- **Preview editor:** preview (left) beside name/emoji/colour and the field/view/card editor (right, sticky on desktop). Every edit is re-validated, so it can't produce an invalid design.
 
 ### Atlas Orb and Panel (signature)
 - **Orb:** a cyan orb button, fixed bottom right above the capture "+". Opens a 448px side panel.

@@ -12,6 +12,7 @@ import { useToast } from '../../hooks/useToast';
 import { apiFetch, ApiError, atlasStream } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import type { AtlasAction } from '../../lib/types';
+import { SpaceDraftCard } from '../spaces/SpaceDraftCard';
 import { cn } from '../../lib/utils';
 import { Markdown } from '../notes/Markdown';
 import { PlanCard } from '../plans/PlanCard';
@@ -129,8 +130,8 @@ export default function AtlasPanel({ prefill = '', onClose, onVoice }: { prefill
       for await (const ev of atlasStream(message, 'chat', ctrl.signal)) {
         if (ev.t === 'text') patch((t) => ({ text: t.text + ev.v }));
         else if (ev.t === 'action') {
-          patch((t) => ({ actions: [...t.actions, { tool: ev.tool, summary: ev.summary, ok: ev.ok, plan_id: ev.plan_id }] }));
-          if (ev.plan_id) invalidate();
+          patch((t) => ({ actions: [...t.actions, { tool: ev.tool, summary: ev.summary, ok: ev.ok, plan_id: ev.plan_id, space_id: ev.space_id }] }));
+          if (ev.plan_id || ev.space_id || ev.tool.includes('space')) invalidate();
         } else if (ev.t === 'confirm') qc.invalidateQueries({ queryKey: ['atlas_pending', uid] });
         else if (ev.t === 'error') {
           error = ev.message;
@@ -445,6 +446,13 @@ const Bubble = memo(function Bubble({ role, text, actions, error, streaming }: {
         .map((a) => (
           <div key={a.plan_id} className="mt-2">
             <PlanCard planId={a.plan_id!} />
+          </div>
+        ))}
+      {actions
+        .filter((a) => a.space_id)
+        .map((a) => (
+          <div key={a.space_id} className="mt-2">
+            <SpaceDraftCard spaceId={a.space_id!} />
           </div>
         ))}
       {error && (

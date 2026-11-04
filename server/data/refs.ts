@@ -4,12 +4,13 @@
  * Only rows the server loaded for this request (via the user's RLS client)
  * get a ref, so the model can never address another user's data.
  */
-export type RefKind = 'T' | 'N' | 'H' | 'G' | 'M';
+/** T task · N note · H habit · G goal · M milestone · S Space · I Space item */
+export type RefKind = 'T' | 'N' | 'H' | 'G' | 'M' | 'S' | 'I';
 
 export class RefMap {
   private byRef = new Map<string, string>();
   private byId = new Map<string, string>();
-  private counters: Record<RefKind, number> = { T: 0, N: 0, H: 0, G: 0, M: 0 };
+  private counters: Record<RefKind, number> = { T: 0, N: 0, H: 0, G: 0, M: 0, S: 0, I: 0 };
 
   ref(kind: RefKind, id: string): string {
     const existing = this.byId.get(id);

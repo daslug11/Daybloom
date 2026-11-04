@@ -4,6 +4,9 @@ import { useAddGoal, useAddMilestones } from '../../hooks/data/goals';
 import { useAddNote, useNotes, useUpdateNote } from '../../hooks/data/notes';
 import { useAddTasks } from '../../hooks/data/tasks';
 import { useToast } from '../../hooks/useToast';
+import { useActiveSpaces, useAddToSpace } from '../../hooks/data/spaces';
+import { useToday } from '../../hooks/useProfile';
+import { defaultValues, parseList } from '../../lib/spaces';
 import { clip, firstLine } from '../../lib/text';
 import type { Note, Priority } from '../../lib/types';
 import { cn } from '../../lib/utils';
@@ -14,32 +17,46 @@ import { outcome } from './outcomes';
 // ---------------------------------------------------------------------------
 // ✨ Organize inbox
 // ---------------------------------------------------------------------------
-export type SuggestionKind = 'task' | 'reminder' | 'idea' | 'journal' | 'reference';
+export type SuggestionKind = 'task' | 'reminder' | 'idea' | 'journal' | 'reference' | 'space';
 export interface Suggestion {
   note_id: string;
   kind: SuggestionKind;
+  /** kind 'space': which of the user's Spaces the note belongs in. */
+  space_id?: string | null;
   title: string;
   due_date: string | null;
   reason: string;
 }
 
 /** ✨ Organize speaks the same words as Process inbox: a reminder is a task, a journal entry is reference. */
-type Choice = 'task' | 'idea' | 'reference';
-const toChoice = (k: SuggestionKind): Choice => (k === 'task' || k === 'reminder' ? 'task' : k === 'idea' ? 'idea' : 'reference');
-const CHOICES: Choice[] = ['task', 'idea', 'reference'];
+type Choice = 'task' | 'idea' | 'reference' | 'space';
+const toChoice = (k: SuggestionKind): Choice => (k === 'task' || k === 'reminder' ? 'task' : k === 'idea' ? 'idea' : k === 'space' ? 'space' : 'reference');
+const CHOICES: Choice[] = ['task', 'idea', 'reference', 'space'];
+const choiceLabel = (k: Choice) => (k === 'space' ? 'Send to a Space' : outcome(k).label);
 
 export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestion[]; onClose: (committed?: boolean) => void }) {
   const { data: notes = [] } = useNotes();
   const addTasks = useAddTasks();
   const updateNote = useUpdateNote();
   const toast = useToast();
-  const [items, setItems] = useState(suggestions.map((s) => ({ ...s, kind: toChoice(s.kind) as SuggestionKind, status: 'open' as 'open' | 'done' | 'dismissed' })));
+  const spaces = useActiveSpaces().data ?? [];
+  const addToSpace = useAddToSpace();
+  const { today } = useToday();
+  const [items, setItems] = useState(suggestions.map((s) => ({ ...s, kind: toChoice(s.kind) as SuggestionKind, space_id: s.space_id ?? null, status: 'open' as 'open' | 'done' | 'dismissed' })));
   const byId = new Map(notes.map((n) => [n.id, n]));
 
   const accept = (i: number) => {
     const s = items[i];
     const now = new Date().toISOString();
-    if (s.kind === 'task' || s.kind === 'reminder') {
+    if (s.kind === 'space') {
+      const space = spaces.find((x) => x.id === s.space_id) ?? spaces[0];
+      const note = byId.get(s.note_id);
+      if (!space || !note) return;
+      const rows = parseList(note.body, space.design, { today }).map((r) => ({ ...defaultValues(space.design, today), ...r.values }));
+      if (!rows.length) return;
+      addToSpace.mutate({ space, values: rows });
+      updateNote.mutate({ id: s.note_id, patch: { state: 'archived', processed_at: now } });
+    } else if (s.kind === 'task' || s.kind === 'reminder') {
       addTasks.mutate([{ title: s.title.trim() || 'Untitled task', due_date: s.due_date, source_note_id: s.note_id }]);
       updateNote.mutate({ id: s.note_id, patch: { state: 'archived', processed_at: now } });
     } else {
@@ -76,12 +93,29 @@ export function OrganizePanel({ suggestions, onClose }: { suggestions: Suggestio
                       value={s.kind}
                       onChange={(e) => setItems((list) => list.map((x, j) => (j === i ? { ...x, kind: e.target.value as SuggestionKind } : x)))}
                     >
-                      {CHOICES.map((k) => (
+                      {CHOICES.filter((k) => k !== 'space' || spaces.length > 0).map((k) => (
                         <option key={k} value={k}>
-                          {outcome(k).label}
+                          {choiceLabel(k)}
                         </option>
                       ))}
                     </select>
+                    {s.kind === 'space' && spaces.length > 0 && (
+                      <>
+                        <label className="sr-only" htmlFor={`space-${i}`}>Space</label>
+                        <select
+                          id={`space-${i}`}
+                          className="input !w-auto !py-1.5"
+                          value={s.space_id ?? spaces[0].id}
+                          onChange={(e) => setItems((list) => list.map((x, j) => (j === i ? { ...x, space_id: e.target.value } : x)))}
+                        >
+                          {spaces.map((sp) => (
+                            <option key={sp.id} value={sp.id}>
+                              {sp.emoji} {sp.name}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                     {(s.kind === 'task' || s.kind === 'reminder') && (
                       <>
                         <label className="sr-only" htmlFor={`title-${i}`}>

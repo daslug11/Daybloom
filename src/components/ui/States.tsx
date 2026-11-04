@@ -3,13 +3,14 @@ import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
 /** Explains what a section is for and the first thing to do — never just "nothing here". */
-export function EmptyState({ emoji, title, children, action, className }: { emoji: string; title: string; children?: ReactNode; action?: ReactNode; className?: string }) {
+export function EmptyState({ emoji, title, children, action, className, level = 3 }: { emoji: string; title: string; children?: ReactNode; action?: ReactNode; className?: string; level?: 2 | 3 }) {
+  const H = level === 2 ? 'h2' : 'h3';
   return (
     <div className={cn('flex flex-col items-center px-4 py-10 text-center', className)}>
       <div className="text-4xl" aria-hidden>
         {emoji}
       </div>
-      <h3 className="mt-3 font-semibold">{title}</h3>
+      <H className="mt-3 font-semibold">{title}</H>
       {children && <div className="muted mt-1 max-w-md text-sm">{children}</div>}
       {action && <div className="mt-4">{action}</div>}
     </div>

@@ -25,6 +25,33 @@ export function aiErrorToHttp(err: unknown): HttpError {
 }
 
 /**
+ * The model call behind every structured feature, without any allowance
+ * bookkeeping. Usage is returned (and also reported to `onUsage`) so callers
+ * that already hold a ticket — an Atlas reply that designs a Space — can bill it there.
+ */
+export async function structuredCall<S extends z.ZodType>(opts: {
+  system: string;
+  prompt: string;
+  schema: S;
+  maxTokens?: number;
+  onUsage?: (u: TokenUsage) => void;
+}): Promise<z.infer<S>> {
+  const res = await anthropic().messages.parse({
+    model: MODEL,
+    max_tokens: opts.maxTokens ?? MAX_TOKENS.structured,
+    system: opts.system,
+    messages: [{ role: 'user', content: opts.prompt }],
+    output_config: { effort: EFFORT, format: zodOutputFormat(opts.schema) },
+  });
+  opts.onUsage?.(res.usage);
+  if (res.stop_reason === 'refusal') throw new HttpError(422, "Sorry — I can't help with that one.");
+  if (res.stop_reason === 'max_tokens' || res.parsed_output == null) {
+    throw new HttpError(502, 'The answer came back incomplete. Please try again.');
+  }
+  return res.parsed_output as z.infer<S>;
+}
+
+/**
  * One structured (JSON) AI call: checks limits, calls the model with a capped
  * max_tokens, records tokens/cost, and refunds the request if it fails.
  */
@@ -36,20 +63,9 @@ export async function runStructured<S extends z.ZodType>(
   const ticket = await beginAi(auth, feature);
   let usage: TokenUsage = ZERO_USAGE;
   try {
-    const res = await anthropic().messages.parse({
-      model: MODEL,
-      max_tokens: opts.maxTokens ?? MAX_TOKENS.structured,
-      system: opts.system,
-      messages: [{ role: 'user', content: opts.prompt }],
-      output_config: { effort: EFFORT, format: zodOutputFormat(opts.schema) },
-    });
-    usage = res.usage;
-    if (res.stop_reason === 'refusal') throw new HttpError(422, "Sorry — I can't help with that one.");
-    if (res.stop_reason === 'max_tokens' || res.parsed_output == null) {
-      throw new HttpError(502, 'The answer came back incomplete. Please try again.');
-    }
+    const result = await structuredCall({ ...opts, onUsage: (u) => (usage = u) });
     await finishAi(ticket, usage, true);
-    return { result: res.parsed_output as z.infer<S>, remaining: ticket.remaining };
+    return { result, remaining: ticket.remaining };
   } catch (err) {
     await finishAi(ticket, usage, false);
     if (!(err instanceof HttpError)) console.error(`[ai:${feature}]`, err);
