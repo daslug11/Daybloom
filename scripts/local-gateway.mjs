@@ -12,11 +12,12 @@ const PORT = Number(process.env.GATEWAY_PORT ?? 54321);
 const ROUTES = [
   { prefix: '/auth/v1', target: 'http://127.0.0.1:54331' },
   { prefix: '/rest/v1', target: 'http://127.0.0.1:54332' },
+  { prefix: '/storage/v1', target: 'http://127.0.0.1:54335' },
 ];
 
 const cors = {
   'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type, content-profile, accept-profile, prefer, range, x-supabase-api-version',
+  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type, content-profile, accept-profile, prefer, range, x-supabase-api-version, x-upsert, cache-control',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'access-control-expose-headers': 'content-range, x-total-count',
 };
@@ -57,4 +58,4 @@ const server = http.createServer(async (req, res) => {
   req.pipe(upstream);
 });
 
-server.listen(PORT, () => console.log(`[gateway] http://localhost:${PORT}  (/auth/v1, /rest/v1, /templates)`));
+server.listen(PORT, () => console.log(`[gateway] http://localhost:${PORT}  (/auth/v1, /rest/v1, /storage/v1, /templates)`));
