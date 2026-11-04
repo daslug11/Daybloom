@@ -2,6 +2,8 @@ import { PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from 'lucide-
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useNotes } from '../../hooks/data/notes';
+import { useActiveSpaces } from '../../hooks/data/spaces';
+import { spaceColor } from '../../lib/spaces';
 import { NAV } from '../../lib/nav';
 import { cn } from '../../lib/utils';
 import { Logo } from './Logo';
@@ -24,6 +26,7 @@ export function Sidebar() {
     }
   });
   const inbox = useInboxCount();
+  const spaces = useActiveSpaces().data ?? [];
   const toggle = () => {
     setCollapsed((c) => {
       try {
@@ -56,8 +59,8 @@ export function Sidebar() {
         <Logo compact={collapsed} />
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto" data-tour="nav">
-        {NAV.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} end={to === '/app'} className={linkClass} title={collapsed ? label : undefined} data-tour={`nav-${to.split('/').pop()}`}>
+        {NAV.map(({ to, label, icon: Icon }) => [
+          <NavLink key={to} to={to} end={to === '/app' || to === '/app/spaces'} className={linkClass} title={collapsed ? label : undefined} data-tour={`nav-${to.split('/').pop()}`}>
             <Icon size={18} className="shrink-0" aria-hidden />
             <span className={collapsed ? 'sr-only' : 'truncate'}>{label}</span>
             {to === '/app/brain-dump' && inbox !== 0 && (
@@ -66,8 +69,24 @@ export function Sidebar() {
                 <span className="sr-only">{inbox === null ? ', inbox count unavailable' : `, ${inbox} in inbox`}</span>
               </span>
             )}
-          </NavLink>
-        ))}
+          </NavLink>,
+          to === '/app/spaces' && spaces.length > 0 && !collapsed && (
+            // Each Space gets its own row with its emoji and colour.
+            <div key="space-list" className="mb-1 ml-4 flex flex-col gap-px border-l border-line pl-2" role="group" aria-label="Your Spaces">
+              {spaces.slice(0, 8).map((sp) => (
+                <NavLink
+                  key={sp.id}
+                  to={`/app/spaces/${sp.id}`}
+                  className={({ isActive }) => cn('flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors duration-fast', isActive ? 'bg-ink/[0.06] font-medium text-ink' : 'text-muted hover:bg-raised hover:text-ink')}
+                >
+                  <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs" style={{ background: `${spaceColor(sp.color)}26` }}>{sp.emoji}</span>
+                  <span className="truncate">{sp.name}</span>
+                </NavLink>
+              ))}
+              {spaces.length > 8 && <NavLink to="/app/spaces" end className="px-2 py-1 text-xs text-faint hover:text-ink">All {spaces.length} Spaces</NavLink>}
+            </div>
+          ),
+        ])}
       </nav>
       <div className="flex flex-col gap-0.5 border-t border-line pt-3">
         <NavLink to="/app/settings" className={linkClass} title={collapsed ? 'Settings' : undefined}>
